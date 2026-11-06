@@ -1,0 +1,92 @@
+# Builds and tests the three apps and the library they share
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux (GTK 4)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config libgtk-4-dev libadwaita-1-dev \
+            libvte-2.91-gtk4-dev
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Test with the sanitizers
+        run: |
+          cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
+          cmake --build build-asan --target dmodemctl_test
+          ctest --test-dir build-asan --output-on-failure
+
+  windows-9x:
+    name: Windows 95 and later (Open Watcom)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: open-watcom/setup-watcom@v0
+        with:
+          version: "2.0"
+      - name: Build
+        run: sh windows/build-watcom.sh build/watcom
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-windows-9x
+          path: build/watcom/dmodem.exe
+
+  windows:
+    name: Windows (MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          cmake -S . -B build -A Win32
+          cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-windows
+          path: build/windows/Release/dmodem.exe
+
+  macos:
+    name: macOS (SwiftUI)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Library tests
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+      - name: Project
+        run: |
+          brew install xcodegen
+          cd macos && xcodegen
+      - name: Build
+        run: |
+          cd macos
+          xcodebuild -project DModem.xcodeproj -scheme DModem \
+            -configuration Release -derivedDataPath ../build/xcode \
+            CODE_SIGN_IDENTITY=- build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-macos
+          path: build/xcode/Build/Products/Release/D-Modem.app

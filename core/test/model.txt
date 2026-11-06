@@ -1,0 +1,255 @@
+AT!M
+model	1	73
+setting	country	pick	B5	B5			+GCI=%s	Line	Country	+GCI: the line's settings and tones
+choice	02	algeria	ALGERIA
+choice	07	argentina	ARGENTINA
+choice	09	australia	AUSTRALIA
+choice	0A	austria	AUSTRIA
+choice	0C	bahrein	BAHREIN
+choice	0F	belgium	BELGIUM
+choice	16	brazil	BRAZIL
+choice	1A	brunei	BRUNEI
+choice	1B	bulgaria	BULGARIA
+choice	20	canada	CANADA
+choice	25	chile	CHILE
+choice	26	china	CHINA
+choice	100	ctr21europe	CTR21EUROPE
+choice	2D	cyprus	CYPRUS
+choice	2E	czech-republic	CZECH_REPUBLIC
+choice	31	denmark	DENMARK
+choice	36	egypt	EGYPT
+choice	101	estonia	ESTONIA
+choice	3C	finland	FINLAND
+choice	3D	france	FRANCE
+choice	42	germany	GERMANY
+choice	46	greece	GREECE
+choice	50	hong-kong	HONG_KONG
+choice	51	hungary	HUNGARY
+choice	52	iceland	ICELAND
+choice	53	india	INDIA
+choice	54	indonesia	INDONESIA
+choice	57	ireland	IRELAND
+choice	58	israel	ISRAEL
+choice	59	italy	ITALY
+choice	00	japan	JAPAN
+choice	5E	jordan	JORDAN
+choice	61	korea	KOREA
+choice	62	kuwait	KUWAIT
+choice	103	latvia	LATVIA
+choice	64	lebanon	LEBANON
+choice	104	lithuania	LITHUANIA
+choice	69	luxembourg	LUXEMBOURG
+choice	6C	malaysia	MALAYSIA
+choice	70	malta	MALTA
+choice	73	mexico	MEXICO
+choice	77	morocco	MOROCCO
+choice	7B	netherlands	NETHERLANDS
+choice	7E	new-zealand	NEW_ZEALAND
+choice	82	norway	NORWAY
+choice	83	oman	OMAN
+choice	84	pakistan	PAKISTAN
+choice	88	peru	PERU
+choice	89	philippines	PHILIPPINES
+choice	8A	poland	POLAND
+choice	8B	portugal	PORTUGAL
+choice	8E	romania	ROMANIA
+choice	B8	russia	RUSSIA
+choice	98	saudiarabia	SAUDIARABIA
+choice	9C	singapore	SINGAPORE
+choice	C5	slovakia	SLOVAKIA
+choice	C6	slovenia	SLOVENIA
+choice	9F	southafrica	SOUTHAFRICA
+choice	107	southkorea	SOUTHKOREA
+choice	A0	spain	SPAIN
+choice	A1	srilanka	SRILANKA
+choice	A5	sweden	SWEDEN
+choice	A6	switzerland	SWITZERLAND
+choice	108	taiwan	TAIWAN
+choice	A9	thailand	THAILAND
+choice	AD	tunisia	TUNISIA
+choice	AE	turkey	TURKEY
+choice	B3	uae	UAE
+choice	B4	uk	UK
+choice	B7	uruguay	URUGUAY
+choice	B5	usa	USA
+choice	BC	vietnam	VIETNAM
+setting	dial-mode	pick	T	T			%s	Line	Dialling	T tone, P pulse
+choice	T	tone	Tone
+choice	P	pulse	Pulse
+setting	pulse-ratio	pick	0	0			&P%s	Line	Pulse make/break	&P (S28): kept; the country sets the pulses
+choice	0	0	&P0
+choice	1	1	&P1
+choice	2	2	&P2
+choice	3	3	&P3
+setting	line-type	pick	0	0			&L%s	Line	Line type	&L (S47): a dialled line, or a leased one
+choice	0	dialup	Dial-up
+choice	1	leased-2wire	Leased 2-wire
+choice	2	leased-4wire	Leased 4-wire
+setting	call-progress	pick	4	4			X%s	Line	Result codes and tones	X (S56): CONNECT's rate, dial tone, busy
+choice	0	basic	X0 basic
+choice	1	rate	X1 rate
+choice	2	dial-tone	X2 dial tone
+choice	3	busy	X3 busy
+choice	4	full	X4 all
+setting	modulation	pick	92	92			+MS=%s	Modulation	Modulation	+MS: the highest modulation tried
+choice	21	v21	V21
+choice	22	v22	V22
+choice	23	v23	V23
+choice	26	v26	V26
+choice	126	v26ter	V26ter
+choice	226	v26bis	V26bis
+choice	27	v27ter	V27ter
+choice	29	v29	V29
+choice	229	v29fastpos	V29FastPOS
+choice	122	v22bis	V22bis
+choice	32	v32	V32
+choice	132	v32bis	V32bis
+choice	232	v32terbo	V32terbo
+choice	168	hst	HST
+choice	128	vfc	VFC
+choice	61	v61	V61
+choice	33	v33	V33
+choice	34	v34	V34
+choice	103	bell103	Bell103
+choice	18	v18	V18
+choice	45	baudot	Baudot
+choice	110	edt	EDT
+choice	118	dtmf	DTMF
+choice	121	v21text	V21text
+choice	123	v23text	V23text
+choice	203	bell103text	Bell103text
+choice	5	contactid	ContactID
+choice	12	sms	SMS
+choice	212	bell212	Bell212
+choice	201	bell201	Bell201
+choice	202	bell202	Bell202
+choice	208	bell208	Bell208
+choice	56	k56flex	K56Flex
+choice	90	v90	V90
+choice	91	v91	V91
+choice	92	v92	V92
+choice	150	vcvm	VCVM
+choice	200	vwb	VWB
+choice	255	pep	PEP
+choice	64	clear	CLEAR
+setting	automode	pick	1	1			+MS=,%s	Modulation	Automode	+MS, N: fall back to slower modulations
+choice	0	off	Off
+choice	1	on	On
+setting	min-rate	number	300	300	300	56000	+MS=,,%s	Modulation	Lowest rate (bit/s)	+MS: hang up rather than go below it
+setting	max-rate	number	56000	56000	300	56000	+MS=,,,%s	Modulation	Highest rate (bit/s)	+MS: the fastest the modem tries
+setting	error-control	pick	3	3			\N%s	Error control	Error correction	\N (S103): V.42, MNP or none
+choice	0	normal	Normal (none)
+choice	1	direct	Direct (none)
+choice	2	reliable	Reliable
+choice	3	auto-reliable	Auto-reliable
+choice	4	lapm	V.42 LAPM only
+choice	5	mnp	MNP only
+setting	compression	pick	3	3			%%C%s	Error control	Compression	%C (S104): needs error correction
+choice	0	off	None
+choice	1	mnp5	MNP 5
+choice	2	v42bis-v44	V.42bis or V.44
+choice	3	auto	Either
+setting	mnp-block	pick	3	3			\A%s	Error control	MNP block size	\A (S105): MNP's longest block
+choice	0	64	64 octets
+choice	1	128	128 octets
+choice	2	192	192 octets
+choice	3	256	256 octets
+setting	line-quality	pick	0	0			%%E%s	Error control	Line quality monitor	%E (S39): kept
+choice	0	0	%E0
+choice	1	1	%E1
+choice	2	2	%E2
+setting	echo	pick	1	1			E%s	Terminal	Command echo	E (S13): the modem echoes what you type
+choice	0	off	Off
+choice	1	on	On
+setting	quiet	pick	0	0			Q%s	Terminal	Result codes	Q (S14): OK, CONNECT and the others shown or not
+choice	0	shown	Shown
+choice	1	hidden	Hidden
+setting	verbose	pick	1	1			V%s	Terminal	Result code form	V (S15): words or numbers
+choice	0	numeric	Numbers
+choice	1	words	Words
+setting	connect-lines	number	0	0	0	7	&A%s	Terminal	Lines before CONNECT	&A (S70): 1 modulation, 2 protocol, 4 rate
+setting	connect-protocol	pick	0	0			\V%s	Terminal	Protocol in CONNECT	\V (S106): CONNECT 33600/LAPM
+choice	0	off	Off
+choice	1	on	On
+choice	2	on2	On (\V2)
+setting	connect-rate	pick	0	0			&E%s	Terminal	CONNECT rate source	&E (S71): kept
+choice	0	0	&E0
+choice	1	1	&E1
+setting	dcd	pick	0	0			&C%s	Terminal	DCD	&C (S60): kept
+choice	0	always-on	Always on
+choice	1	carrier	Follows carrier
+setting	flow-control	pick	0	0			&H%s	Terminal	Flow control	&H (S62): as #UD reports it
+choice	0	none	None
+choice	1	rts-cts	RTS/CTS
+choice	2	xon-xoff	XON/XOFF
+choice	3	both	Both
+setting	y	number	0	0	0	3	Y%s	Terminal	Y setting	Y (S161): kept
+setting	speaker	pick	1	1			M%s	Speaker	Speaker	M (S29)
+choice	0	off	Off
+choice	1	until-connect	On until CONNECT
+choice	2	always	Always on
+choice	3	answer-only	On after dialling until CONNECT
+setting	volume	pick	3	3			L%s	Speaker	Speaker volume	L (S30)
+choice	0	lowest	Lowest
+choice	1	low	Low
+choice	2	medium	Medium
+choice	3	high	High
+setting	mode	pick	0	0			+FCLASS=%s	Fax and voice	Mode	+FCLASS: data, fax or voice
+choice	0	data	Data
+choice	1	fax1	Fax class 1
+choice	1.0	fax1.0	Fax class 1.0
+choice	8	voice	Voice
+setting	caller-id	pick	0	0			#CID=%s	Fax and voice	Caller ID	#CID: shown after the first RING
+choice	0	off	Off
+choice	1	formatted	Formatted
+choice	2	raw	Unformatted
+setting	modem-on-hold	pick	0	0			+PMH=%s	Fax and voice	V.92 modem-on-hold	+PMH: granted or refused
+choice	0	on	Granted
+choice	1	off	Refused
+setting	modem-on-hold-time	number	5	5	0	13	+PMHT=%s	Fax and voice	Modem-on-hold time code	+PMHT: the longest hold granted (V.92's code)
+setting	auto-answer	number	0	0	0	255	S0=%s	Timers	Rings before answering	S0: 0 never answers by itself
+setting	dial-tone-wait	number	2	2	0	255	S6=%s	Timers	Dial tone wait (s)	S6: seconds to wait for a dial tone
+setting	carrier-wait	number	60	60	0	255	S7=%s	Timers	Carrier wait (s)	S7: seconds to wait for the other modem
+setting	comma-pause	number	2	2	0	255	S8=%s	Timers	Comma pause (s)	S8: a ',' in the number waits this long
+setting	carrier-detect-time	number	6	6	0	255	S9=%s	Timers	Carrier detect (0.1 s)	S9: the carrier must last this long
+setting	carrier-loss-time	number	7	7	0	255	S10=%s	Timers	Carrier loss (0.1 s)	S10: hang up after the carrier is gone this long
+setting	dtmf-duration	number	100	100	0	255	S11=%s	Timers	DTMF tone length (ms)	S11: each digit's tone and the gap after it
+setting	flash-time	number	50	50	0	255	S24=%s	Timers	Hook flash (10 ms)	S24: how long a hook flash lasts
+setting	answer-delay	number	2	2	0	255	S92=%s	Timers	Answer delay (s)	S92: from ATA to the answer tone
+setting	test-timer	number	0	0	0	255	S18=%s	Timers	Test timer (s)	S18: how long an AT&T test runs, 0 until AT&T0
+setting	simulated-carrier	number	0	0	0	1	S48=%s	Timers	Simulated carrier (V.13)	S48: 1 sends V.13's simulated carrier
+setting	fast-connect	number	0	0	0	3	S49=%s	Timers	Fast connect (bits)	S49: 1 the short V.22 handshake, 2 with HDLC flags
+setting	fast-answer-tone	number	0	0	0	255	S50=%s	Timers	Fast answer tone (10 ms)	S50: the fast connect answer tone, 0 for 400 ms
+setting	escape-char	number	43	43	0	255	S2=%s	Characters	Escape character	S2: the +++ escape's character (43 is '+')
+setting	escape-guard	number	50	50	0	255	S12=%s	Characters	Escape guard time (20 ms)	S12: the quiet before and after +++
+setting	cr-char	number	13	13	0	127	S3=%s	Characters	Line end character	S3: ends a command line (13 is CR)
+setting	lf-char	number	10	10	0	127	S4=%s	Characters	Line feed character	S4: follows S3 in responses (10 is LF)
+setting	bs-char	number	8	8	0	127	S5=%s	Characters	Backspace character	S5: erases a character (8 is BS)
+setting	ifc	text	2,2	2,2			+IFC=%s	Extended	DTE flow control	+IFC=(0-3),(0-2)
+setting	icf	text	3,3	3,3			+ICF=%s	Extended	DTE character framing	+ICF=(1-6),(0-3)
+setting	ipr	text	0	0			+IPR=%s	Extended	DTE rate	+IPR=(0,300,1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,921600)
+setting	ilrr	text	0	0			+ILRR=%s	Extended	Local rate reporting	+ILRR=(0,1)
+setting	idsr	text	0	0			+IDSR=%s	Extended	DSR control	+IDSR=(0,1)
+setting	ilsd	text	0	0			+ILSD=%s	Extended	Line signal detect	+ILSD=(0,1)
+setting	mr	text	0	0			+MR=%s	Extended	Modulation reporting	+MR=(0,1)
+setting	er	text	0	0			+ER=%s	Extended	Error control reporting	+ER=(0,1)
+setting	dr	text	0	0			+DR=%s	Extended	Compression reporting	+DR=(0,1)
+setting	es	text	3,0,2	3,0,2			+ES=%s	Extended	Error control (V.250)	+ES=(0-4,6),(0-4),(0-6,8)
+setting	esa	text	0,0,0,0,0,0,255,255	0,0,0,0,0,0,255,255			+ESA=%s	Extended	V.80 synchronous access	+ESA=(0-2),(0,1),(0,1),(0),(0-2),(0),(0-255),(0-255)
+setting	itf	text	383,128,0	383,128,0			+ITF=%s	Extended	V.80 transmit buffer	+ITF=(1-4095),(0-4094),(0-500)
+setting	a8e	text	1,1,0,0	1,1,0,0			+A8E=%s	Extended	V.8 and V.8 bis	+A8E=(1),(1),(0),(0,1)
+setting	dsvd	text	0	0			+DSVD=%s	Extended	DSVD (V.70) offered	+DSVD=(0,1)
+setting	asvd	text	0	0			+ASVD=%s	Extended	ASVD (V.61) offered	+ASVD=(0,1)
+setting	ds	text	3,0,2048,34	3,0,2048,34			+DS=%s	Extended	V.42bis compression	+DS=(0-3),(0,1),(512-65535),(6-250)
+setting	ds44	text	3,0,0,4096,4096,255,255,12288,12288	3,0,0,4096,4096,255,255,12288,12288			+DS44=%s	Extended	V.44 compression	+DS44=(0-3),(0,1),(0,1),(256-65535),(256-65535),(32-255),(32-255),(512-65535),(512-65535)
+setting	dsz	text	1,1	1,1			+DSZ=%s	Extended	zstd compression	+DSZ=(0,1),(0,1)
+setting	b2	text	0	0			+B2=%s	Extended	Clear channel link layer	+B2=(0,5,7,9)
+setting	cbst	text	0,0,0	0,0,0			+CBST=%s	Extended	Bearer service	+CBST=(0,65,66,68,70,71,75,79,80,81,83),(0,1),(0,1)
+setting	crc	text	0	0			+CRC=%s	Extended	Cellular result codes	+CRC=(0,1)
+setting	pcw	text	2	2			+PCW=%s	Extended	V.92 call waiting	+PCW=(0-2)
+setting	pig	text	1	1			+PIG=%s	Extended	V.92 PCM upstream	+PIG=(0,1)
+setting	faa	text	0	0			+FAA=%s	Extended	Adaptive answer	+FAA=(0,1)
+setting	fpr	text	0	0			+FPR=%s	Extended	Fax DTE rate	+FPR=(0,1,2,4,8,10,18)
+setting	sec	text	0	0			-SEC=%s	Extended	MNP 10EC	-SEC=(0,1),(0-30)
+setting	cvm	text	63,8000,0	63,8000,0			+CVM=%s	Extended	V.cvm	+CVM=(0-63),(8000,16000),(0,1)
+OK

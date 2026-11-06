@@ -1,0 +1,11 @@
+build/
+build-*/
+.vs/
+bin/
+obj/
+*.user
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+DerivedData/
+.flatpak-builder/

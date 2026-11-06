@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=D-Modem
+GenericName=Softmodem
+Comment=Dial up over SIP, a USB modem or a softmodem codec
+Exec=dmodem-gui
+Icon=io.github.d_modem.DModem
+Terminal=false
+Type=Application
+Categories=Network;Dialup;GTK;
+Keywords=modem;dial-up;V.92;fax;SIP;AT;
+StartupNotify=true
