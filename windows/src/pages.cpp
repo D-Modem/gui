@@ -38,8 +38,10 @@ HWND page_new(HWND parent, CommandFn fn)
 		RegisterClass(&wc);
 		registered = true;
 	}
+	/* (no WS_CLIPCHILDREN: a group box paints only its frame, so the
+	   page paints behind it) */
 	HWND w = CreateWindowEx(WS_EX_CONTROLPARENT, "DModemPage", "",
-				WS_CHILD | WS_CLIPCHILDREN, 0, 0, 10, 10, parent,
+				WS_CHILD, 0, 0, 10, 10, parent,
 				NULL, app.inst, NULL);
 	SetWindowLongPtr(w, GWLP_USERDATA, (LONG_PTR)fn);
 	return w;

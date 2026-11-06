@@ -243,6 +243,16 @@ static void test_typed(void)
 	CHECK(dmc_state(s) == DMC_CONFIGURATOR);
 	feed(s, "\x1b[0m\x1b[2J\x1b[H\x1b[?25h\r\nOK\r\n");
 	CHECK(dmc_state(s) == DMC_IDLE);
+	/* its screens as one line longer than a line is kept, the OK at the
+	   end of it (as AT!CF's Alt-X sends it) */
+	dmc_type(s, "AT!CF\r", 6);
+	out(s);
+	CHECK(dmc_state(s) == DMC_CONFIGURATOR);
+	for (int i = 0; i < 1000; i++)
+		feed(s, "\x1b[0;30;47m\xe2\x96\x91");
+	CHECK(dmc_state(s) == DMC_CONFIGURATOR);
+	feed(s, "\x1b[0m\x1b[2J\x1b[H\x1b[?25hOK\r\n");
+	CHECK(dmc_state(s) == DMC_IDLE);
 	/* refused (off hook) */
 	dmc_type(s, "AT!CT\r", 6);
 	CHECK(dmc_state(s) == DMC_CONFIGURATOR);

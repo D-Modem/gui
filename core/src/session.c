@@ -32,7 +32,8 @@
 #define ESCAPE_OK_MS 3000
 /* RINGs are this far apart at most (a ring cadence is 6 s) */
 #define RING_GAP_MS 8000
-/* a line longer than this is cut (a configurator's screen has none) */
+/* a line longer than this keeps only its end (a configurator's
+   screens come with no line ends, and its OK after the last one) */
 #define LINE_MAX 4096
 
 struct command {
@@ -602,8 +603,9 @@ void dmc_feed(dmc_session *s, const char *data, int n)
 		}
 		if (c == '\r')
 			continue;
-		if (s->line.n < LINE_MAX)
-			buf_addc(&s->line, c);
+		if (s->line.n >= LINE_MAX)
+			buf_drop(&s->line, s->line.n - LINE_MAX / 2);
+		buf_addc(&s->line, c);
 	}
 }
 
