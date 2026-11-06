@@ -58,8 +58,11 @@ DMC_API int dmc_version(void);
 
 typedef struct dmc_session dmc_session;
 
-/* the call's state, as the result codes tell it */
-enum dmc_state {
+/* (the enums have no tags: Swift takes their names as plain
+   constants) */
+
+/* the call's state, as the result codes tell it (dmc_state()) */
+enum {
 	DMC_CLOSED = 0,         /* no DTE open */
 	DMC_IDLE,               /* command mode, on hook */
 	DMC_DIALING,            /* ATD sent, no result yet */
@@ -72,7 +75,7 @@ enum dmc_state {
 };
 
 /* what dmc_next_event() reports */
-enum dmc_event_type {
+enum {
 	DMC_EV_NONE = 0,
 	/* a command of dmc_command()'s is done: tag, ok, text (its lines,
 	   apart by '\n', without the echo and the final result), result
@@ -158,7 +161,7 @@ DMC_API const char *dmc_caller_name(const dmc_session *s);
 
 typedef struct dmc_model dmc_model;
 
-enum dmc_kind { DMC_PICK = 0, DMC_NUMBER, DMC_TEXT };
+enum { DMC_PICK = 0, DMC_NUMBER, DMC_TEXT };
 
 /* the model from AT!M's response text (dmc_event.text); NULL if it is
    not one */
@@ -235,7 +238,7 @@ enum {
 };
 
 /* the keys dmc_vt_key() encodes */
-enum dmc_key {
+enum {
 	DMC_KEY_UP = 1, DMC_KEY_DOWN, DMC_KEY_RIGHT, DMC_KEY_LEFT,
 	DMC_KEY_HOME, DMC_KEY_END, DMC_KEY_PGUP, DMC_KEY_PGDN,
 	DMC_KEY_INSERT, DMC_KEY_DELETE, DMC_KEY_BACKTAB,

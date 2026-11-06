@@ -716,30 +716,50 @@ int dmc_vt_changed(dmc_vt *t)
 	return c;
 }
 
+/* the bytes a key sends (a switch, not a table with designators:
+   Open Watcom builds this for Windows 95) */
+static const char *key_seq(int key)
+{
+	switch (key) {
+	case DMC_KEY_UP: return "\x1b[A";
+	case DMC_KEY_DOWN: return "\x1b[B";
+	case DMC_KEY_RIGHT: return "\x1b[C";
+	case DMC_KEY_LEFT: return "\x1b[D";
+	case DMC_KEY_HOME: return "\x1b[H";
+	case DMC_KEY_END: return "\x1b[F";
+	case DMC_KEY_PGUP: return "\x1b[5~";
+	case DMC_KEY_PGDN: return "\x1b[6~";
+	case DMC_KEY_INSERT: return "\x1b[2~";
+	case DMC_KEY_DELETE: return "\x1b[3~";
+	case DMC_KEY_BACKTAB: return "\x1b[Z";
+	case DMC_KEY_F1: return "\x1bOP";
+	case DMC_KEY_F2: return "\x1bOQ";
+	case DMC_KEY_F3: return "\x1bOR";
+	case DMC_KEY_F4: return "\x1bOS";
+	case DMC_KEY_F5: return "\x1b[15~";
+	case DMC_KEY_F6: return "\x1b[17~";
+	case DMC_KEY_F7: return "\x1b[18~";
+	case DMC_KEY_F8: return "\x1b[19~";
+	case DMC_KEY_F9: return "\x1b[20~";
+	case DMC_KEY_F10: return "\x1b[21~";
+	case DMC_KEY_ENTER: return "\r";
+	case DMC_KEY_BACKSPACE: return "\b";
+	case DMC_KEY_TAB: return "\t";
+	case DMC_KEY_ESCAPE: return "\x1b";
+	}
+	return NULL;
+}
+
 int dmc_vt_key(const dmc_vt *t, int key, char *buf, int max)
 {
-	static const char *const seq[] = {
-		[DMC_KEY_UP] = "\x1b[A", [DMC_KEY_DOWN] = "\x1b[B",
-		[DMC_KEY_RIGHT] = "\x1b[C", [DMC_KEY_LEFT] = "\x1b[D",
-		[DMC_KEY_HOME] = "\x1b[H", [DMC_KEY_END] = "\x1b[F",
-		[DMC_KEY_PGUP] = "\x1b[5~", [DMC_KEY_PGDN] = "\x1b[6~",
-		[DMC_KEY_INSERT] = "\x1b[2~", [DMC_KEY_DELETE] = "\x1b[3~",
-		[DMC_KEY_BACKTAB] = "\x1b[Z",
-		[DMC_KEY_F1] = "\x1bOP", [DMC_KEY_F2] = "\x1bOQ",
-		[DMC_KEY_F3] = "\x1bOR", [DMC_KEY_F4] = "\x1bOS",
-		[DMC_KEY_F5] = "\x1b[15~", [DMC_KEY_F6] = "\x1b[17~",
-		[DMC_KEY_F7] = "\x1b[18~", [DMC_KEY_F8] = "\x1b[19~",
-		[DMC_KEY_F9] = "\x1b[20~", [DMC_KEY_F10] = "\x1b[21~",
-		[DMC_KEY_ENTER] = "\r", [DMC_KEY_BACKSPACE] = "\x7f",
-		[DMC_KEY_TAB] = "\t", [DMC_KEY_ESCAPE] = "\x1b",
-	};
+	const char *seq = key_seq(key);
 	(void)t;
-	if (key <= 0 || key > DMC_KEY_ESCAPE || !seq[key])
+	if (!seq)
 		return 0;
-	int n = (int)strlen(seq[key]);
+	int n = (int)strlen(seq);
 	if (n > max)
 		return 0;
-	memcpy(buf, seq[key], (size_t)n);
+	memcpy(buf, seq, (size_t)n);
 	return n;
 }
 

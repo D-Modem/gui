@@ -356,6 +356,8 @@ static GtkWidget *terminal_page(App *a)
 	a->term = VTE_TERMINAL(vte_terminal_new());
 	vte_terminal_set_scrollback_lines(a->term, 5000);
 	vte_terminal_set_size(a->term, 80, 25);
+	/* (the modem takes S5, a backspace, not DEL) */
+	vte_terminal_set_backspace_binding(a->term, VTE_ERASE_ASCII_BACKSPACE);
 	PangoFontDescription *f = pango_font_description_from_string("Monospace 11");
 	vte_terminal_set_font(a->term, f);
 	pango_font_description_free(f);
