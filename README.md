@@ -20,7 +20,7 @@ behave the same.
 | | Windows | macOS | Linux |
 | --- | --- | --- | --- |
 | Toolkit | Win32, C++ | SwiftUI | GTK 4, libadwaita, VTE |
-| Runs on | Windows 95 and later | macOS 13 and later | GNOME 46 era and later |
+| Runs on | Windows 95 and later | macOS 13 and later | GTK 4.10, libadwaita 1.5 and VTE 0.76 or later (Ubuntu 24.04, Fedora 40) |
 
 <img src="docs/images/linux-settings.png" width="49%" alt="The Linux app's Settings page"> <img src="docs/images/windows-setup-screen.png" width="49%" alt="The Windows app's Terminal with the modem's setup screen">
 
@@ -36,7 +36,8 @@ or for Windows 95 and later, `windows/build-watcom.sh` with Open Watcom 2.0.
 
 macOS: `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
 
-The apps need D-Modem 1.0 or later, whose dmodemd has AT!M.
+The Settings page needs a dmodemd with AT!M (D-Modem's main branch since
+D-Modem/D-Modem#103); the other pages work with any D-Modem 1.0.
 
 ## Documentation
 
