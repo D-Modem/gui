@@ -18,17 +18,20 @@ inc="-i=$WATCOM/h -i=$WATCOM/h/nt -i=$root/core/include -i=$root/core/src"
 copts="-q -bt=nt -bm -3r -ox -w4 -zq -za99 $inc"
 cppopts="-q -bt=nt -bm -3r -ox -w4 -zq -xs $inc -i=$here/src"
 
+# every file compiled, so that one run shows all the errors
 objs=""
+failed=0
 for f in "$root"/core/src/*.c; do
 	o=$(basename "$f" .c).obj
-	wcc386 $copts -fo="$o" "$f"
+	wcc386 $copts -fo="$o" "$f" || failed=1
 	objs="$objs $o"
 done
 for f in "$here"/src/*.cpp; do
 	o=$(basename "$f" .cpp).obj
-	wpp386 $cppopts -fo="$o" "$f"
+	wpp386 $cppopts -fo="$o" "$f" || failed=1
 	objs="$objs $o"
 done
+[ $failed = 0 ] || exit 1
 wrc -q -r -bt=nt -i="$WATCOM/h/nt" -i="$here/src" -i="$here/res" \
 	-fo=app.res "$here/res/app.rc"
 

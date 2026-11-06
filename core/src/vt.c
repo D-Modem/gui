@@ -61,7 +61,13 @@ struct dmc_vt {
 
 static struct cell blank(const dmc_vt *t)
 {
-	struct cell c = { ' ', -1, t ? t->bg : -1, 0 };
+	/* (assigned: C89 compilers, Watcom's, take constants only in an
+	   initialiser) */
+	struct cell c;
+	c.ch = ' ';
+	c.fg = -1;
+	c.bg = t ? t->bg : -1;
+	c.attr = 0;
 	return c;
 }
 
