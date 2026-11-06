@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.d_modem.DModem</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>BSD-3-Clause</project_license>
+  <name>D-Modem</name>
+  <summary>The front panel of the open V.92 softmodem</summary>
+  <description>
+    <p>D-Modem is an open softmodem: V.92, V.90, V.34 and the older
+    modulations, fax and voice, over a SIP call, a USB modem or a
+    softmodem codec. This app starts it, dials and answers, changes its
+    settings, shows each call's statistics and gives you a terminal on
+    it, while your own programs (pppd, minicom, efax) use its device.</p>
+  </description>
+  <launchable type="desktop-id">io.github.d_modem.DModem.desktop</launchable>
+  <url type="homepage">https://github.com/D-Modem/gui</url>
+  <developer id="io.github.d_modem">
+    <name>The D-Modem Authors</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-11-06"/>
+  </releases>
+</component>
