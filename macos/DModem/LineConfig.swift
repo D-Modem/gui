@@ -98,8 +98,7 @@ enum Keychain {
     private static func query(_ user: String, _ server: String) -> [String: Any] {
         [kSecClass as String: kSecClassInternetPassword,
          kSecAttrServer as String: server,
-         kSecAttrAccount as String: user,
-         kSecAttrProtocol as String: kSecAttrProtocolSIP]
+         kSecAttrAccount as String: user]
     }
 
     static func password(for user: String, server: String) -> String? {
