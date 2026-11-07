@@ -1,6 +1,6 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, D-Modem
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 D-Modem Authors
  *
  * main.cpp - the main window: a tab for each page (Modem, Terminal,
  *            Settings, Call Stats, Log, as the macOS and Linux apps
@@ -203,7 +203,7 @@ static void about()
 		   "D-Modem 1.0.0\r\n\r\n"
 		   "The front panel of D-Modem, the open V.92 softmodem.\r\n"
 		   "https://github.com/D-Modem/gui\r\n\r\n"
-		   "Copyright (c) 2026, D-Modem. BSD 3-Clause License.",
+		   "Copyright (C) 2026 D-Modem Authors. AGPL-3.0-only.",
 		   "About D-Modem", MB_OK | MB_ICONINFORMATION);
 }
 

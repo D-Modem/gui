@@ -1,0 +1,62 @@
+# The contributor agreement (CONTRIBUTING.md): every commit in a pull
+# request carries a "Signed-off-by:" line with its author's email, which
+# says the author agrees to it for that commit.  Merge commits are
+# skipped.  Pull requests opened by the repository's owner or the D-Modem
+# organization's members, and by bots, are not checked.
+#
+# pull_request_target, so that the check is the base branch's copy and a
+# pull request can't change it.  It reads the commits through the API and
+# never checks out or runs the pull request's code.
+name: Contributor agreement
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: contributor-agreement-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  sign-off:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const exempt = ['OWNER', 'MEMBER'];
+            if (pr.user.type === 'Bot' || exempt.includes(pr.author_association)) {
+              core.info(`Opened by ${pr.user.login} (${pr.author_association}): not checked.`);
+              return;
+            }
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const missing = [];
+            for (const c of commits) {
+              if (c.parents.length > 1) continue;
+              const email = (c.commit.author.email || '').toLowerCase();
+              const signed = [...c.commit.message.matchAll(/^Signed-off-by:.*<([^>]+)>\s*$/gim)]
+                .some(m => m[1].trim().toLowerCase() === email);
+              if (!signed) {
+                missing.push(`${c.sha.slice(0, 7)} ${c.commit.message.split('\n')[0]} (author ${email})`);
+              }
+            }
+            if (missing.length) {
+              core.setFailed(
+                'These commits have no "Signed-off-by:" line with their author\'s email, ' +
+                'which says you agree to the contributor agreement in CONTRIBUTING.md:\n  ' +
+                missing.join('\n  ') +
+                '\n\nTo add it: git rebase --signoff ' + pr.base.ref +
+                ' (or git commit --amend -s for the last commit), then force-push.');
+            } else {
+              core.info(`All ${commits.length} commits are signed off.`);
+            }

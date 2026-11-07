@@ -1,6 +1,6 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, D-Modem
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 D-Modem Authors
  *
  * app.h - the Windows app: plain Win32 in C++98, ANSI, the common
  *         controls of Windows 95, so the one .exe runs on Windows 95,
