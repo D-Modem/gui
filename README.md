@@ -59,4 +59,4 @@ D-Modem/D-Modem#103); the other pages work with any D-Modem 1.0.
 
 ## Licence
 
-BSD 3-Clause ([LICENSE](LICENSE)).
+BSD 3-Clause ([LICENSE](LICENSE)). Contributions come with a contributor agreement ([CONTRIBUTING.md](CONTRIBUTING.md)).
