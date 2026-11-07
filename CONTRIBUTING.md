@@ -16,16 +16,29 @@ any other code or text meant for inclusion), you agree that:
    infringes no one's rights.  If your employer has rights in what you
    create, you have its permission to contribute, or it has waived those
    rights.
-2. You keep the copyright in your contribution.
-3. You grant the D-Modem Authors, and those who receive the project from them, a
+2. You assign to D-Modem all copyright in your contribution, worldwide,
+   for the whole term of those rights.  "D-Modem" here is the D-Modem
+   organization (<https://github.com/D-Modem>), whose rights its owner,
+   Neo-Desktop, holds on its behalf; the "D-Modem Authors" in the
+   project's copyright notices are D-Modem in this sense.  Where a right
+   can't be assigned (moral rights, for example), you waive it, or where
+   it can't be waived, you agree not to assert it against D-Modem or
+   those who receive the project from it.  If the assignment is not
+   effective anywhere, you instead grant D-Modem there an exclusive,
+   perpetual, worldwide, no-charge, royalty-free, irrevocable license to
+   do anything the copyright holder could do with your contribution,
+   including licensing it to others.
+3. D-Modem may license your contribution, and works based on it, under
+   the AGPL-3.0 and under any other terms, commercial licenses included.
+   It licenses your contribution back to you: a perpetual, worldwide,
+   non-exclusive, no-charge, royalty-free, irrevocable license to use,
+   copy, modify, publicly display and perform, sublicense and distribute
+   it, on any terms.
+4. You grant D-Modem, and those who receive the project from it, a
    perpetual, worldwide, non-exclusive, no-charge, royalty-free,
-   irrevocable license to use, copy, modify, publicly display and
-   perform, sublicense and distribute your contribution and works based
-   on it, under the AGPL-3.0 and under any other terms, commercial
-   licenses included.
-4. You grant the same parties a license, on the same terms, under any
-   patent claims of yours that your contribution would infringe, to
-   make, use, sell and otherwise transfer it as part of the project.
+   irrevocable license under any patent claims of yours that your
+   contribution would infringe, to make, use, sell and otherwise
+   transfer it as part of the project.
 5. Your contribution is provided "as is", without warranties or
    conditions of any kind.
 
