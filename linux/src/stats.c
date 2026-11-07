@@ -1,6 +1,6 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, D-Modem
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 D-Modem Authors
  *
  * stats.c - the Call Stats page: the last call's statistics (AT#UD, as
  *           labelled rows) and the modem's own report of it (ATI11)

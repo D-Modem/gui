@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.d_modem.DModem</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>BSD-3-Clause</project_license>
+  <project_license>AGPL-3.0-only</project_license>
   <name>D-Modem</name>
   <summary>The front panel of the open V.92 softmodem</summary>
   <description>

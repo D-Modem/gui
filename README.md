@@ -59,4 +59,4 @@ D-Modem/D-Modem#103); the other pages work with any D-Modem 1.0.
 
 ## Licence
 
-BSD 3-Clause ([LICENSE](LICENSE)). Contributions come with a contributor agreement ([CONTRIBUTING.md](CONTRIBUTING.md)).
+AGPL-3.0-only ([LICENSE](LICENSE)), or a commercial licence from the D-Modem Authors ([COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)). Contributions come with a contributor agreement ([CONTRIBUTING.md](CONTRIBUTING.md)).
