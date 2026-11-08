@@ -2,7 +2,10 @@
 # request carries a "Signed-off-by:" line with its author's email, which
 # says the author agrees to it for that commit.  Merge commits are
 # skipped.  Pull requests opened by the repository's owner or the D-Modem
-# organization's members, and by bots, are not checked.
+# organization's members, and by bots, are not checked.  Nor are commits
+# by Claude (noreply@anthropic.com) on a branch of this repository: only
+# those who can push here can put them there, and the owner takes them in
+# by merging (a fork's commits with that email are still checked).
 #
 # pull_request_target, so that the check is the base branch's copy and a
 # pull request can't change it.  It reads the commits through the API and
@@ -40,10 +43,13 @@ jobs:
               pull_number: pr.number,
               per_page: 100,
             });
+            const sameRepo = pr.head.repo && pr.head.repo.full_name === pr.base.repo.full_name;
+            const exemptAuthors = ['noreply@anthropic.com'];
             const missing = [];
             for (const c of commits) {
               if (c.parents.length > 1) continue;
               const email = (c.commit.author.email || '').toLowerCase();
+              if (sameRepo && exemptAuthors.includes(email)) continue;
               const signed = [...c.commit.message.matchAll(/^Signed-off-by:.*<([^>]+)>\s*$/gim)]
                 .some(m => m[1].trim().toLowerCase() === email);
               if (!signed) {
