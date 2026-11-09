@@ -27,7 +27,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: D-Modem
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-        INFOPLIST_KEY_NSHumanReadableCopyright: Copyright (c) 2026, D-Modem. BSD 3-Clause.
+        INFOPLIST_KEY_NSHumanReadableCopyright: Copyright (C) 2026 D-Modem Authors. AGPL-3.0-only.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: YES

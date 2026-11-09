@@ -1,6 +1,6 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, D-Modem
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 D-Modem Authors
  *
  * link.cpp - the modem's connection: dmodemd started here (its DTE a
  *            TCP socket on 127.0.0.1), a TCP address, or a COM port;

@@ -1,6 +1,6 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, D-Modem
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 D-Modem Authors
  *
  * window.c - the main window: the Modem, Terminal, Settings, Call and
  *            Log pages, the same pages as the Windows and macOS apps
@@ -415,7 +415,7 @@ static void about(GSimpleAction *act, GVariant *v, gpointer data)
 	adw_about_dialog_set_website(ADW_ABOUT_DIALOG(d),
 				     "https://github.com/D-Modem/gui");
 	adw_about_dialog_set_license_type(ADW_ABOUT_DIALOG(d),
-					  GTK_LICENSE_BSD_3);
+					  GTK_LICENSE_AGPL_3_0_ONLY);
 	adw_dialog_present(d, GTK_WIDGET(a->window));
 }
 

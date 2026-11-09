@@ -1,6 +1,6 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, D-Modem
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 D-Modem Authors
  *
  * settings.c - the Settings page: the modem's own settings (AT!M), one
  *              row each, grouped as the configurators group them

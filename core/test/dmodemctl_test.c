@@ -1,6 +1,6 @@
 /*
- * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, D-Modem
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * Copyright (C) 2026 D-Modem Authors
  *
  * dmodemctl_test.c - libdmodemctl's tests: a session against a scripted
  * modem, AT!M and AT#UD as dmodemd prints them, and the terminal screen
