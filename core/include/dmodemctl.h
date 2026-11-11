@@ -52,7 +52,7 @@ extern "C" {
 #endif
 
 /* the library's version: major * 10000 + minor * 100 + patch */
-#define DMC_VERSION 10100
+#define DMC_VERSION 10200
 DMC_API int dmc_version(void);
 
 /*
@@ -231,15 +231,20 @@ DMC_API int dmc_voice_message(const dmc_session *s, const int16_t **pcm);
 DMC_API int dmc_ring_count(const dmc_session *s);
 
 /*
- * WAV files (greetings and messages)
+ * Sound files (greetings and messages)
  */
 
 /* the 44-byte header of a WAV file of n 16-bit samples, 8 kHz, mono,
    into buf (44 bytes): 44 */
 DMC_API int dmc_wav_header(char *buf, int n);
-/* a WAV file's samples at 8 kHz, mono, 16-bit (from 8 or 16-bit PCM,
-   A-law or mu-law, any rate and channels): how many, *pcm then
-   allocated (dmc_free() it); -1 if it is not a WAV file of those */
+/* a sound file's samples at 8 kHz, mono, 16-bit: how many, *pcm then
+   allocated (dmc_free() it); -1 if it is not one this reads. It reads
+   WAV (PCM of 8, 16, 24 or 32 bits, 32 or 64-bit floats, A-law, mu-law,
+   IMA and Microsoft ADPCM), AIFF and AIFF-C (PCM, floats, A-law,
+   mu-law) and Sun/NeXT .au, of any rate and channels. (The apps read
+   MP3, AAC, FLAC, Ogg and the like with their platforms' decoders.) */
+DMC_API int dmc_audio_decode(const char *data, int n, int16_t **pcm);
+/* (dmc_audio_decode's old name) */
 DMC_API int dmc_wav_decode(const char *data, int n, int16_t **pcm);
 DMC_API void dmc_free(void *p);
 

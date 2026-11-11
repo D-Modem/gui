@@ -14,6 +14,9 @@
 
 #include "app.h"
 #include <commdlg.h>
+#include <mmsystem.h>
+#include <mmreg.h>
+#include <msacm.h>
 #include "resource.h"
 
 #ifndef OPENFILENAME_SIZE_VERSION_400
@@ -82,7 +85,266 @@ static bool write_wav(const char *path, const short *pcm, int n)
 	return ok;
 }
 
-/* a WAV file's samples at 8 kHz: how many (*pcm to dmc_free()), -1 */
+/*
+ *    sound files the library doesn't read, by Windows' own codecs (ACM):
+ *    compressed WAVs (GSM 6.10, MP3 and the rest installed) and MP3s
+ */
+
+/* the most decoded (s): a greeting is shorter */
+#define DECODE_MAX_S 300
+
+static unsigned long le32(const unsigned char *p)
+{
+	return p[0] | (unsigned long)p[1] << 8 | (unsigned long)p[2] << 16 |
+	       (unsigned long)p[3] << 24;
+}
+
+/* a RIFF WAVE's format (*fmt to free()) and sound: false if it's not one */
+static bool wav_chunks(const unsigned char *b, long len, WAVEFORMATEX **fmt,
+		       const unsigned char **data, long *data_len)
+{
+	if (len < 12 || memcmp(b, "RIFF", 4) || memcmp(b + 8, "WAVE", 4))
+		return false;
+	*fmt = NULL;
+	*data = NULL;
+	for (long i = 12; i + 8 <= len;) {
+		unsigned long n = le32(b + i + 4);
+		long have = len - i - 8;
+		long take = n > (unsigned long)have ? have : (long)n;
+		if (!memcmp(b + i, "fmt ", 4) && !*fmt && take >= 16) {
+			/* (cbSize, 0 when the chunk has none) */
+			long size = take < 18 ? 18 : take;
+			*fmt = (WAVEFORMATEX *)calloc(1, size);
+			if (!*fmt)
+				return false;
+			memcpy(*fmt, b + i + 8, take);
+			if (take < 18)
+				(*fmt)->cbSize = 0;
+			else if ((*fmt)->cbSize > take - 18)
+				(*fmt)->cbSize = (WORD)(take - 18);
+		} else if (!memcmp(b + i, "data", 4) && !*data) {
+			*data = b + i + 8;
+			*data_len = take;
+		}
+		if (n > (unsigned long)have)
+			break;
+		i += 8 + (long)n + (n & 1);
+	}
+	if (*fmt && *data)
+		return true;
+	free(*fmt);
+	*fmt = NULL;
+	return false;
+}
+
+/* an MP3 frame's header at p: its length (0: not one), the format */
+static long mp3_frame(const unsigned char *p, MPEGLAYER3WAVEFORMAT *f)
+{
+	static const int rates[3] = { 44100, 48000, 32000 };
+	static const int kbps1[15] = { 0, 32, 40, 48, 56, 64, 80, 96, 112,
+				       128, 160, 192, 224, 256, 320 };
+	static const int kbps2[15] = { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80,
+				       96, 112, 128, 144, 160 };
+	if (p[0] != 0xff || (p[1] & 0xe0) != 0xe0)
+		return 0;
+	int version = (p[1] >> 3) & 3; /* 3: MPEG-1, 2: MPEG-2, 0: 2.5 */
+	int layer = (p[1] >> 1) & 3;   /* 1: layer III */
+	int bi = p[2] >> 4, ri = (p[2] >> 2) & 3;
+	if (version == 1 || layer != 1 || bi == 0 || bi == 15 || ri == 3)
+		return 0;
+	int rate = rates[ri] >> (version == 3 ? 0 : version == 2 ? 1 : 2);
+	int kbps = version == 3 ? kbps1[bi] : kbps2[bi];
+	long block = (version == 3 ? 144000L : 72000L) * kbps / rate;
+	memset(f, 0, sizeof(*f));
+	f->wfx.wFormatTag = WAVE_FORMAT_MPEGLAYER3;
+	f->wfx.nChannels = (p[3] >> 6) == 3 ? 1 : 2;
+	f->wfx.nSamplesPerSec = rate;
+	f->wfx.nAvgBytesPerSec = kbps * 1000 / 8;
+	f->wfx.nBlockAlign = 1;
+	f->wfx.cbSize = MPEGLAYER3_WFX_EXTRA_BYTES;
+	f->wID = MPEGLAYER3_ID_MPEG;
+	f->fdwFlags = MPEGLAYER3_FLAG_PADDING_OFF;
+	f->nBlockSize = (WORD)block;
+	f->nFramesPerBlock = 1;
+	f->nCodecDelay = 1393;
+	return block + ((p[2] >> 1) & 1);
+}
+
+/* an MP3 file's format and frames: false if it's not one (the first
+   frame's header checked against the next's) */
+static bool mp3_parts(const unsigned char *b, long len,
+		      MPEGLAYER3WAVEFORMAT *f, const unsigned char **data,
+		      long *data_len)
+{
+	long i = 0;
+	if (len >= 10 && !memcmp(b, "ID3", 3))
+		i = 10 + ((long)(b[6] & 0x7f) << 21 | (long)(b[7] & 0x7f) << 14 |
+			  (long)(b[8] & 0x7f) << 7 | (b[9] & 0x7f)) +
+		    (b[5] & 0x10 ? 10 : 0);
+	/* (some junk before the first frame) */
+	for (long end = i + 4096; i + 4 <= len && i < end; i++) {
+		long n = mp3_frame(b + i, f);
+		MPEGLAYER3WAVEFORMAT next;
+		if (n > 0 && (i + n + 4 > len || mp3_frame(b + i + n, &next))) {
+			*data = b + i;
+			*data_len = len - i;
+			return true;
+		}
+	}
+	return false;
+}
+
+/* the sound in fmt decoded by the system's codecs, as a 16-bit PCM WAV
+   file (to free()): its length, -1 if no codec reads it */
+static long acm_decode(WAVEFORMATEX *fmt, const unsigned char *data,
+		       long len, char **wav)
+{
+	WAVEFORMATEX pcm;
+	memset(&pcm, 0, sizeof(pcm));
+	pcm.wFormatTag = WAVE_FORMAT_PCM;
+	pcm.wBitsPerSample = 16;
+	if (acmFormatSuggest(NULL, fmt, &pcm, sizeof(pcm),
+			     ACM_FORMATSUGGESTF_WFORMATTAG |
+			     ACM_FORMATSUGGESTF_WBITSPERSAMPLE))
+		return -1;
+	HACMSTREAM h;
+	if (acmStreamOpen(&h, NULL, fmt, &pcm, NULL, 0, 0,
+			  ACM_STREAMOPENF_NONREALTIME))
+		return -1;
+	/* pieces of whole blocks */
+	DWORD align = fmt->nBlockAlign ? fmt->nBlockAlign : 1;
+	DWORD piece = (16384 / align + 1) * align, out_size = 0;
+	if (acmStreamSize(h, piece, &out_size, ACM_STREAMSIZEF_SOURCE) ||
+	    !out_size) {
+		acmStreamClose(h, 0);
+		return -1;
+	}
+	unsigned char *src = (unsigned char *)malloc(piece);
+	unsigned char *dst = (unsigned char *)malloc(out_size);
+	long max = (long)pcm.nAvgBytesPerSec * DECODE_MAX_S;
+	long cap = 1 << 20, got = 0;
+	char *w = (char *)malloc(44 + cap);
+	ACMSTREAMHEADER hd;
+	memset(&hd, 0, sizeof(hd));
+	hd.cbStruct = sizeof(hd);
+	hd.pbSrc = src;
+	hd.cbSrcLength = piece;
+	hd.pbDst = dst;
+	hd.cbDstLength = out_size;
+	bool ok = src && dst && w && !acmStreamPrepareHeader(h, &hd, 0);
+	if (ok) {
+		DWORD left = 0;
+		long at = 0;
+		bool first = true;
+		for (;;) {
+			DWORD n = piece - left;
+			if (n > (DWORD)(len - at))
+				n = (DWORD)(len - at);
+			memcpy(src + left, data + at, n);
+			at += n;
+			bool last = at >= len;
+			hd.cbSrcLength = left + n;
+			DWORD flags = (first ? ACM_STREAMCONVERTF_START : 0) |
+				      (last ? ACM_STREAMCONVERTF_END :
+					      ACM_STREAMCONVERTF_BLOCKALIGN);
+			first = false;
+			if (acmStreamConvert(h, &hd, flags)) {
+				ok = got > 0;
+				break;
+			}
+			if (got + (long)hd.cbDstLengthUsed > cap) {
+				while (got + (long)hd.cbDstLengthUsed > cap)
+					cap *= 2;
+				char *m = (char *)realloc(w, 44 + cap);
+				if (!m) {
+					ok = false;
+					break;
+				}
+				w = m;
+			}
+			memcpy(w + 44 + got, dst, hd.cbDstLengthUsed);
+			got += hd.cbDstLengthUsed;
+			left = hd.cbSrcLength - hd.cbSrcLengthUsed;
+			if (left)
+				memmove(src, src + hd.cbSrcLengthUsed, left);
+			/* (the end, or nothing more taken) */
+			if (last || got >= max ||
+			    (!hd.cbSrcLengthUsed && !hd.cbDstLengthUsed))
+				break;
+		}
+		hd.cbSrcLength = piece;
+		hd.cbDstLength = out_size;
+		acmStreamUnprepareHeader(h, &hd, 0);
+	}
+	acmStreamClose(h, 0);
+	free(src);
+	free(dst);
+	if (!ok || got < 2) {
+		free(w);
+		return -1;
+	}
+	/* the PCM as a WAV file, for the library to mix and resample */
+	unsigned char *p = (unsigned char *)w;
+	unsigned long v[] = { (unsigned long)(36 + got), 16,
+			      (unsigned long)pcm.nSamplesPerSec,
+			      (unsigned long)pcm.nAvgBytesPerSec,
+			      (unsigned long)got };
+	memcpy(p, "RIFF\0\0\0\0WAVEfmt \0\0\0\0", 20);
+	for (int k = 0; k < 4; k++)
+		p[4 + k] = (unsigned char)(v[0] >> (8 * k));
+	p[16] = 16;
+	p[20] = 1; /* PCM */
+	p[21] = 0;
+	p[22] = (unsigned char)pcm.nChannels;
+	p[23] = 0;
+	for (int k = 0; k < 4; k++) {
+		p[24 + k] = (unsigned char)(v[2] >> (8 * k));
+		p[28 + k] = (unsigned char)(v[3] >> (8 * k));
+		p[40 + k] = (unsigned char)(v[4] >> (8 * k));
+	}
+	p[32] = (unsigned char)pcm.nBlockAlign;
+	p[33] = 0;
+	p[34] = 16;
+	p[35] = 0;
+	memcpy(p + 36, "data", 4);
+	*wav = w;
+	return 44 + got;
+}
+
+/* a file the library doesn't read (in b) by the system's codecs, at
+   8 kHz: how many (*pcm to dmc_free()), -1 */
+static int read_by_system(const unsigned char *b, long len, short **pcm)
+{
+	WAVEFORMATEX *fmt;
+	MPEGLAYER3WAVEFORMAT mp3;
+	const unsigned char *data;
+	long data_len;
+	char *wav;
+	long n;
+	if (wav_chunks(b, len, &fmt, &data, &data_len)) {
+		/* (an MP3 in a WAV: the format from its frames, the header's
+		   often short of what the codec needs) */
+		if (fmt->wFormatTag == WAVE_FORMAT_MPEGLAYER3 &&
+		    mp3_parts(data, data_len, &mp3, &data, &data_len))
+			n = acm_decode(&mp3.wfx, data, data_len, &wav);
+		else
+			n = acm_decode(fmt, data, data_len, &wav);
+		free(fmt);
+	} else if (mp3_parts(b, len, &mp3, &data, &data_len)) {
+		n = acm_decode(&mp3.wfx, data, data_len, &wav);
+	} else {
+		return -1;
+	}
+	if (n < 0)
+		return -1;
+	int k = dmc_audio_decode(wav, (int)n, (int16_t **)pcm);
+	free(wav);
+	return k;
+}
+
+/* a sound file's samples at 8 kHz, mono: WAV, AIFF and .au by the
+   library, compressed WAVs and MP3s by the system's codecs. How many
+   (*pcm to dmc_free()), -1 */
 static int read_wav(const char *path, short **pcm)
 {
 	*pcm = NULL;
@@ -102,8 +364,11 @@ static int read_wav(const char *path, short **pcm)
 		return -1;
 	}
 	int n = -1;
-	if (fread(b, 1, len, f) == (size_t)len)
-		n = dmc_wav_decode(b, (int)len, (int16_t **)pcm);
+	if (fread(b, 1, len, f) == (size_t)len) {
+		n = dmc_audio_decode(b, (int)len, (int16_t **)pcm);
+		if (n < 0)
+			n = read_by_system((const unsigned char *)b, len, pcm);
+	}
 	fclose(f);
 	free(b);
 	return n;
@@ -388,7 +653,8 @@ static void choose_greeting()
 	/* (the size Windows 95 and NT 4 know) */
 	o.lStructSize = OPENFILENAME_SIZE_VERSION_400;
 	o.hwndOwner = app.main;
-	o.lpstrFilter = "WAV files\0*.wav\0";
+	o.lpstrFilter = "Sound files\0*.wav;*.mp3;*.aif;*.aiff;*.aifc;*.au;*.snd\0"
+			"All files\0*.*\0";
 	o.lpstrFile = file;
 	o.nMaxFile = sizeof(file);
 	o.lpstrTitle = "Greeting";
@@ -400,7 +666,7 @@ static void choose_greeting()
 	if (n <= 0) {
 		if (pcm)
 			dmc_free(pcm);
-		app_message("That isn't a WAV file D-Modem can play");
+		app_message("That isn't a sound file D-Modem can play");
 		return;
 	}
 	char p[MAX_PATH];
