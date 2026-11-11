@@ -234,17 +234,59 @@ final class Voice: ObservableObject {
         try d.write(to: url, options: .atomic)
     }
 
-    /// a WAV file's samples at 8 kHz, nil if it is not one D-Modem reads
+    /// a sound file's samples at 8 kHz, mono: WAV, AIFF and .au by the
+    /// library, the rest (MP3, AAC/M4A, FLAC, ALAC, CAF) by the Mac's own
+    /// decoders; nil if it is not one D-Modem reads
     static func readWav(_ url: URL) -> [Int16]? {
         guard let d = try? Data(contentsOf: url), d.count < Int(Int32.max) else { return nil }
         var pcm: UnsafeMutablePointer<Int16>?
         let n = d.withUnsafeBytes { b in
-            dmc_wav_decode(b.baseAddress?.assumingMemoryBound(to: CChar.self),
-                           Int32(b.count), &pcm)
+            dmc_audio_decode(b.baseAddress?.assumingMemoryBound(to: CChar.self),
+                             Int32(b.count), &pcm)
         }
         defer { dmc_free(pcm) }
-        guard n >= 0, let p = pcm else { return nil }
+        guard n >= 0, let p = pcm else { return readBySystem(url) }
         return Array(UnsafeBufferPointer(start: p, count: Int(n)))
+    }
+
+    /// a sound file the system decodes, as samples at 8 kHz, mono (five
+    /// minutes at most); nil if it can't
+    static func readBySystem(_ url: URL, maxSeconds: Int = 300) -> [Int16]? {
+        guard let f = try? AVAudioFile(forReading: url) else { return nil }
+        let src = f.processingFormat
+        guard src.sampleRate > 0, src.channelCount > 0,
+              let dst = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 8000, channels: 1, interleaved: false),
+              let conv = AVAudioConverter(from: src, to: dst),
+              let inBuf = AVAudioPCMBuffer(pcmFormat: src, frameCapacity: 4096),
+              let outBuf = AVAudioPCMBuffer(pcmFormat: dst, frameCapacity: AVAudioFrameCount(4096 * 8000 / src.sampleRate) + 64)
+        else { return nil }
+        // (the channels mixed, not the first alone)
+        conv.downmix = true
+        var out: [Int16] = []
+        var ended = false
+        while out.count < maxSeconds * 8000 {
+            outBuf.frameLength = 0
+            var err: NSError?
+            let st = conv.convert(to: outBuf, error: &err) { _, status in
+                if !ended {
+                    do { try f.read(into: inBuf) } catch { inBuf.frameLength = 0 }
+                    ended = inBuf.frameLength == 0
+                }
+                if ended {
+                    status.pointee = .endOfStream
+                    return nil
+                }
+                status.pointee = .haveData
+                return inBuf
+            }
+            if let x = outBuf.floatChannelData?[0] {
+                for i in 0..<Int(outBuf.frameLength) {
+                    out.append(Int16(max(-32768, min(32767, x[i] * 32767))))
+                }
+            }
+            if st == .error || st == .endOfStream { break }
+        }
+        return out.isEmpty ? nil : out
     }
 
     private func loadGreeting() {
@@ -484,11 +526,11 @@ final class Voice: ObservableObject {
     func chooseGreeting() {
         let p = NSOpenPanel()
         p.title = "Greeting"
-        p.allowedContentTypes = [UTType.wav]
+        p.allowedContentTypes = [UTType.audio]
         p.allowsMultipleSelection = false
         guard p.runModal() == .OK, let url = p.url else { return }
         guard let pcm = Voice.readWav(url), !pcm.isEmpty else {
-            modem?.say("That isn't a WAV file D-Modem can play (PCM, A-law or µ-law)")
+            modem?.say("That isn't a sound file D-Modem can play")
             return
         }
         do {
@@ -610,7 +652,7 @@ struct PhonePage: View {
                         Button(voice.recording ? "Stop" : "Record") { voice.recordGreeting() }
                             .disabled(voice.playing != nil || st == Int(DMC_VOICE) || st == Int(DMC_VOICEMAIL))
                         Button { voice.chooseGreeting() } label: { Image(systemName: "folder") }
-                            .help("Use a WAV file")
+                            .help("Use a sound file")
                         Button { voice.clearGreeting() } label: { Image(systemName: "trash") }
                             .help("No greeting: the beep alone")
                             .disabled(voice.greetingSeconds == 0 || voice.recording)

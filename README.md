@@ -32,7 +32,8 @@ behave the same.
 
 Linux:
 
-    sudo apt install cmake libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev
+    sudo apt install cmake libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev \
+        libpulse-dev libsndfile1-dev
     cmake -S . -B build && cmake --build build && ./build/linux/dmodem-gui
 
 Windows: `cmake -S . -B build -A Win32 && cmake --build build --config Release`,

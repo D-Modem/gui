@@ -44,7 +44,7 @@ wrc -q -r -bt=nt -i="$WATCOM/h/nt" -i="$here/src" -i="$here/res" \
 	# Windows 95 and NT 4 take a subsystem version of 4.0
 	echo "runtime windows=4.0"
 	for o in $objs; do echo "file $o"; done
-	echo "library comctl32.lib, wsock32.lib, comdlg32.lib, winmm.lib"
+	echo "library comctl32.lib, wsock32.lib, comdlg32.lib, winmm.lib, msacm32.lib"
 	echo "option resource=app.res"
 } > dmodem.lnk
 wlink @dmodem.lnk

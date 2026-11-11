@@ -73,18 +73,22 @@ stream by the clock given to `dmc_poll`, DTMF, and the answering machine.
 The apps only move 8 kHz 16-bit samples between it and the sound card
 (`dmc_voice_read`, `dmc_voice_write`):
 
-| | Sound | Settings | Messages |
-| --- | --- | --- | --- |
-| Linux | PulseAudio on the GLib main loop (or PipeWire's Pulse server) | `settings.ini`, `[voice]` | `~/.local/share/dmodem-gui/voicemail` |
-| Windows | `waveOut` and `waveIn` with window callbacks (Windows 95 has them) | `dmodem.ini`, `[voice]` | `%APPDATA%\D-Modem\Voicemail`, or beside the exe |
-| macOS | AVAudioEngine, converted to 8 kHz | UserDefaults | `~/Library/Application Support/D-Modem/Voicemail` |
+| | Sound | Settings | Messages | Greeting files beyond the library's |
+| --- | --- | --- | --- | --- |
+| Linux | PulseAudio on the GLib main loop (or PipeWire's Pulse server) | `settings.ini`, `[voice]` | `~/.local/share/dmodem-gui/voicemail` | libsndfile, when built with it: MP3, FLAC, Ogg Vorbis, Opus |
+| Windows | `waveOut` and `waveIn` with window callbacks (Windows 95 has them) | `dmodem.ini`, `[voice]` | `%APPDATA%\D-Modem\Voicemail`, or beside the exe | the system's ACM codecs: MP3 and compressed WAVs (GSM 6.10 and the rest installed) |
+| macOS | AVAudioEngine, converted to 8 kHz | UserDefaults | `~/Library/Application Support/D-Modem/Voicemail` | AVAudioFile: MP3, AAC/M4A, FLAC, ALAC, CAF |
 
 The answering machine is off until it is turned on. When on, after the
 chosen number of rings (4 by default) it answers, plays the greeting (or
 none), beeps, and records until the caller hangs up, 7 s of silence, or
 2 minutes. Each message is a WAV file named for its time and the caller's
 number; one under a second is dropped. A greeting can be recorded from the
-microphone or chosen from any WAV file, which is converted to 8 kHz mono.
+microphone or chosen from a sound file, which is converted to 8 kHz mono.
+The library reads WAV (8 to 32-bit PCM, floats, A-law, μ-law, IMA and
+Microsoft ADPCM), AIFF and AIFF-C, and Sun/NeXT `.au` itself
+(`dmc_audio_decode`); each app hands the rest to the system's decoders,
+as in the table.
 Pick Up turns a message being taken into a call; Listen plays it as it is
 left. Messages stay on this computer.
 

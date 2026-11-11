@@ -15,6 +15,10 @@
 
 #include "app.h"
 
+#ifdef HAVE_SNDFILE
+#include <sndfile.h>
+#endif
+
 /* the longest greeting recorded (s) */
 #define GREETING_MAX_S 30
 
@@ -81,7 +85,70 @@ static gboolean write_wav(const char *path, const int16_t *pcm, int n,
 	return ok;
 }
 
-/* a WAV file's samples at 8 kHz: how many (*pcm to dmc_free()), -1 */
+#ifdef HAVE_SNDFILE
+/* a sound file libsndfile reads (MP3, FLAC, Ogg Vorbis, Opus and the
+   rest it knows) as samples at 8 kHz, mono: how many (*pcm to free()), -1 */
+static int read_sndfile(const char *path, int16_t **pcm)
+{
+	SF_INFO info = { 0 };
+	SNDFILE *sf = sf_open(path, SFM_READ, &info);
+	*pcm = NULL;
+	if (!sf)
+		return -1;
+	int ch = info.channels;
+	if (ch < 1 || info.samplerate < 1 || info.frames < 1 ||
+	    info.frames > (sf_count_t)info.samplerate * 3600) {
+		sf_close(sf);
+		return -1;
+	}
+	/* read in pieces (the frame count of an MP3 is a guess), mixed to mono */
+	GArray *mono = g_array_new(FALSE, FALSE, sizeof(float));
+	float *buf = g_new(float, 4096 * (gsize)ch);
+	sf_count_t got;
+	while ((got = sf_readf_float(sf, buf, 4096)) > 0) {
+		for (sf_count_t i = 0; i < got; i++) {
+			float m = 0;
+			for (int c = 0; c < ch; c++)
+				m += buf[i * ch + c];
+			m /= (float)ch;
+			g_array_append_val(mono, m);
+		}
+		if (mono->len > (guint)info.samplerate * 3600)
+			break;
+	}
+	g_free(buf);
+	sf_close(sf);
+	double step = (double)info.samplerate / 8000;
+	gint64 n = mono->len ? (gint64)((mono->len - 1) / step) + 1 : 0;
+	if (n < 1 || n > G_MAXINT) {
+		g_array_free(mono, TRUE);
+		return -1;
+	}
+	int16_t *out = malloc((size_t)n * sizeof(int16_t));
+	if (!out) {
+		g_array_free(mono, TRUE);
+		return -1;
+	}
+	const float *x = (const float *)mono->data;
+	for (gint64 i = 0; i < n; i++) {
+		double t = i * step;
+		guint k = (guint)t;
+		double f = t - k;
+		double y = x[k];
+		if (k + 1 < mono->len)
+			y += (x[k + 1] - y) * f;
+		y *= 32767;
+		out[i] = (int16_t)(y > 32767 ? 32767 : y < -32768 ? -32768 : y);
+	}
+	g_array_free(mono, TRUE);
+	*pcm = out;
+	return (int)n;
+}
+#endif
+
+/* a sound file's samples at 8 kHz, mono: WAV, AIFF and .au by
+   libdmodemctl, the rest (MP3, FLAC, Ogg) by libsndfile where it's
+   built in. How many (*pcm to dmc_free()), -1 */
 static int read_wav(const char *path, int16_t **pcm)
 {
 	char *b;
@@ -89,8 +156,12 @@ static int read_wav(const char *path, int16_t **pcm)
 	*pcm = NULL;
 	if (!g_file_get_contents(path, &b, &len, NULL))
 		return -1;
-	int n = len > G_MAXINT ? -1 : dmc_wav_decode(b, (int)len, pcm);
+	int n = len > G_MAXINT ? -1 : dmc_audio_decode(b, (int)len, pcm);
 	g_free(b);
+#ifdef HAVE_SNDFILE
+	if (n < 0)
+		n = read_sndfile(path, pcm);
+#endif
 	return n;
 }
 
@@ -431,8 +502,7 @@ static void greeting_chosen(GObject *src, GAsyncResult *res, gpointer data)
 	if (n <= 0) {
 		if (n == 0)
 			dmc_free(pcm);
-		window_toast(a, "That isn't a WAV file D-Modem can play "
-			     "(PCM, A-law or µ-law)");
+		window_toast(a, "That isn't a sound file D-Modem can play");
 		return;
 	}
 	char *p = greeting_path();
@@ -455,8 +525,15 @@ static void choose_greeting(GtkWidget *w, gpointer data)
 	GtkFileDialog *d = gtk_file_dialog_new();
 	gtk_file_dialog_set_title(d, "Greeting");
 	GtkFileFilter *f = gtk_file_filter_new();
-	gtk_file_filter_set_name(f, "WAV files");
-	gtk_file_filter_add_suffix(f, "wav");
+	gtk_file_filter_set_name(f, "Sound files");
+	static const char *const kinds[] = {
+		"wav", "aif", "aiff", "aifc", "au", "snd",
+#ifdef HAVE_SNDFILE
+		"mp3", "flac", "ogg", "oga", "opus", "caf", "w64",
+#endif
+	};
+	for (gsize i = 0; i < G_N_ELEMENTS(kinds); i++)
+		gtk_file_filter_add_suffix(f, kinds[i]);
 	GListStore *filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
 	g_list_store_append(filters, f);
 	gtk_file_dialog_set_filters(d, G_LIST_MODEL(filters));
@@ -820,7 +897,7 @@ GtkWidget *voice_page_new(App *a)
 				       G_CALLBACK(play_greeting), a);
 	v->record_btn = button("Record", G_CALLBACK(record_greeting), a);
 	GtkWidget *choose = icon_button("document-open-symbolic",
-					"Use a WAV file",
+					"Use a sound file",
 					G_CALLBACK(choose_greeting), a);
 	v->greeting_clear = icon_button("user-trash-symbolic",
 					"No greeting: the beep alone",
