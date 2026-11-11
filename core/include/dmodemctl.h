@@ -25,6 +25,9 @@
  *    has no terminal widget (Windows and macOS): the AT console and the
  *    full-screen configurator (AT!CF).
  *  - dmc_daemon_*: starting dmodemd and reading what it prints.
+ *  - dmc_voice_*: voice calls on the session (V.253's voice mode: the
+ *    call's audio both ways, 8 kHz), the answering machine that takes
+ *    a message, and WAV files for greetings and messages.
  *
  * Strings are UTF-8.  A const char * the library returns stays valid
  * until the next call on the same object.
@@ -49,7 +52,7 @@ extern "C" {
 #endif
 
 /* the library's version: major * 10000 + minor * 100 + patch */
-#define DMC_VERSION 10000
+#define DMC_VERSION 10100
 DMC_API int dmc_version(void);
 
 /*
@@ -71,7 +74,9 @@ enum {
 	DMC_ONLINE,             /* CONNECT: data mode */
 	DMC_ONLINE_COMMAND,     /* escaped (+++) during a call */
 	DMC_HANGING_UP,         /* going back on hook */
-	DMC_CONFIGURATOR        /* AT!C, AT!CF or AT!CT runs */
+	DMC_CONFIGURATOR,       /* AT!C, AT!CF or AT!CT runs */
+	DMC_VOICE,              /* a voice call: its audio both ways */
+	DMC_VOICEMAIL           /* the answering machine has the call */
 };
 
 /* what dmc_next_event() reports */
@@ -86,7 +91,15 @@ enum {
 	/* a result code nobody waited for (RING, NO CARRIER...): result */
 	DMC_EV_RESULT,
 	/* caller ID after a RING: text "NMBR=5551234" and the like */
-	DMC_EV_CALLER
+	DMC_EV_CALLER,
+	/* in a voice call, what the modem heard on the line: text its
+	   <DLE> code ("5" a DTMF digit, "l" the far end hung up, "b" a busy
+	   tone), result its name ("digit", "hangup", "busy") */
+	DMC_EV_VOICE,
+	/* the answering machine is done: ok 1 with a message
+	   (dmc_voice_message()), 0 if the caller left none; text the
+	   caller's number, if caller ID gave it */
+	DMC_EV_MESSAGE
 };
 
 typedef struct dmc_event {
@@ -154,6 +167,81 @@ DMC_API const char *dmc_connect_text(const dmc_session *s);
 DMC_API int dmc_connect_rate(const dmc_session *s);
 DMC_API const char *dmc_caller_number(const dmc_session *s);
 DMC_API const char *dmc_caller_name(const dmc_session *s);
+
+/*
+ * Voice calls
+ *
+ * A voice call is the modem in voice mode (AT+FCLASS=8) with its audio
+ * both ways (AT+VTR), G.711 mu-law on the DTE: the library sends ours
+ * at the line's pace from dmc_poll() (call it every 20 ms or so in a
+ * call: dmc_poll() says so) and gives the far end's to dmc_voice_read(),
+ * both as 16-bit samples at 8000 a second.  dmc_hangup() ends a call,
+ * and the far end's hanging up does too (DMC_EV_VOICE "l"); either way
+ * the modem goes back to data mode.
+ */
+
+/* the sample rate of voice calls, messages and greetings */
+#define DMC_VOICE_RATE 8000
+
+/* dial a voice call (OK when the far end answers, BUSY, NO ANSWER);
+   answer the ringing call as a voice call: a tag as dmc_command()'s,
+   -1 if the modem is not idle (or ringing, to answer) */
+DMC_API int dmc_voice_dial(dmc_session *s, const char *number);
+DMC_API int dmc_voice_answer(dmc_session *s);
+
+/* the far end's samples: up to max into pcm, how many (a second at
+   most is kept: the oldest are dropped if they are not read) */
+DMC_API int dmc_voice_read(dmc_session *s, int16_t *pcm, int max);
+/* our samples (the microphone's), sent at the line's pace; silence
+   when there are none, and the oldest dropped when more than a third
+   of a second waits */
+DMC_API void dmc_voice_write(dmc_session *s, const int16_t *pcm, int n);
+/* a DTMF digit (0-9, *, #, A-D) played into the call, after any
+   others still playing; 0, or -1 for no call or no digit */
+DMC_API int dmc_voice_dtmf(dmc_session *s, char digit);
+
+/*
+ * The answering machine
+ *
+ * It answers the ringing call in voice mode, plays the greeting, a
+ * beep, and records the caller's message: until they hang up, are
+ * silent for silence_s seconds, or max_s seconds have gone.  Then it
+ * hangs up, with DMC_EV_MESSAGE.  While it runs (DMC_VOICEMAIL) the
+ * caller can be heard with dmc_voice_read() (screening), and
+ * dmc_voice_pickup() makes it a voice call.
+ */
+
+/* the greeting (8 kHz samples, copied; none: the beep alone) and the
+   message's limits (0: 120 s and 7 s) */
+DMC_API void dmc_voicemail_set(dmc_session *s, const int16_t *greeting,
+			       int n, int max_s, int silence_s);
+/* answer the ringing call with the answering machine: a tag as
+   dmc_voice_answer()'s */
+DMC_API int dmc_voicemail_answer(dmc_session *s);
+/* the answering machine answers by itself after rings RINGs (0 never,
+   the default) */
+DMC_API void dmc_voicemail_auto(dmc_session *s, int rings);
+/* the call the answering machine has, taken as a voice call (its
+   message dropped): 0, or -1 if it has none */
+DMC_API int dmc_voice_pickup(dmc_session *s);
+/* the last message's samples into *pcm (valid until the next message):
+   how many */
+DMC_API int dmc_voice_message(const dmc_session *s, const int16_t **pcm);
+/* the RINGs of the call ringing now */
+DMC_API int dmc_ring_count(const dmc_session *s);
+
+/*
+ * WAV files (greetings and messages)
+ */
+
+/* the 44-byte header of a WAV file of n 16-bit samples, 8 kHz, mono,
+   into buf (44 bytes): 44 */
+DMC_API int dmc_wav_header(char *buf, int n);
+/* a WAV file's samples at 8 kHz, mono, 16-bit (from 8 or 16-bit PCM,
+   A-law or mu-law, any rate and channels): how many, *pcm then
+   allocated (dmc_free() it); -1 if it is not a WAV file of those */
+DMC_API int dmc_wav_decode(const char *data, int n, int16_t **pcm);
+DMC_API void dmc_free(void *p);
 
 /*
  * The settings model (AT!M)

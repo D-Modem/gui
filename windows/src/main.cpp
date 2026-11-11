@@ -16,9 +16,10 @@ App app;
 
 static HWND status_bar;
 
-enum { PAGE_MODEM, PAGE_TERM, PAGE_SETTINGS, PAGE_STATS, PAGE_LOG, PAGES };
+enum { PAGE_MODEM, PAGE_PHONE, PAGE_TERM, PAGE_SETTINGS, PAGE_STATS,
+       PAGE_LOG, PAGES };
 static const char *const page_names[PAGES] = {
-	"Modem", "Terminal", "Settings", "Call Stats", "Log"
+	"Modem", "Phone", "Terminal", "Settings", "Call Stats", "Log"
 };
 
 HWND make_child(const char *cls, const char *text, DWORD style, HWND parent,
@@ -117,6 +118,7 @@ void app_state()
 	t[sizeof(t) - 1] = '\0';
 	SendMessage(status_bar, SB_SETTEXT, 1, (LPARAM)t);
 	modem_page_state();
+	voice_state();
 	term_state();
 	settings_state();
 }
@@ -162,6 +164,10 @@ void app_event(const dmc_event *ev)
 	case DMC_EV_CALLER:
 		app_state();
 		break;
+	case DMC_EV_VOICE:
+	case DMC_EV_MESSAGE:
+		voice_event(ev);
+		break;
 	}
 }
 
@@ -191,6 +197,7 @@ static void layout()
 	for (int p = 0; p < PAGES; p++)
 		MoveWindow(app.pages[p], x, y, w, h, TRUE);
 	modem_page_layout(app.pages[PAGE_MODEM], w, h);
+	voice_page_layout(app.pages[PAGE_PHONE], w, h);
 	term_page_layout(app.pages[PAGE_TERM], w, h);
 	settings_page_layout(app.pages[PAGE_SETTINGS], w, h);
 	stats_page_layout(app.pages[PAGE_STATS], w, h);
@@ -224,6 +231,7 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 			TabCtrl_InsertItem(app.tabs, p, &it);
 		}
 		app.pages[PAGE_MODEM] = modem_page_new(w);
+		app.pages[PAGE_PHONE] = voice_page_new(w);
 		app.pages[PAGE_TERM] = term_page_new(w);
 		app.pages[PAGE_SETTINGS] = settings_page_new(w);
 		app.pages[PAGE_STATS] = stats_page_new(w);
@@ -274,7 +282,7 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		}
 		break;
 	case WM_TIMER:
-		if (wp == TIMER_PUMP)
+		if (wp == TIMER_PUMP || wp == TIMER_VOICE)
 			link_pump();
 		return 0;
 	case WM_APP_SOCKET:
@@ -282,6 +290,8 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		return 0;
 	case WM_DESTROY:
 		KillTimer(w, TIMER_PUMP);
+		KillTimer(w, TIMER_VOICE);
+		audio_stop();
 		if (link_running())
 			link_stop();
 		PostQuitMessage(0);

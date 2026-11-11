@@ -473,6 +473,280 @@ static void test_daemon(void)
 	CHECK(!dmc_daemon_error("13:21:22.774 sip: SIP on 127.0.0.1:5060"));
 }
 
+/* the session's bytes to the modem, binary: how many into b */
+static int outb(dmc_session *s, unsigned char *b, int max)
+{
+	return dmc_output(s, (char *)b, max);
+}
+
+static void feedb(dmc_session *s, const unsigned char *b, int n)
+{
+	dmc_feed(s, (const char *)b, n);
+}
+
+/* the setup of a voice call: voice mode, mu-law, then cmd and its
+   result; the stream started */
+static void voice_setup(dmc_session *s, const char *cmd, int state)
+{
+	CHECK_STR(out(s), "AT+FCLASS=8\r");
+	feed(s, "AT+FCLASS=8\r\r\nOK\r\n");
+	CHECK_STR(out(s), "AT+VSM=4\r");
+	feed(s, "AT+VSM=4\r\r\nOK\r\n");
+	char want[64];
+	snprintf(want, sizeof(want), "%s\r", cmd);
+	CHECK_STR(out(s), want);
+	snprintf(want, sizeof(want), "%s\r\r\nOK\r\n", cmd);
+	feed(s, want);
+	CHECK(dmc_state(s) == state);
+	CHECK_STR(out(s), "AT+VTR\r");
+	term(s);
+	feed(s, "AT+VTR\r\r\nCONNECT\r\n");
+	/* (none of it on the screen) */
+	CHECK_STR(term(s), "");
+}
+
+/* a voice call dialled: the samples both ways, DTMF, hanging up */
+static void test_voice(void)
+{
+	dmc_session *s = dmc_session_new();
+	dmc_event ev;
+	static unsigned char b[65536];
+	int16_t pcm[256];
+	dmc_open(s, 0);
+	int tag = dmc_voice_dial(s, "555-1000");
+	CHECK(tag > 0);
+	CHECK(dmc_voice_dial(s, "1") == -1);
+	CHECK(dmc_command(s, "ATI3", 0, 0) == -1);
+	CHECK_STR(out(s), "AT+FCLASS=8\r");
+	feed(s, "AT+FCLASS=8\r\r\nOK\r\n");
+	CHECK_STR(out(s), "AT+VSM=4\r");
+	feed(s, "AT+VSM=4\r\r\nOK\r\n");
+	CHECK_STR(out(s), "ATD555-1000\r");
+	CHECK(dmc_state(s) == DMC_DIALING);
+	feed(s, "ATD555-1000\r\r\nOK\r\n");
+	CHECK(next_of(s, DMC_EV_RESPONSE, &ev));
+	CHECK(ev.tag == tag && ev.ok);
+	CHECK(dmc_state(s) == DMC_VOICE);
+	CHECK_STR(dmc_state_name(DMC_VOICE), "Voice call");
+	CHECK_STR(out(s), "AT+VTR\r");
+	term(s);
+	/* the stream: samples (a DLE among them doubled), a digit */
+	unsigned char in[] = { 'C', 'O', 'N', 'N', 'E', 'C', 'T', '\r', '\n',
+			       0xff, 0x80, 0x10, 0x10, 0x00, 0x10, '5',
+			       0x10, '~', 0x7f };
+	feedb(s, in, sizeof(in));
+	CHECK_STR(term(s), "");
+	int n = dmc_voice_read(s, pcm, 256);
+	CHECK(n == 5);
+	CHECK(pcm[0] == 0);
+	CHECK(pcm[1] == 32124);
+	CHECK(pcm[3] == -32124);
+	CHECK(pcm[4] == 0);
+	CHECK(next_of(s, DMC_EV_VOICE, &ev));
+	CHECK_STR(ev.text, "5");
+	CHECK_STR(ev.result, "digit");
+	CHECK(!next_of(s, DMC_EV_VOICE, &ev));
+	/* ours: silence, 60 ms ahead, then at the line's pace */
+	CHECK(dmc_poll(s, 0) == 20);
+	n = outb(s, b, sizeof(b));
+	CHECK(n == 480);
+	CHECK(b[0] == 0xff && b[479] == 0xff);
+	for (int i = 0; i < 160; i++)
+		pcm[i] = 8000;
+	dmc_voice_write(s, pcm, 160);
+	dmc_poll(s, 20);
+	n = outb(s, b, sizeof(b));
+	CHECK(n == 160);
+	CHECK(b[0] != 0xff && b[0] == b[159]);
+	/* a sample that is a DLE: doubled */
+	pcm[0] = -15996;
+	dmc_voice_write(s, pcm, 1);
+	dmc_poll(s, 21);
+	n = outb(s, b, sizeof(b));
+	CHECK(n == 9 && b[0] == 0x10 && b[1] == 0x10);
+	/* a DTMF digit: its tone in our samples */
+	CHECK(dmc_voice_dtmf(s, '!') == -1);
+	CHECK(dmc_voice_dtmf(s, '1') == 0);
+	dmc_poll(s, 41);
+	n = outb(s, b, sizeof(b));
+	int tone = 0;
+	for (int i = 0; i < n; i++)
+		if (b[i] != 0xff)
+			tone++;
+	CHECK(n == 160 && tone > 100);
+	/* hung up here: <DLE>^, the modem's <DLE><ETX> and OK, ATH */
+	dmc_hangup(s);
+	n = outb(s, b, sizeof(b));
+	CHECK(n == 2 && b[0] == 0x10 && b[1] == '^');
+	CHECK(dmc_state(s) == DMC_HANGING_UP);
+	unsigned char end[] = { 0xff, 0x10, 0x03, '\r', '\n', 'O', 'K', '\r',
+				'\n' };
+	feedb(s, end, sizeof(end));
+	CHECK_STR(out(s), "ATH\r");
+	feed(s, "ATH\r\r\nOK\r\n");
+	CHECK(dmc_state(s) == DMC_IDLE);
+	CHECK(dmc_poll(s, 100) == -1);
+
+	/* the far end hangs up: <DLE>l, then the stream ended as before */
+	tag = dmc_voice_dial(s, "1");
+	CHECK_STR(out(s), "AT+FCLASS=8\r");
+	feed(s, "AT+FCLASS=8\r\r\nOK\r\nAT+VSM=4\r\r\nOK\r\n");
+	CHECK_STR(out(s), "AT+VSM=4\rATD1\r");
+	feed(s, "ATD1\r\r\nOK\r\nAT+VTR\r\r\nCONNECT\r\n");
+	CHECK(dmc_state(s) == DMC_VOICE);
+	unsigned char lci[] = { 0x10, 'l' };
+	feedb(s, lci, 2);
+	CHECK(next_of(s, DMC_EV_VOICE, &ev));
+	CHECK_STR(ev.result, "hangup");
+	n = outb(s, b, sizeof(b));
+	CHECK(n >= 2 && b[n - 2] == 0x10 && b[n - 1] == '^');
+	feedb(s, end + 1, sizeof(end) - 1);
+	CHECK_STR(out(s), "ATH\r");
+	feed(s, "ATH\r\r\nOK\r\n");
+	CHECK(dmc_state(s) == DMC_IDLE);
+
+	/* busy: the call given up, the modem on hook in data mode */
+	tag = dmc_voice_dial(s, "2");
+	out(s);
+	feed(s, "AT+FCLASS=8\r\r\nOK\r\nAT+VSM=4\r\r\nOK\r\n");
+	out(s);
+	feed(s, "ATD2\r\r\nBUSY\r\n");
+	CHECK(next_of(s, DMC_EV_RESPONSE, &ev));
+	CHECK(ev.tag == tag && !ev.ok);
+	CHECK_STR(ev.result, "BUSY");
+	CHECK(dmc_state(s) == DMC_IDLE);
+	CHECK_STR(out(s), "ATH\r");
+	feed(s, "ATH\r\r\nOK\r\n");
+	CHECK(dmc_state(s) == DMC_IDLE);
+
+	/* a modem with no voice mode: the call refused */
+	tag = dmc_voice_dial(s, "3");
+	out(s);
+	feed(s, "AT+FCLASS=8\r\r\nERROR\r\n");
+	CHECK(next_of(s, DMC_EV_RESPONSE, &ev));
+	CHECK(ev.tag == tag && !ev.ok);
+	CHECK_STR(out(s), "ATH\r");
+	feed(s, "ATH\r\r\nOK\r\n");
+	CHECK(dmc_command(s, "ATI3", 0, 0) > 0);
+	CHECK_STR(out(s), "ATI3\r");
+	feed(s, "ATI3\r\r\nOK\r\n");
+
+	/* answered: RING, AT+VLS=1 */
+	CHECK(dmc_voice_answer(s) == -1);
+	feed(s, "RING\r\n");
+	CHECK(dmc_ring_count(s) == 1);
+	tag = dmc_voice_answer(s);
+	CHECK(tag > 0);
+	voice_setup(s, "AT+VLS=1", DMC_VOICE);
+	dmc_close(s);
+	CHECK(dmc_state(s) == DMC_CLOSED);
+	dmc_session_free(s);
+}
+
+/* the answering machine: answers after two RINGs, the greeting, the
+   beep, the caller's message until they are quiet */
+static void test_voicemail(void)
+{
+	dmc_session *s = dmc_session_new();
+	dmc_event ev;
+	static unsigned char b[65536];
+	static int16_t greeting[800];
+	for (int i = 0; i < 800; i++)
+		greeting[i] = (int16_t)(i & 1 ? 6000 : -6000);
+	dmc_voicemail_set(s, greeting, 800, 10, 1);
+	dmc_voicemail_auto(s, 2);
+	dmc_open(s, 0);
+	feed(s, "RING\r\n\r\nNMBR = 5551234\r\n");
+	CHECK_STR(out(s), "");
+	feed(s, "RING\r\n");
+	voice_setup(s, "AT+VLS=1", DMC_VOICEMAIL);
+	CHECK_STR(dmc_state_name(DMC_VOICEMAIL), "Taking a message");
+	/* the greeting, then the beep: 0.1 s and 0.5 s */
+	dmc_poll(s, 0);
+	dmc_poll(s, 1000);
+	int n = outb(s, b, sizeof(b));
+	CHECK(n == 8480);
+	CHECK(b[0] == b[2] && b[0] != 0xff && b[1] != b[0]);
+	CHECK(b[902] != 0xff);
+	CHECK(b[4900] == 0xff);
+	/* the caller speaks for 2 s, then is quiet for 1 s */
+	static unsigned char talk[24000];
+	for (int i = 0; i < 16000; i++)
+		talk[i] = (unsigned char)(i & 1 ? 0x90 : 0x10 + 0x80);
+	memset(talk + 16000, 0xff, 8000);
+	feedb(s, talk, 24000);
+	CHECK(next_of(s, DMC_EV_MESSAGE, &ev));
+	CHECK(ev.ok);
+	CHECK_STR(ev.text, "5551234");
+	const int16_t *msg;
+	n = dmc_voice_message(s, &msg);
+	CHECK(n == 16000 + 4000);
+	CHECK(msg[0] != 0 && msg[n - 1] == 0);
+	n = outb(s, b, sizeof(b));
+	CHECK(n >= 2 && b[n - 2] == 0x10 && b[n - 1] == '^');
+	unsigned char end[] = { 0x10, 0x03, '\r', '\n', 'O', 'K', '\r', '\n' };
+	feedb(s, end, sizeof(end));
+	CHECK_STR(out(s), "ATH\r");
+	feed(s, "ATH\r\r\nOK\r\n");
+	CHECK(dmc_state(s) == DMC_IDLE);
+
+	/* a caller who hangs up in the greeting: no message */
+	dmc_voicemail_auto(s, 0);
+	feed(s, "RING\r\n");
+	CHECK_STR(out(s), "");
+	CHECK(dmc_voicemail_answer(s) > 0);
+	voice_setup(s, "AT+VLS=1", DMC_VOICEMAIL);
+	unsigned char lci[] = { 0x10, 'l' };
+	feedb(s, lci, 2);
+	feedb(s, end, sizeof(end));
+	out(s);
+	feed(s, "ATH\r\r\nOK\r\n");
+	CHECK(next_of(s, DMC_EV_MESSAGE, &ev));
+	CHECK(!ev.ok);
+	CHECK(dmc_state(s) == DMC_IDLE);
+
+	/* picked up while it plays the greeting: a voice call */
+	feed(s, "RING\r\n");
+	CHECK(dmc_voicemail_answer(s) > 0);
+	voice_setup(s, "AT+VLS=1", DMC_VOICEMAIL);
+	CHECK(dmc_voice_pickup(s) == 0);
+	CHECK(dmc_state(s) == DMC_VOICE);
+	CHECK(dmc_voice_pickup(s) == -1);
+	dmc_hangup(s);
+	feedb(s, end, sizeof(end));
+	out(s);
+	feed(s, "ATH\r\r\nOK\r\n");
+	CHECK(dmc_state(s) == DMC_IDLE);
+	CHECK(!next_of(s, DMC_EV_MESSAGE, &ev));
+	dmc_session_free(s);
+}
+
+/* WAV files: ours read back; 16 kHz stereo made 8 kHz mono */
+static void test_wav(void)
+{
+	char h[44 + 8];
+	int16_t *pcm;
+	CHECK(dmc_wav_header(h, 4) == 44);
+	CHECK(!memcmp(h, "RIFF", 4) && !memcmp(h + 36, "data", 4));
+	CHECK((unsigned char)h[40] == 8);
+	memcpy(h + 44, "\x10\x00\xf0\xff\x00\x40\x00\x80", 8);
+	CHECK(dmc_wav_decode(h, sizeof(h), &pcm) == 4);
+	CHECK(pcm[0] == 16 && pcm[1] == -16 && pcm[2] == 16384 &&
+	      pcm[3] == -32768);
+	dmc_free(pcm);
+	/* 16 kHz, two channels, 8 frames: 4 samples */
+	char w[44 + 32];
+	dmc_wav_header(w, 16);
+	w[22] = 2;                      /* channels */
+	w[24] = (char)0x80; w[25] = 0x3e; /* 16000 */
+	memset(w + 44, 0, 32);
+	w[44] = 0x00; w[45] = 0x10;     /* frame 0: 4096 and 0 */
+	CHECK(dmc_wav_decode(w, sizeof(w), &pcm) == 4);
+	CHECK(pcm[0] == 2048 && pcm[1] == 0);
+	dmc_free(pcm);
+	CHECK(dmc_wav_decode("RIFF", 4, &pcm) == -1 && !pcm);
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : ".";
@@ -485,6 +759,9 @@ int main(int argc, char **argv)
 	test_diag(dir);
 	test_vt();
 	test_daemon();
+	test_voice();
+	test_voicemail();
+	test_wav();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

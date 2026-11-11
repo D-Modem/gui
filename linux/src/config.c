@@ -56,6 +56,17 @@ void config_load(Config *c)
 	c->dmodemd = get_s(k, "dmodemd", "");
 	c->init = get_s(k, "init", "");
 	c->debug = g_key_file_get_integer(k, "line", "debug", NULL);
+	/* the answering machine: off until the user turns it on */
+	GError *e = NULL;
+	c->voicemail = g_key_file_get_boolean(k, "voice", "voicemail", NULL);
+	c->vm_rings = g_key_file_get_integer(k, "voice", "rings", &e);
+	if (e || c->vm_rings < 1)
+		c->vm_rings = 4;
+	g_clear_error(&e);
+	c->vm_max = g_key_file_get_integer(k, "voice", "max-seconds", &e);
+	if (e || c->vm_max < 10)
+		c->vm_max = 120;
+	g_clear_error(&e);
 	g_key_file_unref(k);
 }
 
@@ -78,6 +89,9 @@ void config_save(const Config *c)
 	g_key_file_set_string(k, "line", "dmodemd", c->dmodemd);
 	g_key_file_set_string(k, "line", "init", c->init);
 	g_key_file_set_integer(k, "line", "debug", c->debug);
+	g_key_file_set_boolean(k, "voice", "voicemail", c->voicemail);
+	g_key_file_set_integer(k, "voice", "rings", c->vm_rings);
+	g_key_file_set_integer(k, "voice", "max-seconds", c->vm_max);
 	char *p = path();
 	char *dir = g_path_get_dirname(p);
 	g_mkdir_with_parents(dir, 0700);

@@ -30,6 +30,10 @@ static const char *state_icon(int state)
 		return "network-transmit-receive-symbolic";
 	case DMC_CONFIGURATOR:
 		return "preferences-system-symbolic";
+	case DMC_VOICE:
+		return "audio-input-microphone-symbolic";
+	case DMC_VOICEMAIL:
+		return "media-record-symbolic";
 	default:
 		return "call-start-symbolic";
 	}
@@ -80,6 +84,7 @@ void window_state(App *a)
 	gtk_widget_set_sensitive(a->copy_btn, a->fd >= 0);
 	gtk_widget_set_sensitive(a->term_buttons, st == DMC_IDLE);
 	settings_sensitive(a, st == DMC_IDLE);
+	voice_state(a);
 }
 
 void window_opened(App *a)
@@ -130,6 +135,10 @@ void window_event(App *a, const dmc_event *ev)
 		break;
 	case DMC_EV_CALLER:
 		window_state(a);
+		break;
+	case DMC_EV_VOICE:
+	case DMC_EV_MESSAGE:
+		voice_event(a, ev);
 		break;
 	}
 }
@@ -444,6 +453,9 @@ void window_build(App *a)
 	a->stack = ADW_VIEW_STACK(adw_view_stack_new());
 	adw_view_stack_add_titled_with_icon(a->stack, modem_page(a), "modem",
 					    "Modem", "call-start-symbolic");
+	adw_view_stack_add_titled_with_icon(a->stack, voice_page_new(a),
+					    "phone", "Phone",
+					    "audio-input-microphone-symbolic");
 	adw_view_stack_add_titled_with_icon(a->stack, terminal_page(a),
 					    "terminal", "Terminal",
 					    "utilities-terminal-symbolic");

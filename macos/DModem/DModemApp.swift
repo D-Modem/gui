@@ -14,6 +14,7 @@ struct DModemApp: App {
         Window("D-Modem", id: "main") {
             ContentView()
                 .environmentObject(modem)
+                .environmentObject(modem.voice)
                 .frame(minWidth: 760, minHeight: 520)
                 .onAppear { delegate.modem = modem }
         }

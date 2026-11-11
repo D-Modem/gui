@@ -18,20 +18,28 @@
 #define OPENFILENAME_SIZE_VERSION_400 76
 #endif
 
-static void ini_path(char *out, int n)
+void app_data_dir(char *out, int n)
 {
 	char dir[MAX_PATH];
 	DWORD k = GetEnvironmentVariable("APPDATA", dir, sizeof(dir));
-	if (k > 0 && k < sizeof(dir)) {
+	if (k > 0 && k < sizeof(dir) - 10) {
 		strcat(dir, "\\D-Modem");
 		CreateDirectory(dir, NULL);
-		_snprintf(out, n, "%s\\dmodem.ini", dir);
+		_snprintf(out, n, "%s", dir);
 	} else {
 		GetModuleFileName(NULL, out, n);
 		char *slash = strrchr(out, '\\');
 		if (slash)
-			strcpy(slash + 1, "dmodem.ini");
+			*slash = '\0';
 	}
+	out[n - 1] = '\0';
+}
+
+static void ini_path(char *out, int n)
+{
+	char dir[MAX_PATH];
+	app_data_dir(dir, sizeof(dir));
+	_snprintf(out, n, "%s\\dmodem.ini", dir);
 	out[n - 1] = '\0';
 }
 
@@ -84,6 +92,14 @@ void config_load(Config *c)
 	get(ini, "tcp", "127.0.0.1:2323", c->tcp, sizeof(c->tcp));
 	get(ini, "com", "COM1", c->com, sizeof(c->com));
 	get(ini, "init", "", c->init, sizeof(c->init));
+	/* the answering machine: off until the user turns it on */
+	c->voicemail = (int)GetPrivateProfileInt("voice", "voicemail", 0, ini);
+	c->vm_rings = (int)GetPrivateProfileInt("voice", "rings", 4, ini);
+	if (c->vm_rings < 1 || c->vm_rings > 15)
+		c->vm_rings = 4;
+	c->vm_max = (int)GetPrivateProfileInt("voice", "max-seconds", 120, ini);
+	if (c->vm_max < 10)
+		c->vm_max = 120;
 }
 
 void config_save(const Config *c)
@@ -104,6 +120,16 @@ void config_save(const Config *c)
 	put(ini, "tcp", c->tcp);
 	put(ini, "com", c->com);
 	put(ini, "init", c->init);
+	char b[16];
+	_snprintf(b, sizeof(b), "%d", c->voicemail);
+	b[sizeof(b) - 1] = '\0';
+	WritePrivateProfileString("voice", "voicemail", b, ini);
+	_snprintf(b, sizeof(b), "%d", c->vm_rings);
+	b[sizeof(b) - 1] = '\0';
+	WritePrivateProfileString("voice", "rings", b, ini);
+	_snprintf(b, sizeof(b), "%d", c->vm_max);
+	b[sizeof(b) - 1] = '\0';
+	WritePrivateProfileString("voice", "max-seconds", b, ini);
 }
 
 void config_summary(const Config *c, char *out, int n)

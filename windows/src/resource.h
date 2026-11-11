@@ -57,6 +57,33 @@
 /* the Log page */
 #define IDC_LOG         800
 
+/* the Phone page */
+#define IDC_V_STATUS    1000
+#define IDC_V_CALLBOX   1001
+#define IDC_V_NUMLABEL  1002
+#define IDC_V_NUMBER    1003
+#define IDC_V_CALL      1004
+#define IDC_V_ANSWER    1005
+#define IDC_V_MESSAGE   1006
+#define IDC_V_PICKUP    1007
+#define IDC_V_HANGUP    1008
+#define IDC_V_MUTE      1009
+#define IDC_V_LISTEN    1010
+#define IDC_V_VMBOX     1011
+#define IDC_V_VMON      1012
+#define IDC_V_RINGSLABEL 1013
+#define IDC_V_RINGS     1014
+#define IDC_V_GREETING  1015
+#define IDC_V_RECORD    1016
+#define IDC_V_PLAYGREET 1017
+#define IDC_V_CHOOSE    1018
+#define IDC_V_CLEARGREET 1019
+#define IDC_V_MSGBOX    1020
+#define IDC_V_MESSAGES  1021
+#define IDC_V_PLAY      1022
+#define IDC_V_DELETE    1023
+#define IDC_V_KEY       1030    /* 1030 to 1041: 1-9, *, 0, # */
+
 /* the Line Settings dialog */
 #define IDD_LINE        900
 #define IDC_L_DMODEMD   901

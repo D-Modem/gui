@@ -11,6 +11,8 @@ are thin native shells over one small C library, libdmodemctl, so they
 behave the same.
 
 - **Modem**: the call's state, dial, answer and hang up, and the line it uses
+- **Phone**: voice calls through the sound card (dial, answer, keypad), and an
+  answering machine that takes messages on this computer when turned on (off by default)
 - **Terminal**: the AT console, and the modem's own setup screens (AT!CF, AT!CT)
 - **Settings**: every modem setting as a native control, from AT!M
 - **Call Stats**: the last call's rate, modulation, error control and line figures (AT#UD, ATI11)
@@ -23,6 +25,8 @@ behave the same.
 | Runs on | Windows 95 and later | macOS 13 and later | GTK 4.10, libadwaita 1.5 and VTE 0.76 or later (Ubuntu 24.04, Fedora 40) |
 
 <img src="docs/images/linux-settings.png" width="49%" alt="The Linux app's Settings page"> <img src="docs/images/windows-setup-screen.png" width="49%" alt="The Windows app's Terminal with the modem's setup screen">
+
+<img src="docs/images/linux-phone.png" width="49%" alt="The Linux app's Phone page"> <img src="docs/images/windows-phone.png" width="49%" alt="The Windows app's Phone page taking a message">
 
 ## Quick start
 

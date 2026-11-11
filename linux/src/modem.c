@@ -401,6 +401,17 @@ void modem_type(App *a, const char *data, gsize n)
 	modem_pump(a);
 }
 
+void modem_wait(App *a, int tag, ResponseFn fn, gpointer data)
+{
+	if (tag > 0) {
+		Waiting *w = g_new0(Waiting, 1);
+		w->fn = fn;
+		w->data = data;
+		g_hash_table_insert(a->waiting, GINT_TO_POINTER(tag), w);
+		modem_pump(a);
+	}
+}
+
 int modem_command(App *a, const char *cmd, int flags, ResponseFn fn,
 		  gpointer data)
 {

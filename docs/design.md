@@ -33,11 +33,12 @@ each time the modem opens.
 
 ## The same screens everywhere
 
-Each app has the same five pages, with the same words:
+Each app has the same six pages, with the same words:
 
 | Page | Contents |
 | --- | --- |
 | Modem | The state ("Idle", "Dialling", "Online") and its detail (the CONNECT line, the caller), Dial, Answer, Hang Up, the line and the device, Start or Stop |
+| Phone | A voice call's state, Call and Answer, the keypad (DTMF), Mute and Listen; the answering machine (on or off, rings, the greeting) and its messages |
 | Terminal | The AT console; the buttons **Full-screen setup** (AT!CF) and **Command-line setup** (AT!CT) |
 | Settings | Groups of settings as native controls, changed ones marked; Defaults (ATZ), the init string and Keep |
 | Call Stats | AT#UD's rows and ATI11's report, refreshed after each call |
@@ -61,6 +62,31 @@ own group (`-g`), so that dmodemd needs no root.
 
 Each app can instead use a modem that already runs: a device path on
 Linux and macOS; a TCP address or a COM port on Windows.
+
+## Voice calls and the answering machine
+
+Voice uses dmodemd's V.253 voice mode: `AT+FCLASS=8`, `AT+VSM=4` (G.711
+μ-law at 8 kHz), then `ATD` or `AT+VLS=1`, and `AT+VTR` for the full-duplex
+stream. libdmodemctl does all of it: the DLE framing and its events
+(hangup, busy, dial tone, digits, caller ID), μ-law, the pacing of the
+stream by the clock given to `dmc_poll`, DTMF, and the answering machine.
+The apps only move 8 kHz 16-bit samples between it and the sound card
+(`dmc_voice_read`, `dmc_voice_write`):
+
+| | Sound | Settings | Messages |
+| --- | --- | --- | --- |
+| Linux | PulseAudio on the GLib main loop (or PipeWire's Pulse server) | `settings.ini`, `[voice]` | `~/.local/share/dmodem-gui/voicemail` |
+| Windows | `waveOut` and `waveIn` with window callbacks (Windows 95 has them) | `dmodem.ini`, `[voice]` | `%APPDATA%\D-Modem\Voicemail`, or beside the exe |
+| macOS | AVAudioEngine, converted to 8 kHz | UserDefaults | `~/Library/Application Support/D-Modem/Voicemail` |
+
+The answering machine is off until it is turned on. When on, after the
+chosen number of rings (4 by default) it answers, plays the greeting (or
+none), beeps, and records until the caller hangs up, 7 s of silence, or
+2 minutes. Each message is a WAV file named for its time and the caller's
+number; one under a second is dropped. A greeting can be recorded from the
+microphone or chosen from any WAV file, which is converted to 8 kHz mono.
+Pick Up turns a message being taken into a call; Listen plays it as it is
+left. Messages stay on this computer.
 
 ## Windows 95 and later
 
