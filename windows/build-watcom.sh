@@ -22,7 +22,8 @@ cppopts="-q -bt=nt -bm -3r -ox -w4 -zq -xs $inc -i=$here/src"
 objs=""
 failed=0
 for f in "$root"/core/src/*.c; do
-	o=$(basename "$f" .c).obj
+	# (core_: the library's names apart from the app's, voice.c and voice.cpp)
+	o=core_$(basename "$f" .c).obj
 	wcc386 $copts -fo="$o" "$f" || failed=1
 	objs="$objs $o"
 done
@@ -43,7 +44,7 @@ wrc -q -r -bt=nt -i="$WATCOM/h/nt" -i="$here/src" -i="$here/res" \
 	# Windows 95 and NT 4 take a subsystem version of 4.0
 	echo "runtime windows=4.0"
 	for o in $objs; do echo "file $o"; done
-	echo "library comctl32.lib, wsock32.lib, comdlg32.lib"
+	echo "library comctl32.lib, wsock32.lib, comdlg32.lib, winmm.lib"
 	echo "option resource=app.res"
 } > dmodem.lnk
 wlink @dmodem.lnk

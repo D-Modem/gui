@@ -9,9 +9,11 @@ add_executable(dmodem WIN32
   src/term.cpp
   src/settings.cpp
   src/config.cpp
+  src/voice.cpp
+  src/audio.cpp
   res/app.rc)
 target_include_directories(dmodem PRIVATE src)
-target_link_libraries(dmodem PRIVATE dmodemctl comctl32 wsock32 comdlg32 gdi32)
+target_link_libraries(dmodem PRIVATE dmodemctl comctl32 wsock32 comdlg32 gdi32 winmm)
 if(MSVC)
   target_compile_definitions(dmodem PRIVATE _CRT_SECURE_NO_WARNINGS)
   # (a manifest of our own in app.rc)

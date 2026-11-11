@@ -9,6 +9,7 @@ set(DMODEMCTL_SOURCES
   src/diag.c
   src/vt.c
   src/daemon.c
+  src/voice.c
   src/util.c)
 
 if(DMODEMCTL_SHARED)
@@ -23,4 +24,7 @@ if(MSVC)
   target_compile_options(dmodemctl PRIVATE /W4 /wd4996)
 else()
   target_compile_options(dmodemctl PRIVATE -Wall -Wextra -Wshadow)
+endif()
+if(UNIX)
+  target_link_libraries(dmodemctl PRIVATE m)
 endif()

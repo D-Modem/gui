@@ -7,12 +7,13 @@
 import SwiftUI
 
 enum Page: String, CaseIterable, Identifiable {
-    case modem = "Modem", terminal = "Terminal", settings = "Settings"
+    case modem = "Modem", phone = "Phone", terminal = "Terminal", settings = "Settings"
     case stats = "Call Stats", log = "Log"
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .modem: return "phone.connection"
+        case .phone: return "phone"
         case .terminal: return "terminal"
         case .settings: return "slider.horizontal.3"
         case .stats: return "chart.bar"
@@ -35,6 +36,7 @@ struct ContentView: View {
             Group {
                 switch page ?? .modem {
                 case .modem: ModemPage()
+                case .phone: PhonePage()
                 case .terminal: TerminalPane()
                 case .settings: SettingsPage()
                 case .stats: StatsPage()
@@ -80,6 +82,8 @@ struct ModemPage: View {
         case Int(DMC_DIALING), Int(DMC_ANSWERING): return "phone.arrow.up.right"
         case Int(DMC_ONLINE), Int(DMC_ONLINE_COMMAND): return "arrow.up.arrow.down"
         case Int(DMC_CONFIGURATOR): return "gearshape"
+        case Int(DMC_VOICE): return "phone.fill"
+        case Int(DMC_VOICEMAIL): return "recordingtape"
         default: return "phone"
         }
     }

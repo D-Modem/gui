@@ -76,6 +76,8 @@ final class Modem: ObservableObject {
 
     let session: OpaquePointer
     let vt: OpaquePointer
+    /// voice calls and the answering machine (Voice.swift)
+    let voice = Voice()
 
     private var process: Process?
     private var fd: Int32 = -1
@@ -90,6 +92,8 @@ final class Modem: ObservableObject {
     init() {
         session = dmc_session_new()
         vt = dmc_vt_new(80, 24, 2000)
+        voice.modem = self
+        voice.configure()
         let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             self?.pump()
         }
@@ -126,9 +130,12 @@ final class Modem: ObservableObject {
     var isOpen: Bool { state != Int(DMC_CLOSED) }
     var isIdle: Bool { state == Int(DMC_IDLE) }
     var canHangUp: Bool {
-        [DMC_DIALING, DMC_ANSWERING, DMC_ONLINE, DMC_ONLINE_COMMAND, DMC_RINGING]
+        [DMC_DIALING, DMC_ANSWERING, DMC_ONLINE, DMC_ONLINE_COMMAND, DMC_RINGING,
+         DMC_VOICE, DMC_VOICEMAIL]
             .map { Int($0) }.contains(state)
     }
+
+    var callerNumber: String { cstr(dmc_caller_number(session)) }
 
     func say(_ text: String) {
         toast = text
@@ -169,6 +176,45 @@ final class Modem: ObservableObject {
         pump()
     }
 
+    /// done gets the response of the session's command tag
+    private func expect(_ tag: Int32, _ done: @escaping (Response) -> Void) {
+        guard tag > 0 else { return }
+        waiting[tag] = done
+        pump()
+    }
+
+    private func voiceResult(_ r: Response) {
+        if !r.ok {
+            say(r.result == "ERROR" ? "The modem has no voice mode (D-Modem 1.1 or later has)"
+                                    : r.result.capitalized)
+        }
+    }
+
+    func voiceDial(_ number: String) {
+        let n = number.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { return say("Enter a number to call") }
+        voice.stopSound()
+        expect(dmc_voice_dial(session, n)) { [weak self] r in self?.voiceResult(r) }
+    }
+
+    func voiceAnswer() {
+        expect(dmc_voice_answer(session)) { [weak self] r in self?.voiceResult(r) }
+    }
+
+    func voicemailAnswer() {
+        expect(dmc_voicemail_answer(session)) { [weak self] r in self?.voiceResult(r) }
+    }
+
+    func pickUp() {
+        dmc_voice_pickup(session)
+        pump()
+    }
+
+    func dtmf(_ key: String) {
+        guard let c = key.utf8.first else { return }
+        dmc_voice_dtmf(session, CChar(bitPattern: c))
+    }
+
     /// bytes typed in the terminal
     func type(_ bytes: [UInt8]) {
         guard fd >= 0, !bytes.isEmpty else { return }
@@ -200,6 +246,7 @@ final class Modem: ObservableObject {
     }
 
     func pump() {
+        voice.beforePoll()
         dmc_poll(session, Modem.now())
         var buf = [CChar](repeating: 0, count: 4096)
         var n: Int32
@@ -234,9 +281,11 @@ final class Modem: ObservableObject {
                                  result: cstr(ev.result))
                 if let fn = waiting.removeValue(forKey: ev.tag) { fn(r) }
             } else {
-                event(type, state: Int(ev.state), result: cstr(ev.result))
+                event(type, state: Int(ev.state), result: cstr(ev.result),
+                      text: cstr(ev.text), ok: ev.ok != 0)
             }
         }
+        voice.afterPoll()
     }
 
     private func flush() {
@@ -251,12 +300,13 @@ final class Modem: ObservableObject {
         }
     }
 
-    private func event(_ type: Int, state st: Int, result: String) {
+    private func event(_ type: Int, state st: Int, result: String, text: String, ok: Bool) {
         switch type {
         case Int(DMC_EV_STATE):
             let was = lastState
             lastState = st
             state = st
+            voice.sound(st)
             let calls = [DMC_ONLINE, DMC_ONLINE_COMMAND, DMC_HANGING_UP,
                          DMC_DIALING, DMC_ANSWERING].map { Int($0) }
             // a call over: its statistics
@@ -271,6 +321,8 @@ final class Modem: ObservableObject {
             }
         case Int(DMC_EV_CALLER):
             objectWillChange.send()
+        case Int(DMC_EV_VOICE), Int(DMC_EV_MESSAGE):
+            voice.event(type, text: text, ok: ok)
         default:
             break
         }
@@ -358,6 +410,7 @@ final class Modem: ObservableObject {
         }
         state = Int(DMC_CLOSED)
         lastState = state
+        voice.sound(state)
         clearSettings()
         running = process != nil
     }

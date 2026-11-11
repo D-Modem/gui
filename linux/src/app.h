@@ -27,6 +27,10 @@ typedef struct Config {
 	char *dmodemd;          /* its path, "" to look for it */
 	char *init;             /* commands sent when the modem opens */
 	int debug;              /* dmodemd -d */
+	/* the answering machine ([voice]): on, after how many RINGs, a
+	   message's longest (s) */
+	gboolean voicemail;
+	int vm_rings, vm_max;
 } Config;
 
 typedef struct App App;
@@ -69,6 +73,9 @@ struct App {
 	GPtrArray *stats_rows;
 	GtkWidget *stats_report, *stats_empty;
 	GtkTextBuffer *log;
+
+	/* the Phone page (voice.c) */
+	struct Voice *voice;
 };
 
 /* config.c */
@@ -89,6 +96,9 @@ void modem_type(App *a, const char *data, gsize n);
 /* a command; fn (may be NULL) gets its response */
 int modem_command(App *a, const char *cmd, int flags, ResponseFn fn,
 		  gpointer data);
+/* fn (may be NULL) gets the response of the session's command tag
+   (dmc_voice_dial()'s and the like) */
+void modem_wait(App *a, int tag, ResponseFn fn, gpointer data);
 /* the session's output, terminal bytes and events handled now */
 void modem_pump(App *a);
 void app_log(App *a, const char *line);
@@ -107,6 +117,25 @@ GtkWidget *settings_page_new(App *a);
 void settings_load(App *a);
 void settings_clear(App *a);
 void settings_sensitive(App *a, gboolean on);
+
+/* voice.c: the Phone page, voice calls' audio, the answering machine
+   and its messages */
+GtkWidget *voice_page_new(App *a);
+void voice_state(App *a);
+void voice_event(App *a, const dmc_event *ev);
+/* the answering machine's settings to the session */
+void voice_configure(App *a);
+
+/* audio.c: the sound card, 8 kHz mono (PulseAudio, or PipeWire's) */
+/* the speaker's next samples: how many of n there were (the rest
+   silence); the microphone's */
+typedef int (*AudioPull)(App *a, int16_t *pcm, int n);
+typedef void (*AudioPush)(App *a, const int16_t *pcm, int n);
+/* sound from pull and to push (either NULL for none): FALSE if there
+   is no sound here */
+gboolean audio_start(App *a, AudioPull pull, AudioPush push);
+void audio_stop(App *a);
+gboolean audio_available(void);
 
 /* stats.c */
 GtkWidget *stats_page_new(App *a);

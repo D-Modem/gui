@@ -54,8 +54,14 @@ struct Config {
 	char tcp[256];                  /* host:port */
 	char com[32];                   /* COM1 */
 	char init[256];                 /* commands when the modem opens */
+	/* the answering machine ([voice]): on, after how many RINGs, a
+	   message's longest (s) */
+	int voicemail, vm_rings, vm_max;
 };
 
+/* where the app keeps its files: %APPDATA%\D-Modem, or beside the
+   app */
+void app_data_dir(char *out, int n);
 void config_load(Config *c);
 void config_save(const Config *c);
 /* "SIP: alice@sip.example.com" and the like, into out */
@@ -70,7 +76,7 @@ typedef void (*ResponseFn)(const dmc_event *ev, void *data);
 struct App {
 	HINSTANCE inst;
 	HWND main, tabs;
-	HWND pages[5];
+	HWND pages[6];
 	HFONT font, bold_font, big_font, mono_font;
 	Config cfg;
 	dmc_session *s;
@@ -91,9 +97,13 @@ void link_pump();
 void link_socket(WPARAM w, LPARAM l);
 void link_type(const char *data, int n);
 int link_command(const char *cmd, int flags, ResponseFn fn, void *data);
+/* fn gets the response of the session's command tag (dmc_voice_dial()'s
+   and the like) */
+void link_wait(int tag, ResponseFn fn, void *data);
 
 #define WM_APP_SOCKET (WM_APP + 1)
 #define TIMER_PUMP 1
+#define TIMER_VOICE 2
 
 /* main.cpp */
 void app_log(const char *line);
@@ -130,6 +140,26 @@ void settings_page_layout(HWND page, int w, int h);
 void settings_load();
 void settings_clear();
 void settings_state();
+
+/* voice.cpp: the Phone page: voice calls, the answering machine and
+   its messages */
+HWND voice_page_new(HWND parent);
+void voice_page_layout(HWND page, int w, int h);
+void voice_state();
+void voice_event(const dmc_event *ev);
+/* the answering machine's settings to the session */
+void voice_configure();
+
+/* audio.cpp: the sound card (waveOut and waveIn: Windows 95 has them),
+   16-bit mono at 8 kHz */
+/* the speaker's next samples: how many of n there were (the rest
+   silence); the microphone's */
+typedef int (*AudioPull)(short *pcm, int n);
+typedef void (*AudioPush)(const short *pcm, int n);
+/* sound from pull and to push (either NULL for none): false if there
+   is no sound card */
+bool audio_start(AudioPull pull, AudioPush push);
+void audio_stop();
 
 /* util */
 /* UTF-8 to the ANSI code page (Windows 9x has few W functions) */

@@ -543,6 +543,21 @@ void link_type(const char *data, int n)
 	link_pump();
 }
 
+void link_wait(int tag, ResponseFn fn, void *data)
+{
+	if (tag <= 0)
+		return;
+	Waiting *w = (Waiting *)calloc(1, sizeof(*w));
+	if (!w)
+		return;
+	w->tag = tag;
+	w->fn = fn;
+	w->data = data;
+	w->next = waiting;
+	waiting = w;
+	link_pump();
+}
+
 int link_command(const char *cmd, int flags, ResponseFn fn, void *data)
 {
 	int tag = dmc_command(app.s, cmd, flags, 0);

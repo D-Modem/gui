@@ -28,9 +28,16 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: D-Modem
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         INFOPLIST_KEY_NSHumanReadableCopyright: Copyright (C) 2026 D-Modem Authors. AGPL-3.0-only.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: D-Modem uses the microphone for voice calls and to record the answering machine's greeting.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: YES
         # dmodemd runs as a child process and the modem's pty is opened:
         # no sandbox
         ENABLE_APP_SANDBOX: NO
+        # the microphone, for voice calls (the hardened runtime asks for it)
+        ENABLE_RESOURCE_ACCESS_AUDIO_INPUT: YES
+    entitlements:
+      path: DModem/DModem.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
