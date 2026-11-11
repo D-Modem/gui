@@ -22,7 +22,8 @@ cppopts="-q -bt=nt -bm -3r -ox -w4 -zq -xs $inc -i=$here/src"
 objs=""
 failed=0
 for f in "$root"/core/src/*.c; do
-	o=$(basename "$f" .c).obj
+	# (core_: the library's names apart from the app's, voice.c and voice.cpp)
+	o=core_$(basename "$f" .c).obj
 	wcc386 $copts -fo="$o" "$f" || failed=1
 	objs="$objs $o"
 done
