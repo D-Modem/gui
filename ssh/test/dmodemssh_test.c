@@ -143,7 +143,7 @@ static void test_shell(dmc_ssh *s)
 
 	CHECK(ch > 0);
 	CHECK(next(s, &ev) == DMC_SSH_EV_OPEN && ev.channel == ch && ev.value == 1);
-	CHECK(dmc_ssh_write(s, ch, typed, (int)strlen(typed)) == 0);
+	CHECK(dmc_ssh_write(s, ch, typed, (int)strlen(typed)) >= 0);
 	CHECK(drain(s, ch, out, sizeof out) == 3);
 	CHECK(strstr(out, "30 100") != NULL);
 	CHECK(strstr(out, "vt100") != NULL);
@@ -155,11 +155,11 @@ static void test_exec(dmc_ssh *s)
 {
 	dmc_ssh_event ev;
 	char out[8192];
-	int ch = dmc_ssh_exec(s, "tr a-z A-Z; exit 7");
+	int ch = dmc_ssh_exec(s, "tr a-z A-Z; exit 7", 0);
 
 	CHECK(ch > 0);
 	CHECK(next(s, &ev) == DMC_SSH_EV_OPEN && ev.value == 1);
-	CHECK(dmc_ssh_write(s, ch, "hello\n", 6) == 0);
+	CHECK(dmc_ssh_write(s, ch, "hello\n", 6) >= 0);
 	dmc_ssh_eof(s, ch);
 	CHECK(drain(s, ch, out, sizeof out) == 7);
 	CHECK(!strcmp(out, "HELLO\n"));
@@ -211,7 +211,7 @@ static void test_listen(dmc_ssh *s)
 	} while (t && t != DMC_SSH_EV_DATA);
 	CHECK(t == DMC_SSH_EV_DATA && ev.channel == ch && ev.len == 4 &&
 	      !memcmp(ev.data, "ping", 4));
-	CHECK(dmc_ssh_write(s, ch, "pong", 4) == 0);
+	CHECK(dmc_ssh_write(s, ch, "pong", 4) >= 0);
 	{
 		/* (the reply comes as the session is polled) */
 		int got = 0, i;

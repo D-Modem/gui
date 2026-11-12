@@ -530,7 +530,7 @@ static void channel_step(dmc_ssh *s, int n)
 				return;
 			if (r != SSH_OK)
 				goto refused;
-			c->step = c->command ? C_EXEC : c->agent ? C_AGENT : C_PTY;
+			c->step = c->agent ? C_AGENT : c->command ? C_EXEC : C_PTY;
 			continue;
 		case C_OPEN_DIRECT:
 			r = ssh_channel_open_forward(c->ch, c->host, c->port,
@@ -548,7 +548,7 @@ static void channel_step(dmc_ssh *s, int n)
 			r = ssh_channel_request_auth_agent(c->ch);
 			if (r == SSH_AGAIN)
 				return;
-			c->step = C_PTY;
+			c->step = c->command ? C_EXEC : C_PTY;
 			continue;
 		case C_PTY:
 			r = ssh_channel_request_pty_size(c->ch, c->term, c->cols, c->rows);
@@ -1018,7 +1018,7 @@ int dmc_ssh_shell(dmc_ssh *s, const char *term, int cols, int rows, int agent)
 	return n;
 }
 
-int dmc_ssh_exec(dmc_ssh *s, const char *command)
+int dmc_ssh_exec(dmc_ssh *s, const char *command, int agent)
 {
 	int n;
 
@@ -1026,6 +1026,7 @@ int dmc_ssh_exec(dmc_ssh *s, const char *command)
 	n = new_slot(s);
 	if (n > 0) {
 		s->ch[n - 1].command = copy(command);
+		s->ch[n - 1].agent = agent;
 		s->ch[n - 1].step = C_OPEN_SESSION;
 	}
 	UNLOCK(&s->lock);
@@ -1106,7 +1107,7 @@ int dmc_ssh_write(dmc_ssh *s, int channel, const char *data, int len)
 	if (c && c->step == C_OPEN && !c->eof_out && s->step == S_READY &&
 	    buf_add(&c->out, data, len) == 0) {
 		channel_flush(s, c);
-		r = 0;
+		r = c->out.len;
 	}
 	UNLOCK(&s->lock);
 	return r;

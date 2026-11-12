@@ -132,8 +132,8 @@ void dmc_ssh_answered(dmc_ssh *s);
    DMC_SSH_EV_OPEN tells whether it opened */
 /* a shell on a pty of term in the given size; agent: ssh -A asked */
 int dmc_ssh_shell(dmc_ssh *s, const char *term, int cols, int rows, int agent);
-/* a command run, with no pty */
-int dmc_ssh_exec(dmc_ssh *s, const char *command);
+/* a command run, with no pty; agent: ssh -A asked */
+int dmc_ssh_exec(dmc_ssh *s, const char *command, int agent);
 /* a TCP connection made from the server to host:port (ssh -L, -D), for
    a connection that came from from_host:from_port */
 int dmc_ssh_direct(dmc_ssh *s, const char *host, int port,
@@ -144,8 +144,9 @@ int dmc_ssh_direct(dmc_ssh *s, const char *host, int port,
 int dmc_ssh_listen(dmc_ssh *s, const char *address, int port);
 /* that listen stopped */
 void dmc_ssh_unlisten(dmc_ssh *s, const char *address, int port);
-/* data to a channel (kept until the server can take it): 0, or -1 if
-   the channel isn't open */
+/* data to a channel (kept until the server can take it): how many
+   bytes are still kept (0 when all went; len 0 asks), or -1 if the
+   channel isn't open */
 int dmc_ssh_write(dmc_ssh *s, int channel, const char *data, int len);
 /* the channel's end of data sent */
 void dmc_ssh_eof(dmc_ssh *s, int channel);
