@@ -33,6 +33,11 @@ final class SSHConnection {
         dmc_ssh_option(s, "knownhosts", "")
     }
 
+    /// an option of dmc_ssh_option's, before it starts ("agent": its socket)
+    func option(_ name: String, _ value: String) {
+        dmc_ssh_option(s, name, value)
+    }
+
     deinit {
         if !freed {
             if started {
