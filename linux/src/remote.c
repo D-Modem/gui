@@ -38,7 +38,7 @@ static const int protos[] = { DMC_NET_SSH, DMC_NET_TELNET, DMC_NET_RLOGIN };
 typedef struct Remote {
 	App *a;
 	GtkWidget *proto, *host, *port, *user, *go, *status;
-	VteTerminal *term;
+	GtkWidget *term, *type;
 	int cols, rows;
 	/* what runs: its protocol (0: none) */
 	int running;
@@ -82,7 +82,7 @@ static void controls(Remote *r)
 
 static void show(Remote *r, const char *data, gssize n)
 {
-	vte_terminal_feed(r->term, data, n);
+	termview_feed(r->term, data, n < 0 ? (int)strlen(data) : (int)n);
 }
 
 /* the connection over, with why (NULL: the user's doing) */
@@ -311,6 +311,8 @@ static gboolean start_ssh(Remote *r, const char *host, int port,
 	struct winsize ws = { 0 };
 	ws.ws_col = (unsigned short)r->cols;
 	ws.ws_row = (unsigned short)r->rows;
+	/* the terminal's type, as the picker has it */
+	const char *term = dmc_vt_profile_term(termview_profile(r->term));
 	int fd;
 	pid_t pid = forkpty(&fd, NULL, NULL, &ws);
 	if (pid < 0) {
@@ -319,7 +321,7 @@ static gboolean start_ssh(Remote *r, const char *host, int port,
 		return FALSE;
 	}
 	if (pid == 0) {
-		/* the child: ssh, with VTE's terminal type */
+		/* the child: ssh, with the terminal's type */
 		const char *argv[10];
 		int i = 0;
 		argv[i++] = "ssh";
@@ -332,7 +334,7 @@ static gboolean start_ssh(Remote *r, const char *host, int port,
 		argv[i++] = "--";
 		argv[i++] = host;
 		argv[i] = NULL;
-		setenv("TERM", "xterm-256color", 1);
+		setenv("TERM", term, 1);
 		execv(ssh, (char **)argv);
 		_exit(127);
 	}
@@ -354,8 +356,8 @@ static gboolean start_ssh(Remote *r, const char *host, int port,
 static gboolean size_check(gpointer data)
 {
 	Remote *r = data;
-	int c = (int)vte_terminal_get_column_count(r->term);
-	int w = (int)vte_terminal_get_row_count(r->term);
+	int c, w;
+	termview_size(r->term, &c, &w);
 	if (c == r->cols && w == r->rows)
 		return G_SOURCE_CONTINUE;
 	r->cols = c;
@@ -369,10 +371,9 @@ static gboolean size_check(gpointer data)
 	return G_SOURCE_CONTINUE;
 }
 
-static void committed(VteTerminal *t, char *text, guint size, gpointer data)
+static void committed(const char *text, int size, void *data)
 {
 	Remote *r = data;
-	(void)t;
 	if (!r->running)
 		return;
 	if (r->fd >= 0) {
@@ -442,9 +443,8 @@ static void connect_clicked(GtkWidget *w, gpointer data)
 	a->cfg.remote_user = g_strdup(user);
 	config_save(&a->cfg);
 
-	vte_terminal_reset(r->term, TRUE, TRUE);
-	r->cols = (int)vte_terminal_get_column_count(r->term);
-	r->rows = (int)vte_terminal_get_row_count(r->term);
+	termview_reset(r->term);
+	termview_size(r->term, &r->cols, &r->rows);
 	char *what = g_strdup_printf("Connecting to %s port %d by %s", host,
 				     port, dmc_net_name(proto));
 	set_status(r, what);
@@ -461,8 +461,11 @@ static void connect_clicked(GtkWidget *w, gpointer data)
 		}
 		set_status(r, "Connected by SSH");
 	} else {
-		r->net = dmc_net_new(proto, user, "xterm-256color", r->cols,
-				     r->rows);
+		/* (Telnet's TERMINAL-TYPE, rlogin's TERM) */
+		const char *type = termview_profile(r->term);
+		r->net = dmc_net_new(proto, user, proto == DMC_NET_TELNET ?
+				     dmc_vt_profile_telnet(type) :
+				     dmc_vt_profile_term(type), r->cols, r->rows);
 		r->client = g_socket_client_new();
 		g_socket_client_set_timeout(r->client, 20);
 		r->cancel = g_cancellable_new();
@@ -473,8 +476,20 @@ static void connect_clicked(GtkWidget *w, gpointer data)
 	r->running = proto;
 	r->size_tick = g_timeout_add(250, size_check, r);
 	controls(r);
-	gtk_widget_grab_focus(GTK_WIDGET(r->term));
+	termview_focus(r->term);
 	g_free(host);
+}
+
+static void type_changed(GObject *o, GParamSpec *p, gpointer data)
+{
+	Remote *r = data;
+	(void)o;
+	(void)p;
+	const char *id = term_types_chosen(r->type);
+	termview_set_profile(r->term, id);
+	g_free(r->a->cfg.remote_term);
+	r->a->cfg.remote_term = g_strdup(id);
+	config_save(&r->a->cfg);
 }
 
 static int proto_index(const char *name)
@@ -542,33 +557,25 @@ GtkWidget *remote_page_new(App *a)
 	g_signal_connect(r->proto, "notify::selected", G_CALLBACK(proto_changed), r);
 	proto_changed(NULL, NULL, r);
 
-	r->term = VTE_TERMINAL(vte_terminal_new());
-	vte_terminal_set_scrollback_lines(r->term, 5000);
-	vte_terminal_set_backspace_binding(r->term, VTE_ERASE_ASCII_DELETE);
-	vte_terminal_set_size(r->term, 80, 24);
-	PangoFontDescription *f = pango_font_description_from_string("Monospace 11");
-	vte_terminal_set_font(r->term, f);
-	pango_font_description_free(f);
-	GdkRGBA fg, bg;
-	gdk_rgba_parse(&fg, "#e8f0ff");
-	gdk_rgba_parse(&bg, "#0a0f1c");
-	vte_terminal_set_colors(r->term, &fg, &bg, NULL, 0);
-	gtk_widget_set_vexpand(GTK_WIDGET(r->term), TRUE);
-	gtk_widget_set_hexpand(GTK_WIDGET(r->term), TRUE);
-	g_signal_connect(r->term, "commit", G_CALLBACK(committed), r);
-	GtkWidget *scroll = gtk_scrolled_window_new();
-	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),
-				      GTK_WIDGET(r->term));
-	gtk_widget_set_vexpand(scroll, TRUE);
-	gtk_box_append(GTK_BOX(box), scroll);
+	r->term = termview_new(committed, r);
+	termview_set_profile(r->term, a->cfg.remote_term);
+	gtk_box_append(GTK_BOX(box), r->term);
 
+	GtkWidget *foot = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	gtk_widget_set_margin_start(foot, 8);
+	gtk_widget_set_margin_end(foot, 6);
+	gtk_widget_set_margin_top(foot, 4);
+	gtk_widget_set_margin_bottom(foot, 4);
 	r->status = gtk_label_new("Not connected");
 	gtk_label_set_xalign(GTK_LABEL(r->status), 0);
+	gtk_widget_set_hexpand(r->status, TRUE);
 	gtk_widget_add_css_class(r->status, "dim-label");
-	gtk_widget_set_margin_start(r->status, 8);
-	gtk_widget_set_margin_top(r->status, 4);
-	gtk_widget_set_margin_bottom(r->status, 4);
-	gtk_box_append(GTK_BOX(box), r->status);
+	gtk_box_append(GTK_BOX(foot), r->status);
+	/* the kind of terminal: the far end is told it when connecting */
+	r->type = term_types_new(a->cfg.remote_term);
+	g_signal_connect(r->type, "notify::selected", G_CALLBACK(type_changed), r);
+	gtk_box_append(GTK_BOX(foot), r->type);
+	gtk_box_append(GTK_BOX(box), foot);
 	controls(r);
 	return box;
 }

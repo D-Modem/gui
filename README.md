@@ -15,6 +15,11 @@ behave the same.
   answering machine that takes messages on this computer when turned on (off by default)
 - **Terminal**: the AT console, and the modem's own setup screens (AT!CF, AT!CT)
 - **Remote**: log in to a server by SSH, Telnet or rlogin, in a terminal of its own
+- **Terminal types**: both terminals are the D-Modem app's emulator, ported to C:
+  xterm, DEC's VT52 to VT525, ANSI-BBS (with Avatar, RIPscrip and Amiga ANSI),
+  the Commodores' PETSCII, the Atari 8-bit's ATASCII and the ST, Viewdata,
+  the Minitel and the Tektronix 4014, with sixel, ReGIS and Tektronix
+  graphics, and each machine's own font (SyncTERM's copies of their ROMs)
 - **Settings**: every modem setting as a native control, from AT!M
 - **Call Stats**: the last call's rate, modulation, error control and line figures (AT#UD, ATI11)
 - **Line settings**: a SIP account, a USB modem, or a modem that already runs
@@ -22,8 +27,8 @@ behave the same.
 
 | | Windows | macOS | Linux |
 | --- | --- | --- | --- |
-| Toolkit | Win32, C++ | SwiftUI | GTK 4, libadwaita, VTE |
-| Runs on | Windows 95 and later | macOS 13 and later | GTK 4.10, libadwaita 1.5 and VTE 0.76 or later (Ubuntu 24.04, Fedora 40) |
+| Toolkit | Win32, C++ | SwiftUI | GTK 4, libadwaita |
+| Runs on | Windows 95 and later | macOS 13 and later | GTK 4.10 and libadwaita 1.5 or later (Ubuntu 24.04, Fedora 40) |
 
 <img src="docs/images/linux-settings.png" width="49%" alt="The Linux app's Settings page"> <img src="docs/images/windows-setup-screen.png" width="49%" alt="The Windows app's Terminal with the modem's setup screen">
 
@@ -33,8 +38,8 @@ behave the same.
 
 Linux:
 
-    sudo apt install cmake libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev \
-        libpulse-dev libsndfile1-dev
+    sudo apt install cmake libgtk-4-dev libadwaita-1-dev libpulse-dev \
+        libsndfile1-dev
     cmake -S . -B build && cmake --build build && ./build/linux/dmodem-gui
 
 Windows: `cmake -S . -B build -A Win32 && cmake --build build --config Release`,

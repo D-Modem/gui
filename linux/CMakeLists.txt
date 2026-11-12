@@ -1,4 +1,4 @@
-# The Linux (and BSD) app: GTK 4, libadwaita and VTE over libdmodemctl.
+# The Linux (and BSD) app: GTK 4 and libadwaita over libdmodemctl.
 add_executable(dmodem-gui
   src/main.c
   src/window.c
@@ -8,6 +8,7 @@ add_executable(dmodem-gui
   src/stats.c
   src/voice.c
   src/remote.c
+  src/termview.c
   src/audio.c)
 target_link_libraries(dmodem-gui PRIVATE dmodemctl PkgConfig::GTK)
 # the sound of voice calls: PulseAudio's client (PipeWire serves it

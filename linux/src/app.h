@@ -2,13 +2,12 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (C) 2026 D-Modem Authors
  *
- * app.h - the Linux app (GTK 4, libadwaita, VTE): what its parts share
+ * app.h - the Linux app (GTK 4, libadwaita): what its parts share
  */
 #ifndef DMODEM_GUI_APP_H
 #define DMODEM_GUI_APP_H
 
 #include <adwaita.h>
-#include <vte/vte.h>
 
 #include "dmodemctl.h"
 
@@ -34,6 +33,8 @@ typedef struct Config {
 	/* the Remote page's last login ([remote]): "SSH", "Telnet" or
 	   "rlogin", the server, its port (0: the protocol's), the user */
 	char *remote_proto, *remote_host, *remote_user;
+	/* the terminals' kinds (dmc_vt profiles' ids) */
+	char *term_type, *remote_term;
 	int remote_port;
 } Config;
 
@@ -64,7 +65,7 @@ struct App {
 	GtkWidget *status_icon, *status_title, *status_detail;
 	GtkWidget *number, *dial_btn, *answer_btn, *hangup_btn;
 	GtkWidget *run_row, *run_btn, *device_row, *copy_btn;
-	VteTerminal *term;
+	GtkWidget *term, *term_type;
 	GtkWidget *term_buttons;
 	AdwPreferencesPage *settings_page;
 	GPtrArray *settings_groups;
@@ -140,6 +141,25 @@ typedef void (*AudioPush)(App *a, const int16_t *pcm, int n);
 gboolean audio_start(App *a, AudioPull pull, AudioPush push);
 void audio_stop(App *a);
 gboolean audio_available(void);
+
+
+/* termview.c: a terminal widget of its own screen (dmc_vt), whose keys
+   go to fn */
+typedef void (*TermTypedFn)(const char *data, int n, void *ctx);
+GtkWidget *termview_new(TermTypedFn fn, void *ctx);
+/* bytes from the far end */
+void termview_feed(GtkWidget *w, const char *data, int n);
+void termview_reset(GtkWidget *w);
+void termview_size(GtkWidget *w, int *cols, int *rows);
+/* what Backspace sends (DEL unless set) */
+void termview_set_backspace(GtkWidget *w, int code);
+/* the kind of terminal it is (dmc_vt_set_profile()'s id) */
+void termview_set_profile(GtkWidget *w, const char *id);
+const char *termview_profile(GtkWidget *w);
+void termview_focus(GtkWidget *w);
+/* a drop-down of the kinds of terminal, id chosen; the one chosen */
+GtkWidget *term_types_new(const char *id);
+const char *term_types_chosen(GtkWidget *d);
 
 /* remote.c: the Remote page, a login by SSH, Telnet or rlogin */
 GtkWidget *remote_page_new(App *a);
