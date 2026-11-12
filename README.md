@@ -14,7 +14,7 @@ behave the same.
 - **Phone**: voice calls through the sound card (dial, answer, keypad), and an
   answering machine that takes messages on this computer when turned on (off by default)
 - **Terminal**: the AT console, and the modem's own setup screens (AT!CF, AT!CT)
-- **Remote**: log in to a server by SSH, Telnet or rlogin, in a terminal of its own
+- **Remote**: log in to a server by SSH (built in, on libssh: OpenSSH's keys, agent, config and known hosts), Telnet or rlogin, in a terminal of its own
 - **Terminal types**: both terminals are the D-Modem app's emulator, ported to C:
   xterm, DEC's VT52 to VT525, ANSI-BBS (with Avatar, RIPscrip and Amiga ANSI),
   the Commodores' PETSCII, the Atari 8-bit's ATASCII and the ST, Viewdata,
@@ -46,7 +46,11 @@ Linux:
 Windows: `cmake -S . -B build -A Win32 && cmake --build build --config Release`,
 or for Windows 95 and later, `windows/build-watcom.sh` with Open Watcom 2.0.
 
-macOS: `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
+macOS: `cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build`
+(libssh, for SSH), then `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
+
+The first CMake build downloads libssh and mbedTLS for SSH (Windows and
+macOS always; Linux when the system's libssh is older than 0.11).
 
 The Settings page needs a dmodemd with AT!M (D-Modem's main branch since
 D-Modem/D-Modem#103); the other pages work with any D-Modem 1.0.

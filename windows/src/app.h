@@ -106,6 +106,8 @@ void link_wait(int tag, ResponseFn fn, void *data);
 #define TIMER_VOICE 2
 #define WM_APP_REMOTE (WM_APP + 2)
 #define TIMER_REMOTE 3
+/* an event of the Remote page's SSH connection, from its thread */
+#define WM_APP_SSH (WM_APP + 3)
 
 /* main.cpp */
 void app_log(const char *line);
@@ -159,6 +161,8 @@ void remote_page_layout(HWND page, int w, int h);
 /* its socket's messages (WM_APP_REMOTE) and its timer (TIMER_REMOTE) */
 void remote_socket(WPARAM w, LPARAM l);
 void remote_tick();
+/* an SSH event (WM_APP_SSH's lParam) */
+void remote_ssh(LPARAM l);
 /* the focus to its first control */
 bool remote_focus();
 void remote_stop();

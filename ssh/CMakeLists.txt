@@ -1,0 +1,45 @@
+# libdmodemssh: D-Modem's SSH client (dmodemssh.h), on libssh 0.11.
+# The system's libssh when it is 0.11 or later (and
+# -DDMODEM_SSH_BUNDLED=OFF), else libssh and mbedTLS built here from
+# their release tarballs: always for the Windows and macOS apps, which
+# ship no libraries of the system's.
+if(WIN32 OR APPLE)
+  set(_bundled ON)
+else()
+  set(_bundled AUTO)
+endif()
+set(DMODEM_SSH_BUNDLED ${_bundled} CACHE STRING "Build libssh and mbedTLS from source (ON, OFF, AUTO: when the system's is older than 0.11)")
+
+if(NOT DMODEM_SSH_BUNDLED STREQUAL "ON")
+  find_package(PkgConfig)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(LIBSSH IMPORTED_TARGET libssh>=0.11)
+  endif()
+endif()
+if(LIBSSH_FOUND)
+  add_library(dmodem_libssh INTERFACE)
+  target_link_libraries(dmodem_libssh INTERFACE PkgConfig::LIBSSH)
+elseif(DMODEM_SSH_BUNDLED STREQUAL "OFF")
+  message(FATAL_ERROR "libssh 0.11 or later not found (or -DDMODEM_SSH_BUNDLED=AUTO)")
+else()
+  include(${CMAKE_CURRENT_LIST_DIR}/cmake/BundledLibssh.cmake)
+endif()
+
+add_library(dmodemssh STATIC src/dmodemssh.c)
+target_include_directories(dmodemssh PUBLIC include)
+target_link_libraries(dmodemssh PUBLIC dmodem_libssh)
+if(WIN32)
+  target_link_libraries(dmodemssh PUBLIC ws2_32)
+elseif(UNIX)
+  find_package(Threads REQUIRED)
+  target_link_libraries(dmodemssh PUBLIC Threads::Threads)
+endif()
+if(MSVC)
+  target_compile_options(dmodemssh PRIVATE /W4 /wd4996)
+else()
+  target_compile_options(dmodemssh PRIVATE -Wall -Wextra -Wshadow)
+endif()
+
+add_executable(dmodemssh_test test/dmodemssh_test.c)
+target_link_libraries(dmodemssh_test PRIVATE dmodemssh)
+add_test(NAME dmodemssh COMMAND dmodemssh_test)

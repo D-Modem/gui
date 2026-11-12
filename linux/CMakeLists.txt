@@ -1,4 +1,5 @@
-# The Linux (and BSD) app: GTK 4 and libadwaita over libdmodemctl.
+# The Linux (and BSD) app: GTK 4 and libadwaita over libdmodemctl
+# (and libdmodemssh for the Remote page's SSH).
 add_executable(dmodem-gui
   src/main.c
   src/window.c
@@ -10,7 +11,7 @@ add_executable(dmodem-gui
   src/remote.c
   src/termview.c
   src/audio.c)
-target_link_libraries(dmodem-gui PRIVATE dmodemctl PkgConfig::GTK)
+target_link_libraries(dmodem-gui PRIVATE dmodemctl dmodemssh PkgConfig::GTK)
 # the sound of voice calls: PulseAudio's client (PipeWire serves it
 # too); without it the app has no sound
 pkg_check_modules(PULSE IMPORTED_TARGET libpulse-mainloop-glib)
@@ -28,13 +29,6 @@ if(SNDFILE_FOUND)
   target_compile_definitions(dmodem-gui PRIVATE HAVE_SNDFILE)
 else()
   message(STATUS "libsndfile not found: greetings are read from WAV, AIFF and .au files only")
-endif()
-# forkpty(), for the Remote page's ssh: in libutil on the BSDs and older
-# glibc, in libc itself since glibc 2.34
-include(CheckFunctionExists)
-check_function_exists(forkpty HAVE_FORKPTY_IN_LIBC)
-if(NOT HAVE_FORKPTY_IN_LIBC)
-  target_link_libraries(dmodem-gui PRIVATE util)
 endif()
 target_compile_options(dmodem-gui PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
