@@ -63,16 +63,19 @@ if(ANDROID)
   list(APPEND _ssh_args -DCMAKE_C_FLAGS=-DS_IWRITE=S_IWUSR)
 endif()
 
+# (WITH_SERVER: libssh runs a client's callbacks for the channels the
+# server opens, the forwarded agent's, only when it's built with it)
 ExternalProject_Add(dmodem_libssh_build
   URL ${DMODEM_LIBSSH_URL}
   URL_HASH SHA256=${DMODEM_LIBSSH_SHA256}
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   DEPENDS dmodem_mbedtls
+  PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/PatchLibssh.cmake
   LIST_SEPARATOR |
   CMAKE_ARGS ${_args} ${_ssh_args} -DBUILD_SHARED_LIBS=OFF
              -DWITH_MBEDTLS=ON -DMBEDTLS_ROOT_DIR=${_prefix}
              -DCMAKE_PREFIX_PATH=${_prefix} -DCMAKE_FIND_ROOT_PATH=${_prefix}
-             -DWITH_ZLIB=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=OFF
+             -DWITH_ZLIB=OFF -DWITH_GSSAPI=OFF -DWITH_SERVER=ON
              -DWITH_EXAMPLES=OFF -DUNIT_TESTING=OFF -DCLIENT_TESTING=OFF
              -DWITH_NACL=OFF -DWITH_SYMBOL_VERSIONING=OFF
   BUILD_BYPRODUCTS ${_prefix}/lib/${_ssh_lib})

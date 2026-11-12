@@ -336,6 +336,7 @@ static void test_live(const char *spec)
 		test_key_login(key);
 }
 
+/* the key tests, then the live ones when DMODEM_SSH_TEST names a server */
 int main(void)
 {
 	const char *spec = getenv("DMODEM_SSH_TEST");

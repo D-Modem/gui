@@ -27,6 +27,7 @@ typedef CRITICAL_SECTION lock_t;
 #define LOCK_FREE(l) DeleteCriticalSection(l)
 #define LOCK(l) EnterCriticalSection(l)
 #define UNLOCK(l) LeaveCriticalSection(l)
+/* ms milliseconds slept */
 static void nap(int ms) { Sleep((DWORD)ms); }
 #else
 #include <pthread.h>
@@ -37,6 +38,7 @@ typedef pthread_mutex_t lock_t;
 #define LOCK_FREE(l) pthread_mutex_destroy(l)
 #define LOCK(l) pthread_mutex_lock(l)
 #define UNLOCK(l) pthread_mutex_unlock(l)
+/* ms milliseconds slept */
 static void nap(int ms)
 {
 	struct timespec t = { ms / 1000, (long)(ms % 1000) * 1000000L };
@@ -289,6 +291,7 @@ static void init_once(void)
 	}
 }
 
+/* a connection to make to user@host:port (nothing done until polled) */
 dmc_ssh *dmc_ssh_new(const char *host, int port, const char *user)
 {
 	dmc_ssh *s;
@@ -323,6 +326,7 @@ dmc_ssh *dmc_ssh_new(const char *host, int port, const char *user)
 	return s;
 }
 
+/* the connection dropped (if it's up) and freed */
 void dmc_ssh_free(dmc_ssh *s)
 {
 	int i;
@@ -358,6 +362,11 @@ void dmc_ssh_free(dmc_ssh *s)
 	free(s);
 }
 
+/* an option, before the first poll: 0, or -1 if it's not one. "config"
+   OpenSSH's config read (a path; "" its own ~/.ssh/config)
+   "knownhosts"  the host's key looked up there (a path; "" OpenSSH's)
+   "hostkeys"    the host key algorithms, in order (a list with commas)
+   "timeout"     seconds to connect in "compression" "yes" or "no" */
 int dmc_ssh_option(dmc_ssh *s, const char *name, const char *value)
 {
 	int r = -1;
@@ -824,6 +833,9 @@ static void wait_socket(socket_t fd, int ms)
 	select((int)fd + 1, &r, NULL, NULL, &t);
 }
 
+/* the next event: 1 (in *ev), 0 when timeout_ms passed with none, -1
+   when the connection is over and its DMC_SSH_EV_CLOSED was handed
+   back */
 int dmc_ssh_poll(dmc_ssh *s, int timeout_ms, dmc_ssh_event *ev)
 {
 	int waited = 0;
@@ -872,6 +884,8 @@ int dmc_ssh_poll(dmc_ssh *s, int timeout_ms, dmc_ssh_event *ev)
 	}
 }
 
+/* the connection closed by the user: a DMC_SSH_EV_CLOSED with NULL
+   comes */
 void dmc_ssh_disconnect(dmc_ssh *s)
 {
 	LOCK(&s->lock);
@@ -882,6 +896,8 @@ void dmc_ssh_disconnect(dmc_ssh *s)
 
 /* -- the login -- */
 
+/* the server's key: trusted (ok) or not; remember: added to
+   known_hosts */
 void dmc_ssh_trust(dmc_ssh *s, int ok, int remember)
 {
 	LOCK(&s->lock);
@@ -897,6 +913,7 @@ static void choose(dmc_ssh *s, int how)
 		s->login = how;
 }
 
+/* a login tried (an answer to DMC_SSH_EV_AUTH) */
 void dmc_ssh_auth_password(dmc_ssh *s, const char *password)
 {
 	LOCK(&s->lock);
@@ -908,6 +925,8 @@ void dmc_ssh_auth_password(dmc_ssh *s, const char *password)
 	UNLOCK(&s->lock);
 }
 
+/* by a private key's text (OpenSSH's, PEM): 0, or -1 when it can't be
+   read with that passphrase (nothing is tried: answer again) */
 int dmc_ssh_auth_key(dmc_ssh *s, const char *key, const char *passphrase)
 {
 	ssh_key k = NULL;
@@ -929,6 +948,7 @@ int dmc_ssh_auth_key(dmc_ssh *s, const char *key, const char *passphrase)
 	return 0;
 }
 
+/* by the system's agent (SSH_AUTH_SOCK) */
 void dmc_ssh_auth_agent(dmc_ssh *s)
 {
 	LOCK(&s->lock);
@@ -936,6 +956,8 @@ void dmc_ssh_auth_agent(dmc_ssh *s)
 	UNLOCK(&s->lock);
 }
 
+/* as OpenSSH's ssh does: the agent, then ~/.ssh's keys with no
+   passphrase */
 void dmc_ssh_auth_auto(dmc_ssh *s)
 {
 	LOCK(&s->lock);
@@ -943,6 +965,7 @@ void dmc_ssh_auth_auto(dmc_ssh *s)
 	UNLOCK(&s->lock);
 }
 
+/* by the server's questions (keyboard-interactive) */
 void dmc_ssh_auth_interactive(dmc_ssh *s)
 {
 	LOCK(&s->lock);
@@ -950,6 +973,7 @@ void dmc_ssh_auth_interactive(dmc_ssh *s)
 	UNLOCK(&s->lock);
 }
 
+/* no more tries: the connection closes, "not logged in" */
 void dmc_ssh_auth_cancel(dmc_ssh *s)
 {
 	LOCK(&s->lock);
@@ -958,6 +982,7 @@ void dmc_ssh_auth_cancel(dmc_ssh *s)
 	UNLOCK(&s->lock);
 }
 
+/* a DMC_SSH_EV_PROMPTS round's instruction */
 const char *dmc_ssh_instruction(dmc_ssh *s)
 {
 	const char *r;
@@ -968,6 +993,8 @@ const char *dmc_ssh_instruction(dmc_ssh *s)
 	return r ? r : "";
 }
 
+/* a DMC_SSH_EV_PROMPTS round: its instruction, and question i (*echo:
+   whether the answer may be shown) */
 const char *dmc_ssh_prompt(dmc_ssh *s, int i, int *echo)
 {
 	const char *r = NULL;
@@ -982,6 +1009,7 @@ const char *dmc_ssh_prompt(dmc_ssh *s, int i, int *echo)
 	return r ? r : "";
 }
 
+/* question i's answer, for the round's dmc_ssh_answered() */
 void dmc_ssh_answer(dmc_ssh *s, int i, const char *answer)
 {
 	LOCK(&s->lock);
@@ -990,6 +1018,7 @@ void dmc_ssh_answer(dmc_ssh *s, int i, const char *answer)
 	UNLOCK(&s->lock);
 }
 
+/* the round's answers sent */
 void dmc_ssh_answered(dmc_ssh *s)
 {
 	LOCK(&s->lock);
@@ -1000,6 +1029,7 @@ void dmc_ssh_answered(dmc_ssh *s)
 
 /* -- channels -- */
 
+/* a shell on a pty of term in the given size; agent: ssh -A asked */
 int dmc_ssh_shell(dmc_ssh *s, const char *term, int cols, int rows, int agent)
 {
 	int n;
@@ -1018,6 +1048,7 @@ int dmc_ssh_shell(dmc_ssh *s, const char *term, int cols, int rows, int agent)
 	return n;
 }
 
+/* a command run, with no pty; agent: ssh -A asked */
 int dmc_ssh_exec(dmc_ssh *s, const char *command, int agent)
 {
 	int n;
@@ -1033,6 +1064,8 @@ int dmc_ssh_exec(dmc_ssh *s, const char *command, int agent)
 	return n;
 }
 
+/* a TCP connection made from the server to host:port (ssh -L, -D), for
+   a connection that came from from_host:from_port */
 int dmc_ssh_direct(dmc_ssh *s, const char *host, int port,
 		   const char *from_host, int from_port)
 {
@@ -1052,6 +1085,9 @@ int dmc_ssh_direct(dmc_ssh *s, const char *host, int port,
 	return n;
 }
 
+/* the server asked to listen on address:port (ssh -R; NULL: its
+   default, 0: a port it picks): a request's number, answered by a
+   DMC_SSH_EV_LISTEN; its connections come as DMC_SSH_EV_INCOMING */
 int dmc_ssh_listen(dmc_ssh *s, const char *address, int port)
 {
 	int i, id = -1;
@@ -1073,6 +1109,7 @@ int dmc_ssh_listen(dmc_ssh *s, const char *address, int port)
 	return id;
 }
 
+/* that listen stopped */
 void dmc_ssh_unlisten(dmc_ssh *s, const char *address, int port)
 {
 	int i;
@@ -1097,6 +1134,9 @@ void dmc_ssh_unlisten(dmc_ssh *s, const char *address, int port)
 	UNLOCK(&s->lock);
 }
 
+/* data to a channel (kept until the server can take it): how many
+   bytes are still kept (0 when all went; len 0 asks), or -1 if the
+   channel isn't open */
 int dmc_ssh_write(dmc_ssh *s, int channel, const char *data, int len)
 {
 	chan_t *c;
@@ -1113,6 +1153,7 @@ int dmc_ssh_write(dmc_ssh *s, int channel, const char *data, int len)
 	return r;
 }
 
+/* the channel's end of data sent */
 void dmc_ssh_eof(dmc_ssh *s, int channel)
 {
 	chan_t *c;
@@ -1126,6 +1167,7 @@ void dmc_ssh_eof(dmc_ssh *s, int channel)
 	UNLOCK(&s->lock);
 }
 
+/* the channel closed (a DMC_SSH_EV_CLOSE comes) */
 void dmc_ssh_close(dmc_ssh *s, int channel)
 {
 	chan_t *c;
@@ -1141,6 +1183,7 @@ void dmc_ssh_close(dmc_ssh *s, int channel)
 	UNLOCK(&s->lock);
 }
 
+/* a shell's pty resized */
 void dmc_ssh_resize(dmc_ssh *s, int channel, int cols, int rows)
 {
 	chan_t *c;
@@ -1175,6 +1218,8 @@ static char *pub_line(ssh_key k)
 	return r;
 }
 
+/* OpenSSH's SHA256 fingerprint of a key's OpenSSH line ("SHA256:..."),
+   into buf: 0, or -1 if it isn't a key */
 int dmc_ssh_fingerprint(const char *keyline, char *buf, int max)
 {
 	char type[64], *b64;
@@ -1225,6 +1270,10 @@ static int export_key(ssh_key k, const char *passphrase, char **out)
 	return *out ? 0 : -1;
 }
 
+/* a new key ("ed25519", "ecdsa" with bits 256, 384 or 521, "rsa" with
+   bits): its private text (OpenSSH's, encrypted with passphrase unless
+   it's NULL or "") and its public line, both to free with
+   dmc_ssh_free_string(): 0, or -1 */
 int dmc_ssh_keygen(const char *type, int bits, const char *passphrase,
 		   char **private_key, char **public_key)
 {
@@ -1261,6 +1310,8 @@ int dmc_ssh_keygen(const char *type, int bits, const char *passphrase,
 	return r;
 }
 
+/* a private key's public line: 0, or -1 if it can't be read with that
+   passphrase */
 int dmc_ssh_key_public(const char *key, const char *passphrase, char **public_key)
 {
 	ssh_key k = NULL;
@@ -1275,6 +1326,8 @@ int dmc_ssh_key_public(const char *key, const char *passphrase, char **public_ke
 	return *public_key ? 0 : -1;
 }
 
+/* a private key written again (OpenSSH's form) with a new passphrase
+   (NULL or "": none): 0, or -1 */
 int dmc_ssh_key_export(const char *key, const char *passphrase,
 		       const char *new_passphrase, char **out)
 {
@@ -1291,6 +1344,7 @@ int dmc_ssh_key_export(const char *key, const char *passphrase,
 	return r;
 }
 
+/* a string these functions gave, freed */
 void dmc_ssh_free_string(char *str)
 {
 	free(str);
