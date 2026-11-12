@@ -712,7 +712,7 @@ static const struct vt_font *alpha_font(struct regis *g, int n)
 	struct vt_font *f;
 	if (a->font)
 		return a->font;
-	if (!a->n)
+	if (a->n <= 0)
 		return NULL;
 	for (i = 0; i < a->n; i++) {
 		if (a->g[i].nrows > h)
@@ -725,7 +725,8 @@ static const struct vt_font *alpha_font(struct regis *g, int n)
 		width += 8;
 	f = (struct vt_font *)calloc(1, sizeof(*f));
 	a->codes = (uint32_t *)malloc(sizeof(uint32_t) * (size_t)a->n);
-	a->rows = (uint32_t *)calloc((size_t)a->n * h, sizeof(uint32_t));
+	a->rows = (uint32_t *)calloc((size_t)a->n * (size_t)(h > 0 ? h : 1),
+				      sizeof(uint32_t));
 	if (!f || !a->codes || !a->rows) {
 		free(f);
 		free(a->codes);

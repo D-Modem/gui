@@ -20,8 +20,8 @@
 #include "app.h"
 #include "resource.h"
 
-static HWND page, view, proto_box, host_ed, port_ed, user_ed, go_btn,
-	status_txt;
+static HWND page, view, type_box, proto_box, host_ed, port_ed, user_ed,
+	go_btn, status_txt;
 
 /* the protocols in the list's order */
 static const int protos[] = { DMC_NET_SSH, DMC_NET_TELNET, DMC_NET_RLOGIN };
@@ -399,7 +399,8 @@ static bool start_ssh(const char *host, int port, const char *user)
 	cmd[sizeof(cmd) - 1] = '\0';
 	PROCESS_INFORMATION pi;
 	memset(&pi, 0, sizeof(pi));
-	SetEnvironmentVariable("TERM", "xterm");
+	SetEnvironmentVariable("TERM",
+			       dmc_vt_profile_term(termview_profile(view)));
 	if (ok)
 		ok = CreateProcess(NULL, cmd, NULL, NULL, FALSE,
 				   EXTENDED_STARTUPINFO_PRESENT, NULL, NULL,
@@ -437,7 +438,11 @@ static bool start_socket(int proto, const char *host, int port,
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == INVALID_SOCKET)
 		return false;
-	net = dmc_net_new(proto, user, "ansi", cols, rows);
+	/* (Telnet's TERMINAL-TYPE, rlogin's TERM) */
+	const char *type = termview_profile(view);
+	net = dmc_net_new(proto, user, proto == DMC_NET_TELNET ?
+			  dmc_vt_profile_telnet(type) :
+			  dmc_vt_profile_term(type), cols, rows);
 	sock_open = false;
 	WSAAsyncSelect(sock, app.main, WM_APP_REMOTE,
 		       FD_CONNECT | FD_READ | FD_WRITE | FD_CLOSE | FD_OOB);
@@ -494,6 +499,8 @@ static void connect_clicked()
 	WritePrivateProfileString("remote", "host", host, path);
 	WritePrivateProfileString("remote", "port", pt, path);
 	WritePrivateProfileString("remote", "user", user, path);
+	WritePrivateProfileString("remote", "terminal", termview_profile(view),
+				  path);
 
 	termview_reset(view);
 	termview_size(view, &cols, &rows);
@@ -544,6 +551,11 @@ static void remote_command(HWND p, int id, int code)
 		if (code == CBN_SELCHANGE)
 			proto_changed();
 		break;
+	case IDC_R_TYPE:
+		/* (the far end was told the type it had when it connected) */
+		if (code == CBN_SELCHANGE)
+			termview_set_profile(view, term_types_chosen(type_box));
+		break;
 	}
 }
 
@@ -569,6 +581,9 @@ HWND remote_page_new(HWND parent)
 	view = termview_new(page, IDC_R_TERM, typed, NULL);
 	status_txt = make_child("STATIC", "Not connected", SS_LEFTNOWORDWRAP,
 				page, IDC_R_STATUS);
+	make_child("STATIC", "&Terminal:", SS_RIGHT, page, IDC_R_TYPELABEL);
+	type_box = make_child("COMBOBOX", "", WS_TABSTOP | CBS_DROPDOWNLIST |
+			      WS_VSCROLL, page, IDC_R_TYPE);
 
 	/* what was used last */
 	char path[MAX_PATH], v[256];
@@ -585,6 +600,10 @@ HWND remote_page_new(HWND parent)
 	SetWindowText(port_ed, v);
 	GetPrivateProfileString("remote", "user", "", v, sizeof(v), path);
 	SetWindowText(user_ed, v);
+	GetPrivateProfileString("remote", "terminal", "xterm", v, sizeof(v),
+				path);
+	term_types_fill(type_box, v);
+	termview_set_profile(view, term_types_chosen(type_box));
 	proto_changed();
 	controls();
 	return page;
@@ -610,8 +629,13 @@ void remote_page_layout(HWND p, int w, int h)
 	x += 40;
 	MoveWindow(user_ed, x, m, 96, bh, TRUE);
 	MoveWindow(go_btn, w - m - 90, m, 90, bh, TRUE);
-	MoveWindow(view, m, 2 * m + bh, w - 2 * m, h - 4 * m - 2 * bh + 6, TRUE);
-	MoveWindow(status_txt, m, h - m - bh + 6, w - 2 * m, bh - 6, TRUE);
+	MoveWindow(view, m, 2 * m + bh, w - 2 * m, h - 4 * m - 2 * bh, TRUE);
+	int tw = 200;
+	MoveWindow(status_txt, m, h - m - bh + 4, w - 3 * m - tw - 64, bh - 4,
+		   TRUE);
+	MoveWindow(GetDlgItem(p, IDC_R_TYPELABEL), w - m - tw - 64, h - m - bh + 4,
+		   60, bh - 4, TRUE);
+	MoveWindow(type_box, w - m - tw, h - m - bh, tw, 300, TRUE);
 }
 
 bool remote_focus()

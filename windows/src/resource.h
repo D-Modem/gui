@@ -38,6 +38,8 @@
 #define IDC_SETUP_CF    501
 #define IDC_SETUP_CT    502
 #define IDC_CLEAR       503
+#define IDC_TERM_TYPELABEL 504
+#define IDC_TERM_TYPE   505
 
 /* the Remote page */
 #define IDC_R_PROTO     1100
@@ -50,6 +52,8 @@
 #define IDC_R_GO        1107
 #define IDC_R_TERM      1108
 #define IDC_R_STATUS    1109
+#define IDC_R_TYPELABEL 1110
+#define IDC_R_TYPE      1111
 
 /* the Settings page */
 #define IDC_GROUPS      600

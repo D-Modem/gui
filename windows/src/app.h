@@ -146,6 +146,12 @@ void termview_reset(HWND w);
 void termview_size(HWND w, int *cols, int *rows);
 /* what Backspace sends (DEL unless set) */
 void termview_set_backspace(HWND w, char b);
+/* the kind of terminal it is (dmc_vt_set_profile()'s id) */
+void termview_set_profile(HWND w, const char *id);
+const char *termview_profile(HWND w);
+/* a combo box of the kinds of terminal, id chosen; the one chosen */
+void term_types_fill(HWND combo, const char *id);
+const char *term_types_chosen(HWND combo);
 
 /* remote.cpp: the Remote page, a login by SSH, Telnet or rlogin */
 HWND remote_page_new(HWND parent);
