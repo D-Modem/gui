@@ -2,8 +2,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (C) 2026 D-Modem Authors
  *
- * main.cpp - the main window: a tab for each page (Modem, Terminal,
- *            Settings, Call Stats, Log, as the macOS and Linux apps
+ * main.cpp - the main window: a tab for each page (Modem, Phone,
+ *            Terminal, Remote, Settings, Call Stats, Log, as the macOS
+ *            and Linux apps
  *            have them) and a status bar
  */
 #include <stdio.h>
@@ -16,10 +17,11 @@ App app;
 
 static HWND status_bar;
 
-enum { PAGE_MODEM, PAGE_PHONE, PAGE_TERM, PAGE_SETTINGS, PAGE_STATS,
-       PAGE_LOG, PAGES };
+enum { PAGE_MODEM, PAGE_PHONE, PAGE_TERM, PAGE_REMOTE, PAGE_SETTINGS,
+       PAGE_STATS, PAGE_LOG, PAGES };
 static const char *const page_names[PAGES] = {
-	"Modem", "Phone", "Terminal", "Settings", "Call Stats", "Log"
+	"Modem", "Phone", "Terminal", "Remote", "Settings", "Call Stats",
+	"Log"
 };
 
 HWND make_child(const char *cls, const char *text, DWORD style, HWND parent,
@@ -177,6 +179,8 @@ static void show_page(int i)
 		ShowWindow(app.pages[p], p == i ? SW_SHOW : SW_HIDE);
 	if (i == PAGE_TERM)
 		SetFocus(GetWindow(app.pages[i], GW_CHILD));
+	else if (i == PAGE_REMOTE)
+		remote_focus();
 }
 
 static void layout()
@@ -199,6 +203,7 @@ static void layout()
 	modem_page_layout(app.pages[PAGE_MODEM], w, h);
 	voice_page_layout(app.pages[PAGE_PHONE], w, h);
 	term_page_layout(app.pages[PAGE_TERM], w, h);
+	remote_page_layout(app.pages[PAGE_REMOTE], w, h);
 	settings_page_layout(app.pages[PAGE_SETTINGS], w, h);
 	stats_page_layout(app.pages[PAGE_STATS], w, h);
 	log_page_layout(app.pages[PAGE_LOG], w, h);
@@ -233,6 +238,7 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		app.pages[PAGE_MODEM] = modem_page_new(w);
 		app.pages[PAGE_PHONE] = voice_page_new(w);
 		app.pages[PAGE_TERM] = term_page_new(w);
+		app.pages[PAGE_REMOTE] = remote_page_new(w);
 		app.pages[PAGE_SETTINGS] = settings_page_new(w);
 		app.pages[PAGE_STATS] = stats_page_new(w);
 		app.pages[PAGE_LOG] = log_page_new(w);
@@ -284,14 +290,20 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 	case WM_TIMER:
 		if (wp == TIMER_PUMP || wp == TIMER_VOICE)
 			link_pump();
+		else if (wp == TIMER_REMOTE)
+			remote_tick();
 		return 0;
 	case WM_APP_SOCKET:
 		link_socket(wp, lp);
+		return 0;
+	case WM_APP_REMOTE:
+		remote_socket(wp, lp);
 		return 0;
 	case WM_DESTROY:
 		KillTimer(w, TIMER_PUMP);
 		KillTimer(w, TIMER_VOICE);
 		audio_stop();
+		remote_stop();
 		if (link_running())
 			link_stop();
 		PostQuitMessage(0);

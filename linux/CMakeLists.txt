@@ -7,6 +7,7 @@ add_executable(dmodem-gui
   src/settings.c
   src/stats.c
   src/voice.c
+  src/remote.c
   src/audio.c)
 target_link_libraries(dmodem-gui PRIVATE dmodemctl PkgConfig::GTK)
 # the sound of voice calls: PulseAudio's client (PipeWire serves it
@@ -26,6 +27,13 @@ if(SNDFILE_FOUND)
   target_compile_definitions(dmodem-gui PRIVATE HAVE_SNDFILE)
 else()
   message(STATUS "libsndfile not found: greetings are read from WAV, AIFF and .au files only")
+endif()
+# forkpty(), for the Remote page's ssh: in libutil on the BSDs and older
+# glibc, in libc itself since glibc 2.34
+include(CheckFunctionExists)
+check_function_exists(forkpty HAVE_FORKPTY_IN_LIBC)
+if(NOT HAVE_FORKPTY_IN_LIBC)
+  target_link_libraries(dmodem-gui PRIVATE util)
 endif()
 target_compile_options(dmodem-gui PRIVATE -Wall -Wextra -Wno-unused-parameter)
 

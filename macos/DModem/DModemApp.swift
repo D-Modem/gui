@@ -9,14 +9,19 @@ import SwiftUI
 struct DModemApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var modem = Modem()
+    @StateObject private var remote = RemoteSession()
 
     var body: some Scene {
         Window("D-Modem", id: "main") {
             ContentView()
                 .environmentObject(modem)
                 .environmentObject(modem.voice)
+                .environmentObject(remote)
                 .frame(minWidth: 760, minHeight: 520)
-                .onAppear { delegate.modem = modem }
+                .onAppear {
+                    delegate.modem = modem
+                    delegate.remote = remote
+                }
         }
         .commands {
             CommandMenu("Modem") {
@@ -41,12 +46,14 @@ struct DModemApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var modem: Modem?
+    weak var remote: RemoteSession?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool {
         true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        remote?.stop()
         modem?.stop()
     }
 }

@@ -5,3 +5,4 @@
  * Bridging.h - libdmodemctl, for Swift
  */
 #include "dmodemctl.h"
+#include "PtySpawn.h"

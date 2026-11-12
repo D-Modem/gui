@@ -11,6 +11,8 @@ add_executable(dmodem WIN32
   src/config.cpp
   src/voice.cpp
   src/audio.cpp
+  src/termview.cpp
+  src/remote.cpp
   res/app.rc)
 target_include_directories(dmodem PRIVATE src)
 target_link_libraries(dmodem PRIVATE dmodemctl comctl32 wsock32 comdlg32 gdi32 winmm msacm32)
