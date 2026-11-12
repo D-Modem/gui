@@ -73,6 +73,14 @@ final class Modem: ObservableObject {
 
     /// bumped when the terminal screen changed, to draw it again
     @Published private(set) var screenVersion = 0
+    /// the Terminal page's kind of terminal (a dmc_vt profile's id)
+    @Published var terminalType = UserDefaults.standard.string(forKey: "terminalType") ?? "xterm" {
+        didSet {
+            dmc_vt_set_profile(vt, terminalType)
+            UserDefaults.standard.set(terminalType, forKey: "terminalType")
+            screenVersion += 1
+        }
+    }
 
     let session: OpaquePointer
     let vt: OpaquePointer
@@ -92,6 +100,10 @@ final class Modem: ObservableObject {
     init() {
         session = dmc_session_new()
         vt = dmc_vt_new(80, 24, 2000)
+        // (the modem takes S5, a backspace, not DEL)
+        dmc_vt_set_backspace(vt, 0x08)
+        dmc_vt_set_theme(vt, 0xe8f0ff, 0x0a0f1c, 0xe8f0ff, nil)
+        dmc_vt_set_profile(vt, terminalType)
         voice.modem = self
         voice.configure()
         let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
@@ -228,12 +240,6 @@ final class Modem: ObservableObject {
 
     func type(_ text: String) { type(Array(text.utf8)) }
 
-    func key(_ k: Int) {
-        var buf = [CChar](repeating: 0, count: 16)
-        let n = dmc_vt_key(vt, Int32(k), &buf, Int32(buf.count))
-        if n > 0 { type(buf[0..<Int(n)].map { UInt8(bitPattern: $0) }) }
-    }
-
     func clearScreen() {
         dmc_vt_reset(vt)
         screenVersion += 1
@@ -271,6 +277,7 @@ final class Modem: ObservableObject {
                 if k <= 0 { break }
                 dmc_type(session, reply, k)
             }
+            TerminalTypes.afterFeed(vt)
         }
         if dmc_vt_changed(vt) != 0 { screenVersion += 1 }
         var ev = dmc_event()

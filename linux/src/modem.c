@@ -71,7 +71,7 @@ void modem_pump(App *a)
 		g_byte_array_append(a->pending, (guint8 *)buf, (guint)n);
 	flush(a);
 	while ((n = dmc_terminal(a->s, buf, sizeof(buf))) > 0)
-		vte_terminal_feed(a->term, buf, n);
+		termview_feed(a->term, buf, (int)n);
 	dmc_event ev;
 	while (dmc_next_event(a->s, &ev)) {
 		if (ev.type == DMC_EV_RESPONSE) {
