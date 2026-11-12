@@ -33,7 +33,19 @@ jobs:
           cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
           cmake --build build-asan --target dmodemctl_test
-          ctest --test-dir build-asan --output-on-failure
+          ctest --test-dir build-asan --output-on-failure -R dmodemctl
+      - name: SSH against a real sshd
+        run: |
+          sudo apt-get install -y --no-install-recommends openssh-server
+          sudo useradd -m dmtest
+          echo 'dmtest:Sesame-42' | sudo chpasswd
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/key"
+          sudo install -d -m 700 -o dmtest ~dmtest/.ssh
+          sudo install -m 600 -o dmtest "$RUNNER_TEMP/key.pub" ~dmtest/.ssh/authorized_keys
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -p 2222 -o ListenAddress=127.0.0.1 -o PasswordAuthentication=yes
+          DMODEM_SSH_TEST=127.0.0.1:2222:dmtest:Sesame-42 DMODEM_SSH_TEST_KEY="$RUNNER_TEMP/key" \
+            build/ssh/dmodemssh_test
 
   windows-9x:
     name: Windows 95 and later (Open Watcom)
@@ -73,7 +85,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Library tests
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
           cmake --build build
           ctest --test-dir build --output-on-failure
       - name: Project

@@ -70,14 +70,36 @@ Linux and macOS; a TCP address or a COM port on Windows.
 The Remote page logs in to a server, beside the modem, in a terminal of
 its own. Telnet and rlogin are a TCP connection each app makes in its own
 way, with libdmodemctl's `dmc_net` for the protocol (sans-I/O, as the
-session). SSH is the system's OpenSSH client, so that the user's keys,
-agent, `known_hosts` and `~/.ssh/config` apply:
+session). SSH is libdmodemssh (`ssh/`), D-Modem's own client on libssh
+0.11, the same engine the Android and iOS apps use, so that SSH is the
+same everywhere and needs nothing installed:
+
+- one thread per connection calls `dmc_ssh_poll()` and hands each event
+  to the UI's thread; what is typed, a window's size and the answers go
+  straight to the connection from the UI (it locks);
+- the host's key is checked against OpenSSH's `known_hosts`: a known key
+  goes on, a new one is shown (its SHA256 fingerprint) and added if the
+  user accepts it, a changed one is refused with a warning;
+- the login is OpenSSH's order: the agent and `~/.ssh`'s keys first,
+  then keyboard-interactive or a password (three tries), in the app's own
+  dialogs; `~/.ssh/config` is read (host aliases, users, ports);
+- Ed25519, ECDSA and RSA keys; a shell on a pty with TERM
+  `xterm-256color`, its size sent as it changes. The engine also has
+  commands, direct channels (`-L`, `-D`), remote listens (`-R`), agent
+  channels (`-A`) and keys made or re-encrypted, which the mobile apps use.
+
+libssh and mbedTLS come from the system when it has libssh 0.11 or later
+(Linux), else they are built from their release tarballs, checked by
+hash (`ssh/cmake/BundledLibssh.cmake`): always on Windows and macOS. The
+Windows 95 build (Open Watcom) has no libssh: it runs Windows' own
+`ssh.exe` in a pseudo console when it finds one (Windows 10 1809 and
+later).
 
 | | Telnet and rlogin | SSH | Kept in |
 | --- | --- | --- | --- |
-| Linux | GSocketClient, its socket on the main loop (G_IO_PRI for rlogin's urgent byte) | `ssh` on a pty of the page's own (forkpty), TERM `xterm-256color` | `settings.ini`, `[remote]` |
-| Windows | Winsock 1.1, `WSAAsyncSelect` (FD_OOB for rlogin), on every Windows from 95 | Windows' `ssh.exe` (the OpenSSH Client feature) in a pseudo console: Windows 10 1809 and later, looked up at run time | `dmodem.ini`, `[remote]` |
-| macOS | a BSD socket on a dispatch source | `/usr/bin/ssh` on a pty (`PtySpawn.c`) | UserDefaults |
+| Linux | GSocketClient, its socket on the main loop (G_IO_PRI for rlogin's urgent byte) | libdmodemssh on a GThread, events by `g_main_context_invoke`, AdwAlertDialogs | `settings.ini`, `[remote]` |
+| Windows | Winsock 1.1, `WSAAsyncSelect` (FD_OOB for rlogin), on every Windows from 95 | libdmodemssh on a thread, events posted (`WM_APP_SSH`), the profile's `.ssh` | `dmodem.ini`, `[remote]` |
+| macOS | a BSD socket on a dispatch source | libdmodemssh (`SSHConnection.swift`) on a thread, events on the main queue, SwiftUI alerts | UserDefaults |
 
 Telnet tells the server the terminal type and the window's size (NAWS),
 and sends a typed CR as CR NUL. rlogin sends the user as both the local

@@ -125,4 +125,12 @@
 #define IDC_S_RANGE     955
 #define IDC_S_DEFAULT   956
 
+/* the Remote page's SSH questions: a heading, words, four answers */
+#define IDD_ASK         960
+#define IDC_A_HEAD      961
+#define IDC_A_TEXT      962
+#define IDC_A_Q0        963
+#define IDC_A_E0        967
+#define IDC_A_E0P       971
+
 #endif

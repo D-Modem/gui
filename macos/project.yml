@@ -1,4 +1,8 @@
-# The macOS app's Xcode project, made by XcodeGen:
+# The macOS app's Xcode project, made by XcodeGen.  libssh and mbedTLS
+# (for libdmodemssh) are built first by the repository's CMake, for both
+# architectures, into ../build:
+#     cmake -S .. -B ../build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+#         -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build ../build
 #     brew install xcodegen && cd macos && xcodegen
 #     xcodebuild -project DModem.xcodeproj -scheme DModem build
 name: DModem
@@ -14,13 +18,19 @@ targets:
       - path: DModem
       - path: ../core/src
         buildPhase: sources
+      - path: ../ssh/src
+        buildPhase: sources
     settings:
       base:
         PRODUCT_NAME: D-Modem
         PRODUCT_BUNDLE_IDENTIFIER: io.github.d-modem.DModem
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
-        HEADER_SEARCH_PATHS: $(SRCROOT)/../core/include
+        HEADER_SEARCH_PATHS: $(SRCROOT)/../core/include $(SRCROOT)/../ssh/include $(SRCROOT)/../build/dmodem-libssh/include
+        GCC_PREPROCESSOR_DEFINITIONS: LIBSSH_STATIC=1
+        # libssh and mbedTLS, as CMake built them (see above)
+        LIBRARY_SEARCH_PATHS: $(SRCROOT)/../build/dmodem-libssh/lib
+        OTHER_LDFLAGS: -lssh -lmbedtls -lmbedx509 -lmbedcrypto -leverest -lp256m
         SWIFT_OBJC_BRIDGING_HEADER: DModem/Bridging.h
         SWIFT_VERSION: "5.0"
         GCC_C_LANGUAGE_STANDARD: c11

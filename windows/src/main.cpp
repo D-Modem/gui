@@ -299,6 +299,9 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 	case WM_APP_REMOTE:
 		remote_socket(wp, lp);
 		return 0;
+	case WM_APP_SSH:
+		remote_ssh(lp);
+		return 0;
 	case WM_DESTROY:
 		KillTimer(w, TIMER_PUMP);
 		KillTimer(w, TIMER_VOICE);

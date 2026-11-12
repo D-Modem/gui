@@ -7,11 +7,13 @@
  *
  * Telnet and rlogin: a Winsock 1.1 socket (WSAAsyncSelect, as the
  * modem's link), the protocol libdmodemctl's dmc_net; every Windows from
- * 95 on has them.  SSH: Windows' own OpenSSH client, ssh.exe, in a
- * pseudo console (ConPTY), so it needs Windows 10 1809 or later with
- * the OpenSSH client feature; the ConPTY calls are looked up at run
- * time, so that the app still starts on Windows 95.  Its output is read
- * from a timer (PeekNamedPipe), with no threads.
+ * 95 on has them.  SSH: libdmodemssh (the apps' own client, on libssh),
+ * on a thread of its own that posts its events to the main window; it
+ * reads OpenSSH's config, known_hosts and keys in the profile's .ssh.
+ * The Windows 95 build (Open Watcom, no libssh) runs Windows' own
+ * ssh.exe in a pseudo console (ConPTY) instead, when it finds one
+ * (Windows 10 1809 and later): the ConPTY calls are looked up at run
+ * time and its output read from a timer.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +40,16 @@ static bool sock_open;
 static char *pending;
 static int pending_n, pending_cap;
 
+#ifdef DMODEM_HAVE_SSH
+#include "dmodemssh.h"
+
+/* SSH: the connection (below) */
+struct Ssh;
+static Ssh *ssh;
+static int shell;
+static dmc_ssh *ssh_conn();
+static void ssh_disconnect();
+#else
 /* SSH: the pseudo console, its pipes, ssh.exe */
 static void *hpc;
 static HANDLE con_in = INVALID_HANDLE_VALUE, con_out = INVALID_HANDLE_VALUE;
@@ -116,6 +128,7 @@ static bool find_ssh(char *out, int n)
 	}
 	return false;
 }
+#endif
 
 /*
  * the page
@@ -165,6 +178,12 @@ static void ended(const char *why)
 		net = NULL;
 	}
 	pending_n = 0;
+#ifdef DMODEM_HAVE_SSH
+	/* (the connection is freed once its thread has said it's closed) */
+	if (ssh)
+		ssh_disconnect();
+	shell = 0;
+#else
 	if (proc) {
 		TerminateProcess(proc, 0);
 		CloseHandle(proc);
@@ -184,6 +203,7 @@ static void ended(const char *why)
 		CloseHandle(con_in);
 		con_in = INVALID_HANDLE_VALUE;
 	}
+#endif
 	char line[300];
 	_snprintf(line, sizeof(line), "\r\n\x1b[0m[%s]\r\n",
 		  why ? why : "Disconnected");
@@ -237,10 +257,16 @@ static void typed(const char *data, int n, void *ctx)
 	if (net && sock_open) {
 		dmc_net_type(net, data, n);
 		flush();
-	} else if (con_in != INVALID_HANDLE_VALUE) {
+	}
+#ifdef DMODEM_HAVE_SSH
+	else if (ssh && shell > 0)
+		dmc_ssh_write(ssh_conn(), shell, data, n);
+#else
+	else if (con_in != INVALID_HANDLE_VALUE) {
 		DWORD w;
 		WriteFile(con_in, data, (DWORD)n, &w, NULL);
 	}
+#endif
 }
 
 void remote_socket(WPARAM wp, LPARAM lp)
@@ -305,13 +331,20 @@ void remote_tick()
 		if (net) {
 			dmc_net_resize(net, c, r);
 			flush();
-		} else if (hpc) {
+		}
+#ifdef DMODEM_HAVE_SSH
+		else if (ssh && shell > 0)
+			dmc_ssh_resize(ssh_conn(), shell, c, r);
+#else
+		else if (hpc) {
 			COORD sz;
 			sz.X = (SHORT)c;
 			sz.Y = (SHORT)r;
 			resize_pc(hpc, sz);
 		}
+#endif
 	}
+#ifndef DMODEM_HAVE_SSH
 	if (con_out == INVALID_HANDLE_VALUE)
 		return;
 	for (;;) {
@@ -338,7 +371,355 @@ void remote_tick()
 		m[sizeof(m) - 1] = '\0';
 		ended(m);
 	}
+#endif
 }
+
+#ifdef DMODEM_HAVE_SSH
+/*
+ * SSH: libdmodemssh, polled on a thread of its own, its events posted
+ * to the main window (WM_APP_SSH)
+ */
+
+/* a connection and the thread that polls it */
+struct Ssh {
+	dmc_ssh *s;
+	HANDLE thread;
+};
+
+/* one of its events, posted */
+struct SshMsg {
+	Ssh *ssh;
+	int type, channel, value, len;
+	char *data;
+};
+
+static int tried_keys, asks, exit_status;
+
+/* the connection's dmc_ssh */
+static dmc_ssh *ssh_conn()
+{
+	return ssh->s;
+}
+
+/* the connection closed by the user: its thread ends with it */
+static void ssh_disconnect()
+{
+	dmc_ssh_disconnect(ssh->s);
+}
+
+static DWORD WINAPI ssh_poll(void *p)
+{
+	Ssh *c = (Ssh *)p;
+	dmc_ssh_event ev;
+	int n;
+	while ((n = dmc_ssh_poll(c->s, 1000, &ev)) >= 0) {
+		if (n == 0)
+			continue;
+		SshMsg *m = (SshMsg *)calloc(1, sizeof(SshMsg));
+		if (!m)
+			continue;
+		m->ssh = c;
+		m->type = ev.type;
+		m->channel = ev.channel;
+		m->value = ev.value;
+		m->len = ev.len;
+		if (ev.data) {
+			m->data = (char *)malloc((size_t)ev.len + 1);
+			if (m->data) {
+				memcpy(m->data, ev.data, (size_t)ev.len);
+				m->data[ev.len] = '\0';
+			}
+		}
+		/* (a window gone: the event too) */
+		if (!PostMessage(app.main, WM_APP_SSH, 0, (LPARAM)m)) {
+			free(m->data);
+			free(m);
+		}
+		if (ev.type == DMC_SSH_EV_CLOSED)
+			break;
+	}
+	return 0;
+}
+
+/* text the dialog shows (the system's code page) */
+static void set_text(HWND d, int id, const char *utf8)
+{
+	char a[600];
+	to_ansi(utf8 ? utf8 : "", a, sizeof(a));
+	SetDlgItemText(d, id, a);
+}
+
+/* an answer typed (the system's code page) as UTF-8 */
+static void get_answer(HWND d, int id, char *out, int n)
+{
+	char a[512];
+	wchar_t w[512];
+	GetDlgItemText(d, id, a, sizeof(a));
+	int k = MultiByteToWideChar(CP_ACP, 0, a, -1, w, 512);
+	if (!k || !WideCharToMultiByte(CP_UTF8, 0, w, -1, out, n, NULL, NULL))
+		lstrcpyn(out, a, n);
+}
+
+/* what the login dialog asks: a password (prompts 0) or the server's
+   questions (four at most) */
+struct Ask {
+	const char *head, *text;
+	int prompts;
+	char answers[4][256];
+};
+
+static INT_PTR CALLBACK ask_proc(HWND d, UINT msg, WPARAM wp, LPARAM lp)
+{
+	Ask *a = (Ask *)GetWindowLongPtr(d, DWLP_USER);
+	switch (msg) {
+	case WM_INITDIALOG: {
+		a = (Ask *)lp;
+		SetWindowLongPtr(d, DWLP_USER, (LONG_PTR)a);
+		set_text(d, IDC_A_HEAD, a->head);
+		set_text(d, IDC_A_TEXT, a->text);
+		int n = a->prompts ? a->prompts : 1;
+		HWND first = NULL;
+		for (int i = 0; i < 4; i++) {
+			int echo = 0;
+			const char *q = i >= n ? "" : a->prompts ?
+				dmc_ssh_prompt(ssh->s, i, &echo) : "Password:";
+			set_text(d, IDC_A_Q0 + i, q);
+			ShowWindow(GetDlgItem(d, IDC_A_Q0 + i), i < n ? SW_SHOW : SW_HIDE);
+			ShowWindow(GetDlgItem(d, IDC_A_E0 + i), i < n && echo ? SW_SHOW : SW_HIDE);
+			ShowWindow(GetDlgItem(d, IDC_A_E0P + i), i < n && !echo ? SW_SHOW : SW_HIDE);
+			if (i < n && !first)
+				first = GetDlgItem(d, echo ? IDC_A_E0 + i : IDC_A_E0P + i);
+		}
+		/* (the buttons under the last question, the box fitted to them) */
+		RECT b = { 0, 46 + 18 * n + 8, 50, 46 + 18 * n + 8 + 14 };
+		MapDialogRect(d, &b);
+		RECT ok, cl, wr;
+		GetWindowRect(GetDlgItem(d, IDOK), &ok);
+		MapWindowPoints(NULL, d, (POINT *)&ok, 2);
+		SetWindowPos(GetDlgItem(d, IDOK), NULL, ok.left, b.top, 0, 0,
+			     SWP_NOSIZE | SWP_NOZORDER);
+		GetWindowRect(GetDlgItem(d, IDCANCEL), &ok);
+		MapWindowPoints(NULL, d, (POINT *)&ok, 2);
+		SetWindowPos(GetDlgItem(d, IDCANCEL), NULL, ok.left, b.top, 0, 0,
+			     SWP_NOSIZE | SWP_NOZORDER);
+		GetClientRect(d, &cl);
+		GetWindowRect(d, &wr);
+		RECT pad = { 0, 0, 0, 8 };
+		MapDialogRect(d, &pad);
+		int extra = (wr.bottom - wr.top) - cl.bottom;
+		SetWindowPos(d, NULL, 0, 0, wr.right - wr.left,
+			     b.bottom + pad.bottom + extra, SWP_NOMOVE | SWP_NOZORDER);
+		SetFocus(first);
+		return FALSE;
+	}
+	case WM_COMMAND:
+		if (LOWORD(wp) == IDOK) {
+			for (int i = 0; i < 4; i++) {
+				int id = IsWindowVisible(GetDlgItem(d, IDC_A_E0 + i)) ?
+					IDC_A_E0 + i : IDC_A_E0P + i;
+				get_answer(d, id, a->answers[i], sizeof(a->answers[i]));
+			}
+			EndDialog(d, IDOK);
+			return TRUE;
+		}
+		if (LOWORD(wp) == IDCANCEL) {
+			EndDialog(d, IDCANCEL);
+			return TRUE;
+		}
+		break;
+	}
+	return FALSE;
+}
+
+/* the server's key: known goes on; new is asked; changed is refused */
+static void ssh_hostkey(const char *key, int known)
+{
+	char fp[128] = "";
+	dmc_ssh_fingerprint(key, fp, sizeof(fp));
+	int tl = (int)strcspn(key, " ");
+	if (known == DMC_SSH_HOST_KNOWN) {
+		dmc_ssh_trust(ssh->s, 1, 0);
+		return;
+	}
+	char m[600];
+	if (known == DMC_SSH_HOST_CHANGED || known == DMC_SSH_HOST_OTHER_TYPE) {
+		_snprintf(m, sizeof(m),
+			  "\r\n\x1b[1;31mThe server's host key has changed (it is now %.*s %s).\r\n"
+			  "Someone may be in the middle; or the server has a new key. If that is\r\n"
+			  "expected, remove its old line from .ssh\\known_hosts in your profile.\x1b[0m\r\n",
+			  tl, key, fp);
+		m[sizeof(m) - 1] = '\0';
+		show_line(m);
+		dmc_ssh_trust(ssh->s, 0, 0);
+		return;
+	}
+	Ssh *c = ssh;
+	_snprintf(m, sizeof(m), "This server is not known yet. Its key's fingerprint is\n\n"
+		  "%.*s %s\n\nIf it's the one you expect, it will be added to "
+		  ".ssh\\known_hosts in your profile.\n\nConnect?", tl, key, fp);
+	m[sizeof(m) - 1] = '\0';
+	int r = MessageBox(app.main, m, "Connect to a new server?",
+			   MB_YESNO | MB_ICONQUESTION);
+	/* (the connection may have gone while it asked) */
+	if (c == ssh)
+		dmc_ssh_trust(ssh->s, r == IDYES, 1);
+}
+
+/* a password or the server's questions, asked */
+static void ssh_ask(const char *head, const char *text, int prompts)
+{
+	Ssh *c = ssh;
+	Ask a;
+	memset(&a, 0, sizeof(a));
+	a.head = head;
+	a.text = text;
+	a.prompts = prompts > 4 ? 4 : prompts;
+	INT_PTR r = DialogBoxParam(app.inst, MAKEINTRESOURCE(IDD_ASK), app.main,
+				   ask_proc, (LPARAM)&a);
+	if (c != ssh)
+		return;
+	if (r != IDOK)
+		dmc_ssh_auth_cancel(ssh->s);
+	else if (!prompts)
+		dmc_ssh_auth_password(ssh->s, a.answers[0]);
+	else {
+		for (int i = 0; i < a.prompts; i++)
+			dmc_ssh_answer(ssh->s, i, a.answers[i]);
+		dmc_ssh_answered(ssh->s);
+	}
+	SecureZeroMemory(&a, sizeof(a));
+}
+
+/* what's tried, in OpenSSH's order: its keys, then the server's
+   questions or a password (three times at most) */
+static void ssh_auth(int methods, const char *why)
+{
+	if ((methods & DMC_SSH_AUTH_PUBLICKEY) && !tried_keys) {
+		tried_keys = 1;
+		dmc_ssh_auth_auto(ssh->s);
+		return;
+	}
+	if (asks++ >= 3) {
+		dmc_ssh_auth_cancel(ssh->s);
+		return;
+	}
+	char host[256], head[300];
+	GetWindowText(host_ed, host, sizeof(host));
+	_snprintf(head, sizeof(head), "Log in to %s", host);
+	head[sizeof(head) - 1] = '\0';
+	if (methods & DMC_SSH_AUTH_INTERACTIVE)
+		dmc_ssh_auth_interactive(ssh->s);
+	else if (methods & DMC_SSH_AUTH_PASSWORD)
+		ssh_ask(head, asks > 1 ? why : "", 0);
+	else
+		dmc_ssh_auth_cancel(ssh->s);
+}
+
+void remote_ssh(LPARAM l)
+{
+	SshMsg *m = (SshMsg *)l;
+	Ssh *c = m->ssh;
+	if (m->type == DMC_SSH_EV_CLOSED) {
+		/* (its thread has ended: the connection can go) */
+		WaitForSingleObject(c->thread, INFINITE);
+		CloseHandle(c->thread);
+		dmc_ssh_free(c->s);
+		free(c);
+		if (c == ssh) {
+			ssh = NULL;
+			shell = 0;
+			if (!m->data && exit_status > 0) {
+				char why[64];
+				_snprintf(why, sizeof(why), "the shell exited with status %d",
+					  exit_status);
+				why[sizeof(why) - 1] = '\0';
+				ended(why);
+			} else {
+				ended(m->data);
+			}
+		}
+	} else if (c == ssh) {
+		switch (m->type) {
+		case DMC_SSH_EV_HOSTKEY:
+			ssh_hostkey(m->data, m->value);
+			break;
+		case DMC_SSH_EV_AUTH:
+			ssh_auth(m->value, m->data ? m->data : "");
+			break;
+		case DMC_SSH_EV_PROMPTS:
+			if (m->value == 0)
+				dmc_ssh_answered(ssh->s);
+			else
+				ssh_ask(m->data && *m->data ? m->data : "The server asks",
+					dmc_ssh_instruction(ssh->s), m->value);
+			break;
+		case DMC_SSH_EV_READY:
+			if (m->data && *m->data)
+				show(m->data, m->len);
+			shell = dmc_ssh_shell(ssh->s, "xterm-256color", cols, rows, 0);
+			set_status("Connected by SSH");
+			break;
+		case DMC_SSH_EV_OPEN:
+			if (!m->value) {
+				show_line("\r\n[The server refused the shell]\r\n");
+				dmc_ssh_disconnect(ssh->s);
+			}
+			break;
+		case DMC_SSH_EV_DATA:
+			if (m->channel == shell)
+				show(m->data, m->len);
+			break;
+		case DMC_SSH_EV_EXIT:
+			if (m->channel == shell)
+				exit_status = m->value;
+			break;
+		case DMC_SSH_EV_CLOSE:
+			/* (the shell's over: so is the connection) */
+			if (m->channel == shell)
+				dmc_ssh_disconnect(ssh->s);
+			break;
+		case DMC_SSH_EV_INCOMING:
+			dmc_ssh_close(ssh->s, m->channel);
+			break;
+		}
+	}
+	free(m->data);
+	free(m);
+}
+
+static bool start_ssh(const char *host, int port, const char *user)
+{
+	char me[128];
+	DWORD n = sizeof(me);
+	if (!*user && GetUserName(me, &n))
+		user = me;
+	dmc_ssh *s = dmc_ssh_new(host, port, user);
+	if (!s) {
+		app_message("Could not start SSH");
+		return false;
+	}
+	/* OpenSSH's config and known hosts, in the profile's .ssh */
+	dmc_ssh_option(s, "config", "");
+	dmc_ssh_option(s, "knownhosts", "");
+	Ssh *c = (Ssh *)calloc(1, sizeof(Ssh));
+	c->s = s;
+	DWORD id;
+	c->thread = CreateThread(NULL, 0, ssh_poll, c, 0, &id);
+	if (!c->thread) {
+		dmc_ssh_free(s);
+		free(c);
+		app_message("Could not start SSH");
+		return false;
+	}
+	ssh = c;
+	shell = 0;
+	tried_keys = 0;
+	asks = 0;
+	exit_status = 0;
+	return true;
+}
+
+#else
 
 static bool start_ssh(const char *host, int port, const char *user)
 {
@@ -417,6 +798,12 @@ static bool start_ssh(const char *host, int port, const char *user)
 	proc = pi.hProcess;
 	return true;
 }
+
+void remote_ssh(LPARAM l)
+{
+	(void)l;
+}
+#endif
 
 static bool start_socket(int proto, const char *host, int port,
 			 const char *user)
@@ -512,8 +899,10 @@ static void connect_clicked()
 		set_status("Not connected");
 		return;
 	}
+#ifndef DMODEM_HAVE_SSH
 	if (proto == DMC_NET_SSH)
 		set_status("Connected by SSH");
+#endif
 	running = proto;
 	SetTimer(app.main, TIMER_REMOTE, 30, NULL);
 	controls();
