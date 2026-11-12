@@ -447,11 +447,231 @@ static void test_vt(void)
 	CHECK(n == 3 && !memcmp(r, "\x1bOQ", 3));
 	n = dmc_vt_key(t, DMC_KEY_UP, r, sizeof(r));
 	CHECK(n == 3 && !memcmp(r, "\x1b[A", 3));
-	/* resized */
+	/* resized: the scrollback's lines come back over the screen */
+	n = dmc_vt_history(t);
 	dmc_vt_resize(t, 80, 24);
 	CHECK(dmc_vt_cols(t) == 80 && dmc_vt_rows(t) == 24);
-	CHECK_STR(dmc_vt_text(t, 3), "01234567890123456789");
+	CHECK(dmc_vt_history(t) == 0);
+	CHECK_STR(dmc_vt_text(t, 3 + n), "01234567890123456789");
 	CHECK(dmc_vt_palette(4) == 0x0000AA);
+	dmc_vt_free(t);
+}
+
+/* feed a string */
+static void vfeed(dmc_vt *t, const char *s)
+{
+	dmc_vt_feed(t, s, (int)strlen(s));
+}
+
+static const char *vreply(dmc_vt *t)
+{
+	static char r[256];
+	int n = dmc_vt_reply(t, r, sizeof(r) - 1);
+	r[n] = '\0';
+	return r;
+}
+
+/* a row's text with the screen's blanks */
+static int has_image(const dmc_vt *t)
+{
+	int y, x;
+	dmc_cell c;
+	for (y = 0; y < dmc_vt_rows(t); y++)
+		for (x = 0; x < dmc_vt_cols(t); x++)
+			if (dmc_vt_cell(t, y, x, &c) && (c.flags & DMC_CELL_IMAGE))
+				return 1;
+	return 0;
+}
+
+/* every profile given every octet and noise, every cell read: nothing
+   breaks (run under ASan and UBSan in CI) */
+static void test_vt_noise(void)
+{
+	int i, k, y, x, n;
+	unsigned seed = 12345;
+	char b[4096], r[64];
+	dmc_cell c;
+	for (i = 0; i < dmc_vt_profile_count(); i++) {
+		dmc_vt *t = dmc_vt_new(80, 25, 50);
+		const char *id = dmc_vt_profile_id(i);
+		CHECK(dmc_vt_set_profile(t, id));
+		CHECK_STR(dmc_vt_get_profile(t), id);
+		dmc_vt_set_cell_pixels(t, 8, 16);
+		for (k = 0; k < 256; k++)
+			b[k] = (char)k;
+		dmc_vt_feed(t, b, 256);
+		for (k = 0; k < 40; k++) {
+			for (n = 0; n < (int)sizeof(b); n++) {
+				seed = seed * 1103515245u + 12345u;
+				b[n] = (char)(seed >> 16);
+				/* plenty of ESC, CSI's and digits */
+				if ((seed >> 8) % 7 == 0)
+					b[n] = "\x1b[;0123456789!|\r\n"[(seed >> 4) % 18];
+			}
+			dmc_vt_feed(t, b, n);
+			if (k == 20)
+				dmc_vt_resize(t, 40 + k, 20);
+		}
+		for (y = -dmc_vt_history(t); y < dmc_vt_rows(t); y++)
+			for (x = 0; x < dmc_vt_cols(t); x++) {
+				dmc_vt_cell(t, y, x, &c);
+				dmc_vt_cell_text(t, y, x);
+			}
+		for (k = DMC_KEY_UP; k <= DMC_KEY_KP_ENTER; k++)
+			dmc_vt_key_mods(t, k, k % 8, r, sizeof(r));
+		for (k = 0; k < 0x180; k++)
+			dmc_vt_char_bytes(t, (uint32_t)k, k % 8, r, sizeof(r));
+		dmc_vt_tap(t, 0.5, 0.5, r, sizeof(r));
+		while (dmc_vt_reply(t, r, sizeof(r)) > 0)
+			;
+		dmc_vt_reset(t);
+		dmc_vt_free(t);
+	}
+}
+
+static void test_vt_profiles(void)
+{
+	dmc_vt *t = dmc_vt_new(80, 25, 100);
+	dmc_cell c;
+	char r[64];
+	int n, w, h;
+
+	CHECK(dmc_vt_profile_count() == 29);
+	CHECK_STR(dmc_vt_profile_id(0), "xterm");
+	CHECK_STR(dmc_vt_profile_term("rip"), "rip");
+	CHECK_STR(dmc_vt_profile_telnet("rip"), "ANSI");
+	CHECK_STR(dmc_vt_profile_telnet("vt220"), "DEC-VT220");
+	CHECK_STR(dmc_vt_profile_term("nonsense"), "xterm-256color");
+	CHECK(!dmc_vt_set_profile(t, "nonsense"));
+
+	/* xterm and the VTs' answers */
+	CHECK_STR(dmc_vt_get_profile(t), "xterm");
+	vfeed(t, "\x1b[c");
+	CHECK_STR(vreply(t), "\x1b[?62;4;22c");
+	dmc_vt_set_profile(t, "vt100");
+	vfeed(t, "\x1b[c");
+	CHECK_STR(vreply(t), "\x1b[?1;2c");
+	dmc_vt_set_profile(t, "vt420");
+	vfeed(t, "\x1b[>c");
+	CHECK_STR(vreply(t), "\x1b[>41;10;0c");
+	/* a VT420's rectangles: DECFRA */
+	vfeed(t, "\x1b[2J\x1b[42;2;2;3;4$x");
+	CHECK_STR(dmc_vt_text(t, 1), " ***");
+	CHECK_STR(dmc_vt_text(t, 2), " ***");
+
+	/* VT52 */
+	dmc_vt_set_profile(t, "vt52");
+	vfeed(t, "\x1bH\x1bJ\x1bY\"%X\x1bZ");
+	CHECK(dmc_vt_char(t, 2, 5) == 'X');
+	CHECK_STR(vreply(t), "\x1b/K");
+
+	/* ANSI-BBS: code page 437, the VGA's font, ESC [2J homing */
+	dmc_vt_set_profile(t, "ansi-bbs");
+	CHECK(dmc_vt_glyph_cell(t, &w, &h) && w == 8 && h == 16);
+	vfeed(t, "\x1b[5;5H\x1b[2J\xdb\xb0");
+	CHECK(dmc_vt_char(t, 0, 0) == 0x2588 && dmc_vt_char(t, 0, 1) == 0x2591);
+	CHECK(dmc_vt_glyph(t, 0x2588, &w, &h) && h == 16);
+	CHECK(dmc_vt_glyph_row(t, 0x2588, 3) == 0xff);
+	/* SyncTERM's Topaz (42) at the VGA's height, then back */
+	n = (int)dmc_vt_glyph_row(t, 'A', 4);
+	vfeed(t, "\x1b[0;42 D");
+	CHECK(dmc_vt_glyph(t, 'A', &w, &h) && h == 16);
+	CHECK((int)dmc_vt_glyph_row(t, 'A', 4) != n);
+	vfeed(t, "\x1b[0;0 D");
+	CHECK((int)dmc_vt_glyph_row(t, 'A', 4) == n);
+	/* the line speed */
+	vfeed(t, "\x1b[0;6*r");
+	CHECK(dmc_vt_emulated_bps(t) > 0);
+
+	/* Amiga: Topaz, 8x8, its colours */
+	dmc_vt_set_profile(t, "amiga");
+	CHECK(dmc_vt_glyph_cell(t, &w, &h) && w == 8 && h == 8);
+	vfeed(t, "\x1b[H\x1b[2J\x1b[31mR");
+	CHECK(dmc_vt_cell(t, 0, 0, &c) && c.fg == 0xcc2222);
+
+	/* Avatar: ^V ^A attribute */
+	dmc_vt_set_profile(t, "avatar");
+	vfeed(t, "\x0c\x16\x01\x1fX");
+	CHECK(dmc_vt_char(t, 0, 0) == 'X');
+	CHECK(dmc_vt_cell(t, 0, 0, &c) && c.fg == 0xffffff && c.bg == dmc_vt_palette(4));
+
+	/* RIPscrip */
+	dmc_vt_set_profile(t, "rip");
+	dmc_vt_set_cell_pixels(t, 8, 8);
+	CHECK(dmc_vt_requested_rows(t) == 43);
+	vfeed(t, "\x1b[!");
+	CHECK_STR(vreply(t), "RIPSCRIP015400");
+	vfeed(t, "\x1b[2JHi!x\r\n!x\r\n");
+	CHECK_STR(dmc_vt_text(t, 0), "Hi!x");
+	CHECK_STR(dmc_vt_text(t, 1), "!x");
+	CHECK(!has_image(t));
+	vfeed(t, "!|c0F|L00000A0A\r\n");
+	CHECK(has_image(t));
+	CHECK_STR(dmc_vt_text(t, 2), "");
+	vfeed(t, "!|1M0000000Z0Z00000000HI^M\r\n");
+	n = dmc_vt_tap(t, 0.01, 0.01, r, sizeof(r));
+	CHECK(n == 3 && !memcmp(r, "HI\r", 3));
+	CHECK(dmc_vt_tap(t, 0.99, 0.99, r, sizeof(r)) == 0);
+
+	/* a Commodore 64 */
+	dmc_vt_set_profile(t, "c64");
+	CHECK(dmc_vt_requested_cols(t) == 40 && dmc_vt_requested_rows(t) == 25);
+	CHECK(dmc_vt_glyph_cell(t, &w, &h) && w == 8 && h == 8);
+	vfeed(t, "\x93" "A\x1c" "B\x0e" "C");
+	CHECK(dmc_vt_char(t, 0, 0) == 'A');
+	CHECK(dmc_vt_cell(t, 0, 1, &c) && c.fg == 0x68372b);
+	CHECK(dmc_vt_char(t, 0, 2) == 'c');
+	n = dmc_vt_char_bytes(t, 'a', 0, r, sizeof(r));
+	CHECK(n == 1 && r[0] == 0x41);
+	n = dmc_vt_key(t, DMC_KEY_UP, r, sizeof(r));
+	CHECK(n == 1 && (unsigned char)r[0] == 0x91);
+
+	/* an Atari 8-bit */
+	dmc_vt_set_profile(t, "atari");
+	vfeed(t, "\x7d" "AB\x9b" "C");
+	CHECK_STR(dmc_vt_text(t, 0), "AB");
+	CHECK_STR(dmc_vt_text(t, 1), "C");
+
+	/* an Atari ST: its pens */
+	dmc_vt_set_profile(t, "atari-st-low");
+	CHECK(dmc_vt_requested_cols(t) == 40);
+	vfeed(t, "\x1b" "E\x1b" "b\x01X");
+	CHECK(dmc_vt_cell(t, 0, 0, &c) && c.ch == 'X' && c.fg == 0xff0000);
+	vfeed(t, "\x1bZ");
+	CHECK_STR(vreply(t), "\x1b/K");
+
+	/* Viewdata */
+	dmc_vt_set_profile(t, "viewdata");
+	CHECK(dmc_vt_requested_cols(t) == 40 && dmc_vt_requested_rows(t) == 24);
+	vfeed(t, "\x0c" "A#");
+	CHECK(dmc_vt_char(t, 0, 0) == 'A' && dmc_vt_char(t, 0, 1) == 0xa3);
+
+	/* the Minitel: its first row is the status row */
+	dmc_vt_set_profile(t, "minitel");
+	vfeed(t, "\x0c" "M");
+	CHECK(dmc_vt_char(t, 1, 0) == 'M');
+
+	/* sixel on xterm */
+	dmc_vt_set_profile(t, "xterm");
+	dmc_vt_set_cell_pixels(t, 8, 16);
+	vfeed(t, "\x1bPq#0;2;100;0;0#0~~~~~~~~\x1b\\");
+	CHECK(has_image(t));
+
+	/* ReGIS on a VT340 */
+	dmc_vt_set_profile(t, "vt340");
+	vfeed(t, "\x1b[2J");
+	CHECK(!has_image(t));
+	vfeed(t, "\x1bP0pS(E)P[100,100]V[200,200]\x1b\\");
+	CHECK(has_image(t));
+
+	/* a Tektronix 4014 */
+	dmc_vt_set_profile(t, "tek4014");
+	vfeed(t, "\x1d\x20\x60\x20\x40\x3f\x7f\x3f\x5f");
+	CHECK(has_image(t));
+
+	/* a reset keeps the profile */
+	dmc_vt_reset(t);
+	CHECK_STR(dmc_vt_get_profile(t), "tek4014");
 	dmc_vt_free(t);
 }
 
@@ -971,6 +1191,8 @@ int main(int argc, char **argv)
 	test_model(dir);
 	test_diag(dir);
 	test_vt();
+	test_vt_profiles();
+	test_vt_noise();
 	test_daemon();
 	test_voice();
 	test_voicemail();
