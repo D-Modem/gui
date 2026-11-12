@@ -377,7 +377,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 	ShowWindow(w, show);
 	UpdateWindow(w);
 	/* a modem that is set up starts at once */
-	if (app.cfg.line != LINE_DMODEMD || app.cfg.sip_user[0] ||
+	if (app.cfg.line != LINE_DMODEMD || config_sip_ready(&app.cfg) ||
 	    app.cfg.usb[0])
 		link_start();
 

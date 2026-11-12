@@ -112,7 +112,7 @@ static void modem_command(HWND page, int id, int code)
 		char n[128], cmd[140];
 		GetDlgItemText(page, IDC_NUMBER, n, sizeof(n));
 		if (!n[0]) {
-			app_message("Enter a number to dial");
+			app_message("Enter a number or SIP address (sip:user@host) to dial");
 			return;
 		}
 		_snprintf(cmd, sizeof(cmd), "ATD%s", n);

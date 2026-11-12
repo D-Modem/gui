@@ -160,7 +160,7 @@ static void dial(GtkWidget *w, gpointer data)
 	(void)w;
 	const char *n = gtk_editable_get_text(GTK_EDITABLE(a->number));
 	if (!*n) {
-		window_toast(a, "Enter a number to dial");
+		window_toast(a, "Enter a number or SIP address to dial");
 		return;
 	}
 	char *cmd = g_strdup_printf("ATD%s", n);
@@ -234,7 +234,7 @@ static GtkWidget *modem_page(App *a)
 	adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(call), "Call");
 	a->number = adw_entry_row_new();
 	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(a->number),
-				      "Number to dial");
+				      "Number or SIP address (sip:user@host)");
 	gtk_editable_set_text(GTK_EDITABLE(a->number), "");
 	a->dial_btn = gtk_button_new_with_label("Dial");
 	gtk_widget_set_valign(a->dial_btn, GTK_ALIGN_CENTER);

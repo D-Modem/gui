@@ -24,6 +24,9 @@ struct LineConfig {
     var sipUser = ""
     var sipPassword = ""
     var sipServer = ""
+    /// SIP with no account (dmodemd's SIP_LOGIN=anonymous): nothing registered, SIP addresses
+    /// (sip:user@host, user@host) dialled as they are, from "Anonymous"
+    var sipAnonymous = false
     var listen = false
     var t38 = true
     var v152 = true
@@ -44,6 +47,7 @@ struct LineConfig {
         c.line = LineKind(rawValue: d.string(forKey: "line") ?? "") ?? .sip
         c.sipUser = d.string(forKey: "sipUser") ?? ""
         c.sipServer = d.string(forKey: "sipServer") ?? ""
+        c.sipAnonymous = d.bool(forKey: "sipAnonymous")
         c.listen = d.bool(forKey: "listen")
         c.t38 = d.object(forKey: "t38") as? Bool ?? true
         c.v152 = d.object(forKey: "v152") as? Bool ?? true
@@ -64,6 +68,7 @@ struct LineConfig {
         d.set(line.rawValue, forKey: "line")
         d.set(sipUser, forKey: "sipUser")
         d.set(sipServer, forKey: "sipServer")
+        d.set(sipAnonymous, forKey: "sipAnonymous")
         d.set(listen, forKey: "listen")
         d.set(t38, forKey: "t38")
         d.set(v152, forKey: "v152")
@@ -83,13 +88,14 @@ struct LineConfig {
         case .usb: return "USB modem (\(usb))"
         case .device: return "The modem at \(device)"
         case .sip:
+            if sipAnonymous { return "SIP: anonymous, no account" + (listen ? ", taking calls" : "") }
             if sipUser.isEmpty || sipServer.isEmpty { return "SIP account not set up" }
             return "SIP: \(sipUser)@\(sipServer)" + (listen ? ", taking calls" : "")
         }
     }
 
     var isSetUp: Bool {
-        line != .sip || (!sipUser.isEmpty && !sipServer.isEmpty)
+        line != .sip || sipAnonymous || (!sipUser.isEmpty && !sipServer.isEmpty)
     }
 }
 

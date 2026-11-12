@@ -44,6 +44,7 @@ void config_load(Config *c)
 	c->sip_user = get_s(k, "sip-user", "");
 	c->sip_password = get_s(k, "sip-password", "");
 	c->sip_server = get_s(k, "sip-server", "");
+	c->sip_anonymous = get_b(k, "sip-anonymous", FALSE);
 	c->listen = get_b(k, "listen", FALSE);
 	c->t38 = get_b(k, "t38", TRUE);
 	c->v152 = get_b(k, "v152", TRUE);
@@ -102,6 +103,7 @@ void config_save(const Config *c)
 	g_key_file_set_string(k, "line", "sip-user", c->sip_user);
 	g_key_file_set_string(k, "line", "sip-password", c->sip_password);
 	g_key_file_set_string(k, "line", "sip-server", c->sip_server);
+	g_key_file_set_boolean(k, "line", "sip-anonymous", c->sip_anonymous);
 	g_key_file_set_boolean(k, "line", "listen", c->listen);
 	g_key_file_set_boolean(k, "line", "t38", c->t38);
 	g_key_file_set_boolean(k, "line", "v152", c->v152);
@@ -171,10 +173,18 @@ char *config_summary(const Config *c)
 		return g_strdup_printf("Softmodem codec %s", c->alsa);
 	if (!g_strcmp0(c->line, "device"))
 		return g_strdup_printf("The modem at %s", c->device);
+	if (c->sip_anonymous)
+		return g_strdup_printf("SIP: anonymous, no account%s",
+				       c->listen ? ", taking calls" : "");
 	if (!*c->sip_user || !*c->sip_server)
 		return g_strdup("SIP account not set up");
 	return g_strdup_printf("SIP: %s@%s%s", c->sip_user, c->sip_server,
 			       c->listen ? ", taking calls" : "");
+}
+
+gboolean config_sip_ready(const Config *c)
+{
+	return c->sip_anonymous || (*c->sip_user && *c->sip_server);
 }
 
 /*
@@ -198,7 +208,7 @@ typedef struct Prefs {
 	AdwEntryRow *user, *server, *country, *usb, *alsa, *device, *dmodemd,
 		*init;
 	AdwPasswordEntryRow *password;
-	AdwSwitchRow *listen, *t38, *v152, *v150;
+	AdwSwitchRow *anonymous, *listen, *t38, *v152, *v150;
 	AdwSpinRow *debug;
 	AdwPreferencesGroup *sip, *usb_g, *alsa_g, *device_g;
 } Prefs;
@@ -219,6 +229,26 @@ static void show_groups(Prefs *p)
 	gtk_widget_set_visible(GTK_WIDGET(p->alsa_g), !g_strcmp0(l, "alsa"));
 	gtk_widget_set_visible(GTK_WIDGET(p->device_g),
 			       !g_strcmp0(l, "device"));
+}
+
+/* the account's rows: hidden when there is none (anonymous) */
+static void show_account(Prefs *p)
+{
+	gboolean anon = adw_switch_row_get_active(p->anonymous);
+	gtk_widget_set_visible(GTK_WIDGET(p->user), !anon);
+	gtk_widget_set_visible(GTK_WIDGET(p->password), !anon);
+	gtk_widget_set_visible(GTK_WIDGET(p->server), !anon);
+	adw_action_row_set_subtitle(ADW_ACTION_ROW(p->listen), anon ?
+		"Calls that come straight to this computer's address ring "
+		"the modem" :
+		"Register, so calls to the account ring the modem");
+}
+
+static void anonymous_changed(GObject *o, GParamSpec *ps, gpointer data)
+{
+	(void)o;
+	(void)ps;
+	show_account(data);
 }
 
 static void line_changed(GObject *o, GParamSpec *ps, gpointer data)
@@ -290,6 +320,7 @@ static void closed(AdwDialog *d, gpointer data)
 	c->sip_user = text_of(p->user);
 	c->sip_password = g_strdup(gtk_editable_get_text(GTK_EDITABLE(p->password)));
 	c->sip_server = text_of(p->server);
+	c->sip_anonymous = adw_switch_row_get_active(p->anonymous);
 	c->listen = adw_switch_row_get_active(p->listen);
 	c->t38 = adw_switch_row_get_active(p->t38);
 	c->v152 = adw_switch_row_get_active(p->v152);
@@ -325,7 +356,14 @@ void prefs_show(App *a)
 	p->country = entry(g, "Country (dmodemd -c, empty for the USA)",
 			   c->country);
 
-	p->sip = group(page, "SIP account", "Calls go to sip:<number>@server.");
+	p->sip = group(page, "SIP account", "Calls go to sip:<number>@server; "
+		       "a SIP address (sip:user@host, or user@host) is "
+		       "dialled as it is, and the account's password only "
+		       "goes to its own server.");
+	p->anonymous = toggle(p->sip, "No account (anonymous)", "Dial SIP "
+			      "addresses straight, from \"Anonymous\": "
+			      "nothing registered, no numbers",
+			      c->sip_anonymous);
 	p->user = entry(p->sip, "User name", c->sip_user);
 	GtkWidget *pw = adw_password_entry_row_new();
 	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(pw), "Password");
@@ -364,6 +402,9 @@ void prefs_show(App *a)
 	p->debug = ADW_SPIN_ROW(dbg);
 
 	show_groups(p);
+	show_account(p);
+	g_signal_connect(p->anonymous, "notify::active",
+			 G_CALLBACK(anonymous_changed), p);
 	g_signal_connect(p->line, "notify::selected", G_CALLBACK(line_changed),
 			 p);
 	adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(d), page);

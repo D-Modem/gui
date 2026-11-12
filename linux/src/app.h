@@ -18,6 +18,10 @@ typedef struct Config {
 	/* "sip", "usb", "alsa", or "device" (a modem that already runs) */
 	char *line;
 	char *sip_user, *sip_password, *sip_server;
+	/* SIP with no account (dmodemd's SIP_LOGIN=anonymous): nothing
+	   registered, SIP addresses (sip:user@host, user@host) dialled as
+	   they are, from "Anonymous" */
+	gboolean sip_anonymous;
 	gboolean listen, t38, v152, v150;
 	char *srtp;             /* "", "no" or "require" */
 	char *country;          /* dmodemd -c's, "" for its default */
@@ -93,6 +97,8 @@ void config_save(const Config *c);
 void config_free(Config *c);
 /* "SIP: alice@sip.example.com" and the like */
 char *config_summary(const Config *c);
+/* the SIP line has what dmodemd needs: an account, or none (anonymous) */
+gboolean config_sip_ready(const Config *c);
 /* the line settings dialog */
 void prefs_show(App *a);
 

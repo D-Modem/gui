@@ -108,7 +108,7 @@ struct ModemPage: View {
             }
             Section("Call") {
                 HStack {
-                    TextField("Number", text: $number)
+                    TextField("Number", text: $number, prompt: Text("number or sip:user@host"))
                         .onSubmit { if modem.isIdle { modem.dial(number) } }
                     Button("Dial") { modem.dial(number) }
                         .disabled(!modem.isIdle)

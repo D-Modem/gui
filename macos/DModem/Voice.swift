@@ -592,7 +592,7 @@ struct PhonePage: View {
             Section {
                 LabeledContent("Phone", value: status)
                 HStack {
-                    TextField("Number to call", text: $number)
+                    TextField("Number to call", text: $number, prompt: Text("number or sip:user@host"))
                         .onSubmit { if modem.isIdle { modem.voiceDial(number) } }
                     Button("Call") { modem.voiceDial(number) }
                         .disabled(!modem.isIdle)

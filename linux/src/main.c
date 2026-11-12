@@ -20,7 +20,7 @@ static void activate(GApplication *g, gpointer data)
 	gtk_window_present(a->window);
 	/* a modem that runs already, or one this app starts */
 	if (!g_strcmp0(a->cfg.line, "device") ||
-	    (!g_strcmp0(a->cfg.line, "sip") && *a->cfg.sip_user))
+	    (!g_strcmp0(a->cfg.line, "sip") && config_sip_ready(&a->cfg)))
 		modem_start(a);
 	(void)g;
 }

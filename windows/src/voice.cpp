@@ -713,7 +713,7 @@ static void voice_command(HWND p, int id, int code)
 		char n[128];
 		GetDlgItemText(p, IDC_V_NUMBER, n, sizeof(n));
 		if (!n[0]) {
-			app_message("Enter a number to call");
+			app_message("Enter a number or SIP address (sip:user@host) to call");
 			return;
 		}
 		stop_sound();

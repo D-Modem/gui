@@ -23,10 +23,17 @@ struct LineSettingsView: View {
             switch c.line {
             case .sip:
                 Section("SIP account") {
-                    TextField("User", text: $c.sipUser)
-                    SecureField("Password", text: $c.sipPassword)
-                    TextField("Server", text: $c.sipServer, prompt: Text("sip.example.net"))
+                    Toggle("No account (anonymous)", isOn: $c.sipAnonymous)
+                    if !c.sipAnonymous {
+                        TextField("User", text: $c.sipUser)
+                        SecureField("Password", text: $c.sipPassword)
+                        TextField("Server", text: $c.sipServer, prompt: Text("sip.example.net"))
+                    }
                     Toggle("Take incoming calls", isOn: $c.listen)
+                    Text(c.sipAnonymous
+                         ? "Calls go straight to a SIP address (sip:user@host, or user@host), from “Anonymous”: nothing is registered, and numbers can’t be dialled."
+                         : "A SIP address (sip:user@host) is dialled as it is too; the password only goes to the account’s own server.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Calls") {
                     Toggle("Fax over T.38", isOn: $c.t38)
