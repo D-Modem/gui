@@ -29,6 +29,7 @@ static void shutdown(GApplication *g, gpointer data)
 {
 	App *a = data;
 	(void)g;
+	remote_stop(a);
 	if (modem_running(a))
 		modem_stop(a);
 	g_cancellable_cancel(a->cancel);

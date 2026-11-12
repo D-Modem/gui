@@ -878,6 +878,88 @@ static void test_formats(void)
 	CHECK(dmc_audio_decode("ID3\4\0\0\0\0\0\0\0\0", 12, &pcm) == -1);
 }
 
+/* what the codec has for the socket, as a string of escaped bytes */
+static int out_is(dmc_net *n, const char *want, int wn)
+{
+	char b[512];
+	int k = dmc_net_output(n, b, sizeof(b));
+	return k == wn && !memcmp(b, want, (size_t)wn);
+}
+
+static int screen_is(dmc_net *n, const char *want, int wn)
+{
+	char b[512];
+	int k = dmc_net_screen(n, b, sizeof(b));
+	return k == wn && !memcmp(b, want, (size_t)wn);
+}
+
+static void test_net(void)
+{
+	CHECK(dmc_net_default_port(DMC_NET_TELNET) == 23);
+	CHECK(dmc_net_default_port(DMC_NET_RLOGIN) == 513);
+	CHECK(dmc_net_default_port(DMC_NET_SSH) == 22);
+	CHECK_STR(dmc_net_name(DMC_NET_RLOGIN), "rlogin");
+
+	/* Telnet: the first offers, then the server's */
+	dmc_net *n = dmc_net_new(DMC_NET_TELNET, "", "ANSI", 80, 24);
+	dmc_net_connected(n);
+	CHECK(out_is(n, "\xff\xfb\x18\xff\xfb\x1f\xff\xfd\x03", 9));
+	/* DO TTYPE, DO NAWS (our size), WILL ECHO, WILL SGA (asked:
+	   not answered again), DO LINEMODE (refused), text, IAC IAC */
+	const char *in = "\xff\xfd\x18\xff\xfd\x1f\xff\xfb\x01\xff\xfb\x03"
+		"\xff\xfd\x22Hi\xff\xff!";
+	dmc_net_feed(n, in, 20);
+	CHECK(out_is(n, "\xff\xfa\x1f\x00\x50\x00\x18\xff\xf0"
+		     "\xff\xfd\x01\xff\xfc\x22", 15));
+	CHECK(screen_is(n, "Hi\xff!", 4));
+	/* TERMINAL-TYPE SEND, split across two reads */
+	dmc_net_feed(n, "\xff\xfa\x18", 3);
+	dmc_net_feed(n, "\x01\xff\xf0", 3);
+	CHECK(out_is(n, "\xff\xfa\x18\x00" "ANSI\xff\xf0", 10));
+	/* CR NUL is a CR */
+	dmc_net_feed(n, "a\r\0b", 4);
+	CHECK(screen_is(n, "a\rb", 3));
+	/* typed: a lone CR as CR NUL, IAC doubled */
+	dmc_net_type(n, "ls\r\xff", 4);
+	CHECK(out_is(n, "ls\r\0\xff\xff", 6));
+	dmc_net_type(n, "\r\n", 2);
+	CHECK(out_is(n, "\r\n", 2));
+	/* resized: NAWS, an 0xff in it doubled */
+	dmc_net_resize(n, 255, 50);
+	CHECK(out_is(n, "\xff\xfa\x1f\x00\xff\xff\x00\x32\xff\xf0", 10));
+	dmc_net_resize(n, 255, 50);
+	CHECK(out_is(n, "", 0));
+	/* WONT ECHO: DONT; and again: nothing */
+	dmc_net_feed(n, "\xff\xfc\x01\xff\xfc\x01", 6);
+	CHECK(out_is(n, "\xff\xfe\x01", 3));
+	dmc_net_free(n);
+
+	/* rlogin */
+	n = dmc_net_new(DMC_NET_RLOGIN, "alice", "xterm", 80, 24);
+	dmc_net_connected(n);
+	CHECK(out_is(n, "\0alice\0alice\0xterm/38400\0", 25));
+	/* the server's NUL, then its text */
+	dmc_net_feed(n, "\0Password:", 10);
+	CHECK(screen_is(n, "Password:", 9));
+	dmc_net_feed(n, "\0", 1);
+	CHECK(screen_is(n, "\0", 1));
+	/* no size until it is asked for */
+	dmc_net_resize(n, 100, 30);
+	CHECK(out_is(n, "", 0));
+	dmc_net_urgent(n, 0x80);
+	CHECK(out_is(n, "\xff\xffss\x00\x1e\x00\x64\x03\x20\x01\xe0", 12));
+	dmc_net_resize(n, 80, 24);
+	CHECK(out_is(n, "\xff\xffss\x00\x18\x00\x50\x02\x80\x01\x80", 12));
+	/* typed as it is */
+	dmc_net_type(n, "\r\xff", 2);
+	CHECK(out_is(n, "\r\xff", 2));
+	/* flush */
+	dmc_net_feed(n, "old", 3);
+	dmc_net_urgent(n, 0x02);
+	CHECK(screen_is(n, "", 0));
+	dmc_net_free(n);
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : ".";
@@ -894,6 +976,7 @@ int main(int argc, char **argv)
 	test_voicemail();
 	test_wav();
 	test_formats();
+	test_net();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

@@ -76,7 +76,7 @@ typedef void (*ResponseFn)(const dmc_event *ev, void *data);
 struct App {
 	HINSTANCE inst;
 	HWND main, tabs;
-	HWND pages[6];
+	HWND pages[7];
 	HFONT font, bold_font, big_font, mono_font;
 	Config cfg;
 	dmc_session *s;
@@ -104,6 +104,8 @@ void link_wait(int tag, ResponseFn fn, void *data);
 #define WM_APP_SOCKET (WM_APP + 1)
 #define TIMER_PUMP 1
 #define TIMER_VOICE 2
+#define WM_APP_REMOTE (WM_APP + 2)
+#define TIMER_REMOTE 3
 
 /* main.cpp */
 void app_log(const char *line);
@@ -133,6 +135,27 @@ HWND term_page_new(HWND parent);
 void term_page_layout(HWND page, int w, int h);
 void term_feed(const char *data, int n);
 void term_state();
+
+/* termview.cpp: a terminal control of its own screen (dmc_vt), whose
+   keys go to fn */
+typedef void (*TermTypedFn)(const char *data, int n, void *ctx);
+HWND termview_new(HWND parent, int id, TermTypedFn fn, void *ctx);
+/* bytes from the far end */
+void termview_feed(HWND w, const char *data, int n);
+void termview_reset(HWND w);
+void termview_size(HWND w, int *cols, int *rows);
+/* what Backspace sends (DEL unless set) */
+void termview_set_backspace(HWND w, char b);
+
+/* remote.cpp: the Remote page, a login by SSH, Telnet or rlogin */
+HWND remote_page_new(HWND parent);
+void remote_page_layout(HWND page, int w, int h);
+/* its socket's messages (WM_APP_REMOTE) and its timer (TIMER_REMOTE) */
+void remote_socket(WPARAM w, LPARAM l);
+void remote_tick();
+/* the focus to its first control */
+bool remote_focus();
+void remote_stop();
 
 /* settings.cpp: the Settings page */
 HWND settings_page_new(HWND parent);

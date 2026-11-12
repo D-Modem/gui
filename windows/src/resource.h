@@ -39,6 +39,18 @@
 #define IDC_SETUP_CT    502
 #define IDC_CLEAR       503
 
+/* the Remote page */
+#define IDC_R_PROTO     1100
+#define IDC_R_HOSTLABEL 1101
+#define IDC_R_HOST      1102
+#define IDC_R_PORTLABEL 1103
+#define IDC_R_PORT      1104
+#define IDC_R_USERLABEL 1105
+#define IDC_R_USER      1106
+#define IDC_R_GO        1107
+#define IDC_R_TERM      1108
+#define IDC_R_STATUS    1109
+
 /* the Settings page */
 #define IDC_GROUPS      600
 #define IDC_SETTINGS    601

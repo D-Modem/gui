@@ -31,6 +31,10 @@ typedef struct Config {
 	   message's longest (s) */
 	gboolean voicemail;
 	int vm_rings, vm_max;
+	/* the Remote page's last login ([remote]): "SSH", "Telnet" or
+	   "rlogin", the server, its port (0: the protocol's), the user */
+	char *remote_proto, *remote_host, *remote_user;
+	int remote_port;
 } Config;
 
 typedef struct App App;
@@ -136,6 +140,11 @@ typedef void (*AudioPush)(App *a, const int16_t *pcm, int n);
 gboolean audio_start(App *a, AudioPull pull, AudioPush push);
 void audio_stop(App *a);
 gboolean audio_available(void);
+
+/* remote.c: the Remote page, a login by SSH, Telnet or rlogin */
+GtkWidget *remote_page_new(App *a);
+/* its connection ended (the app is quitting) */
+void remote_stop(App *a);
 
 /* stats.c */
 GtkWidget *stats_page_new(App *a);

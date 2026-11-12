@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (C) 2026 D-Modem Authors
  *
- * window.c - the main window: the Modem, Terminal, Settings, Call and
- *            Log pages, the same pages as the Windows and macOS apps
+ * window.c - the main window: the Modem, Phone, Terminal, Remote,
+ *            Settings, Call and Log pages, the same pages as the Windows and macOS apps
  *            (docs/design.md)
  */
 #include <string.h>
@@ -459,6 +459,9 @@ void window_build(App *a)
 	adw_view_stack_add_titled_with_icon(a->stack, terminal_page(a),
 					    "terminal", "Terminal",
 					    "utilities-terminal-symbolic");
+	adw_view_stack_add_titled_with_icon(a->stack, remote_page_new(a),
+					    "remote", "Remote",
+					    "network-server-symbolic");
 	adw_view_stack_add_titled_with_icon(a->stack, settings_page_new(a),
 					    "settings", "Settings",
 					    "preferences-system-symbolic");

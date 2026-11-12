@@ -15,6 +15,7 @@ keeps it easy to call from C (GTK), C++ (Win32) and Swift, and easy to test
 | `dmc_model` | The modem's settings from AT!M, with each setting's check and the command that sets it |
 | `dmc_diag` | The last call's statistics from AT#UD, as labelled rows (the V.58 code tables decoded) |
 | `dmc_vt` | A small VT100/ANSI screen, for Windows and macOS, whose toolkits have no terminal widget |
+| `dmc_net` | Telnet (option negotiation, terminal type, window size) and rlogin (the handshake, window size on the server's urgent request), for the Remote page |
 | `dmc_daemon_*` | Reading what dmodemd prints when it starts: the device it made, or its error |
 
 ## Where the settings come from
@@ -33,13 +34,14 @@ each time the modem opens.
 
 ## The same screens everywhere
 
-Each app has the same six pages, with the same words:
+Each app has the same seven pages, with the same words:
 
 | Page | Contents |
 | --- | --- |
 | Modem | The state ("Idle", "Dialling", "Online") and its detail (the CONNECT line, the caller), Dial, Answer, Hang Up, the line and the device, Start or Stop |
 | Phone | A voice call's state, Call and Answer, the keypad (DTMF), Mute and Listen; the answering machine (on or off, rings, the greeting) and its messages |
 | Terminal | The AT console; the buttons **Full-screen setup** (AT!CF) and **Command-line setup** (AT!CT) |
+| Remote | SSH, Telnet or rlogin; the server, its port (empty: the protocol's) and the user; Connect; a terminal of its own, whose size goes to the server as it changes |
 | Settings | Groups of settings as native controls, changed ones marked; Defaults (ATZ), the init string and Keep |
 | Call Stats | AT#UD's rows and ATI11's report, refreshed after each call |
 | Log | What dmodemd printed, and the command line it was started with |
@@ -62,6 +64,27 @@ own group (`-g`), so that dmodemd needs no root.
 
 Each app can instead use a modem that already runs: a device path on
 Linux and macOS; a TCP address or a COM port on Windows.
+
+## Remote logins
+
+The Remote page logs in to a server, beside the modem, in a terminal of
+its own. Telnet and rlogin are a TCP connection each app makes in its own
+way, with libdmodemctl's `dmc_net` for the protocol (sans-I/O, as the
+session). SSH is the system's OpenSSH client, so that the user's keys,
+agent, `known_hosts` and `~/.ssh/config` apply:
+
+| | Telnet and rlogin | SSH | Kept in |
+| --- | --- | --- | --- |
+| Linux | GSocketClient, its socket on the main loop (G_IO_PRI for rlogin's urgent byte) | `ssh` on a pty of the page's own (forkpty), TERM `xterm-256color` | `settings.ini`, `[remote]` |
+| Windows | Winsock 1.1, `WSAAsyncSelect` (FD_OOB for rlogin), on every Windows from 95 | Windows' `ssh.exe` (the OpenSSH Client feature) in a pseudo console: Windows 10 1809 and later, looked up at run time | `dmodem.ini`, `[remote]` |
+| macOS | a BSD socket on a dispatch source | `/usr/bin/ssh` on a pty (`PtySpawn.c`) | UserDefaults |
+
+Telnet tells the server the terminal type and the window's size (NAWS),
+and sends a typed CR as CR NUL. rlogin sends the user as both the local
+and the remote name; a server that insists on a client port below 1024
+(classic BSD `rlogind`) won't take an unprivileged app, but BBSes and
+most rlogin services do. Backspace sends DEL, as a host expects (the
+modem's console sends BS).
 
 ## Voice calls and the answering machine
 
