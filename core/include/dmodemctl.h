@@ -25,6 +25,8 @@
  *    has no terminal widget (Windows and macOS): the AT console and the
  *    full-screen configurator (AT!CF).
  *  - dmc_daemon_*: starting dmodemd and reading what it prints.
+ *  - dmc_net: a remote login's protocol (Telnet, rlogin) on a TCP
+ *    connection the app makes, for the Remote page.
  *  - dmc_voice_*: voice calls on the session (V.253's voice mode: the
  *    call's audio both ways, 8 kHz), the answering machine that takes
  *    a message, and WAV files for greetings and messages.
@@ -383,6 +385,42 @@ DMC_API uint32_t dmc_vt_palette(int c);
 DMC_API int dmc_daemon_ready(const char *line, char *buf, int max);
 /* a line that is an error of dmodemd's ("error: ..."): 1 */
 DMC_API int dmc_daemon_error(const char *line);
+
+/*
+ * Remote logins
+ *
+ * Telnet and rlogin on a TCP connection the app makes (SSH is the
+ * system's ssh in a pty, so it needs nothing here).  Like the session it
+ * does no I/O: hand it what the socket read, write what dmc_net_output()
+ * gives, show what dmc_net_screen() gives.
+ */
+
+typedef struct dmc_net dmc_net;
+
+enum { DMC_NET_TELNET = 1, DMC_NET_RLOGIN, DMC_NET_SSH };
+
+/* the protocol's port (23, 513, 22) and its name ("Telnet") */
+DMC_API int dmc_net_default_port(int proto);
+DMC_API const char *dmc_net_name(int proto);
+/* a login by Telnet or rlogin: user is rlogin's (Telnet's may be ""),
+   term the terminal type the server is told, the screen's size */
+DMC_API dmc_net *dmc_net_new(int proto, const char *user, const char *term,
+			     int cols, int rows);
+DMC_API void dmc_net_free(dmc_net *n);
+/* the connection made: rlogin's handshake, Telnet's first offers */
+DMC_API void dmc_net_connected(dmc_net *n);
+/* bytes the socket read */
+DMC_API void dmc_net_feed(dmc_net *n, const char *data, int len);
+/* an urgent (out-of-band) byte the socket read: rlogin's control byte */
+DMC_API void dmc_net_urgent(dmc_net *n, int byte);
+/* the bytes for the terminal: how many */
+DMC_API int dmc_net_screen(dmc_net *n, char *buf, int max);
+/* bytes typed */
+DMC_API void dmc_net_type(dmc_net *n, const char *data, int len);
+/* the bytes to write to the socket: how many */
+DMC_API int dmc_net_output(dmc_net *n, char *buf, int max);
+/* the screen's new size, told to the server */
+DMC_API void dmc_net_resize(dmc_net *n, int cols, int rows);
 
 #ifdef __cplusplus
 }

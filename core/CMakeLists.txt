@@ -10,6 +10,7 @@ set(DMODEMCTL_SOURCES
   src/vt.c
   src/daemon.c
   src/voice.c
+  src/net.c
   src/util.c)
 
 if(DMODEMCTL_SHARED)

@@ -67,6 +67,16 @@ void config_load(Config *c)
 	if (e || c->vm_max < 10)
 		c->vm_max = 120;
 	g_clear_error(&e);
+	c->remote_proto = g_key_file_get_string(k, "remote", "protocol", NULL);
+	if (!c->remote_proto)
+		c->remote_proto = g_strdup("SSH");
+	c->remote_host = g_key_file_get_string(k, "remote", "host", NULL);
+	if (!c->remote_host)
+		c->remote_host = g_strdup("");
+	c->remote_port = g_key_file_get_integer(k, "remote", "port", NULL);
+	c->remote_user = g_key_file_get_string(k, "remote", "user", NULL);
+	if (!c->remote_user)
+		c->remote_user = g_strdup("");
 	g_key_file_unref(k);
 }
 
@@ -92,6 +102,10 @@ void config_save(const Config *c)
 	g_key_file_set_boolean(k, "voice", "voicemail", c->voicemail);
 	g_key_file_set_integer(k, "voice", "rings", c->vm_rings);
 	g_key_file_set_integer(k, "voice", "max-seconds", c->vm_max);
+	g_key_file_set_string(k, "remote", "protocol", c->remote_proto);
+	g_key_file_set_string(k, "remote", "host", c->remote_host);
+	g_key_file_set_integer(k, "remote", "port", c->remote_port);
+	g_key_file_set_string(k, "remote", "user", c->remote_user);
 	char *p = path();
 	char *dir = g_path_get_dirname(p);
 	g_mkdir_with_parents(dir, 0700);
@@ -119,6 +133,9 @@ void config_free(Config *c)
 	g_free(c->device);
 	g_free(c->dmodemd);
 	g_free(c->init);
+	g_free(c->remote_proto);
+	g_free(c->remote_host);
+	g_free(c->remote_user);
 }
 
 char *config_summary(const Config *c)
