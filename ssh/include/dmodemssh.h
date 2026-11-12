@@ -15,8 +15,9 @@
  *
  * What it has: host keys checked by the caller (and in OpenSSH's
  * known_hosts when asked); logins by password, keyboard-interactive, a
- * private key (OpenSSH's, PEM), the system's agent, or OpenSSH's own
- * keys and agent at once (ssh's default); ~/.ssh/config when asked; Ed25519,
+ * private key (OpenSSH's, PEM or PuTTY's .ppk), an agent (ssh-agent's
+ * socket; on Windows Pageant or OpenSSH's), or OpenSSH's own keys and
+ * agent at once (ssh's default); ~/.ssh/config when asked; Ed25519,
  * ECDSA and RSA keys; a shell on a pty, a command, direct TCP channels
  * (ssh -L and -D), remote listens (ssh -R) and the server's
  * agent channels (ssh -A) handed to the caller as channels.
@@ -98,7 +99,10 @@ void dmc_ssh_free(dmc_ssh *s);
      "knownhosts"  the host's key looked up there (a path; "" OpenSSH's)
      "hostkeys"    the host key algorithms, in order (a list with commas)
      "timeout"     seconds to connect in
-     "compression" "yes" or "no" */
+     "compression" "yes" or "no"
+     "agent"       the agent logged in with: a socket (Linux, macOS; ""
+                   SSH_AUTH_SOCK's); on Windows "pageant", a named pipe,
+                   or "" for Pageant and else OpenSSH's */
 int dmc_ssh_option(dmc_ssh *s, const char *name, const char *value);
 /* the next event: 1 (in *ev), 0 when timeout_ms passed with none, -1
    when the connection is over and its DMC_SSH_EV_CLOSED was handed back */
@@ -110,11 +114,15 @@ void dmc_ssh_disconnect(dmc_ssh *s);
 void dmc_ssh_trust(dmc_ssh *s, int ok, int remember);
 /* a login tried (an answer to DMC_SSH_EV_AUTH) */
 void dmc_ssh_auth_password(dmc_ssh *s, const char *password);
-/* by a private key's text (OpenSSH's, PEM): 0, or -1 when it can't be
+/* by a private key's text (OpenSSH's, PEM or PuTTY's .ppk): 0, or -1 when it can't be
    read with that passphrase (nothing is tried: answer again) */
 int dmc_ssh_auth_key(dmc_ssh *s, const char *key, const char *passphrase);
-/* by the system's agent (SSH_AUTH_SOCK) */
+/* by the agent: the "agent" option's, else the system's (SSH_AUTH_SOCK;
+   on Windows Pageant, else OpenSSH's) */
 void dmc_ssh_auth_agent(dmc_ssh *s);
+/* whether that agent is there to answer (agent as the "agent" option):
+   1 or 0 */
+int dmc_ssh_agent_reachable(const char *agent);
 /* as OpenSSH's ssh does: the agent, then ~/.ssh's keys with no passphrase */
 void dmc_ssh_auth_auto(dmc_ssh *s);
 /* by the server's questions (keyboard-interactive) */
@@ -169,6 +177,9 @@ int dmc_ssh_keygen(const char *type, int bits, const char *passphrase,
    passphrase */
 int dmc_ssh_key_public(const char *key, const char *passphrase,
 		       char **public_key);
+/* whether a private key's text (OpenSSH's, PEM or PuTTY's .ppk) needs a
+   passphrase: 1 or 0 */
+int dmc_ssh_key_encrypted(const char *key);
 /* a private key written again (OpenSSH's form) with a new passphrase
    (NULL or "": none): 0, or -1 */
 int dmc_ssh_key_export(const char *key, const char *passphrase,

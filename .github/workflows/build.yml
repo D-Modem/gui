@@ -36,15 +36,25 @@ jobs:
           ctest --test-dir build-asan --output-on-failure -R dmodemctl
       - name: SSH against a real sshd
         run: |
-          sudo apt-get install -y --no-install-recommends openssh-server
+          sudo apt-get install -y --no-install-recommends openssh-server putty-tools
           sudo useradd -m dmtest
           echo 'dmtest:Sesame-42' | sudo chpasswd
+          # a key in a file, one of PuTTY's (.ppk) and one in an agent
           ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/key"
+          : > "$RUNNER_TEMP/empty"
+          puttygen -t rsa -b 2048 -o "$RUNNER_TEMP/key.ppk" --new-passphrase "$RUNNER_TEMP/empty"
+          ssh-keygen -q -t ecdsa -N '' -f "$RUNNER_TEMP/agentkey"
+          eval "$(ssh-agent -a "$RUNNER_TEMP/agent.sock")"
+          ssh-add "$RUNNER_TEMP/agentkey"
+          unset SSH_AUTH_SOCK
+          puttygen "$RUNNER_TEMP/key.ppk" -O public-openssh -o "$RUNNER_TEMP/ppk.pub"
+          cat "$RUNNER_TEMP/key.pub" "$RUNNER_TEMP/agentkey.pub" "$RUNNER_TEMP/ppk.pub" > "$RUNNER_TEMP/authorized_keys"
           sudo install -d -m 700 -o dmtest ~dmtest/.ssh
-          sudo install -m 600 -o dmtest "$RUNNER_TEMP/key.pub" ~dmtest/.ssh/authorized_keys
+          sudo install -m 600 -o dmtest "$RUNNER_TEMP/authorized_keys" ~dmtest/.ssh/authorized_keys
           sudo mkdir -p /run/sshd
           sudo /usr/sbin/sshd -p 2222 -o ListenAddress=127.0.0.1 -o PasswordAuthentication=yes
           DMODEM_SSH_TEST=127.0.0.1:2222:dmtest:Sesame-42 DMODEM_SSH_TEST_KEY="$RUNNER_TEMP/key" \
+            DMODEM_SSH_TEST_PPK="$RUNNER_TEMP/key.ppk" DMODEM_SSH_TEST_AGENT="$RUNNER_TEMP/agent.sock" \
             build/ssh/dmodemssh_test
 
   windows-9x:

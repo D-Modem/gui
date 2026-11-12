@@ -77,6 +77,15 @@ void config_load(Config *c)
 	c->remote_user = g_key_file_get_string(k, "remote", "user", NULL);
 	if (!c->remote_user)
 		c->remote_user = g_strdup("");
+	c->remote_auth = g_key_file_get_string(k, "remote", "login", NULL);
+	if (!c->remote_auth)
+		c->remote_auth = g_strdup("auto");
+	c->remote_key = g_key_file_get_string(k, "remote", "key", NULL);
+	if (!c->remote_key)
+		c->remote_key = g_strdup("");
+	c->remote_agent = g_key_file_get_string(k, "remote", "agent", NULL);
+	if (!c->remote_agent)
+		c->remote_agent = g_strdup("");
 	c->remote_term = g_key_file_get_string(k, "remote", "terminal", NULL);
 	if (!c->remote_term)
 		c->remote_term = g_strdup("xterm");
@@ -112,6 +121,9 @@ void config_save(const Config *c)
 	g_key_file_set_string(k, "remote", "host", c->remote_host);
 	g_key_file_set_integer(k, "remote", "port", c->remote_port);
 	g_key_file_set_string(k, "remote", "user", c->remote_user);
+	g_key_file_set_string(k, "remote", "login", c->remote_auth);
+	g_key_file_set_string(k, "remote", "key", c->remote_key);
+	g_key_file_set_string(k, "remote", "agent", c->remote_agent);
 	g_key_file_set_string(k, "remote", "terminal", c->remote_term);
 	g_key_file_set_string(k, "terminal", "type", c->term_type);
 	char *p = path();
@@ -145,6 +157,9 @@ void config_free(Config *c)
 	g_free(c->remote_host);
 	g_free(c->remote_user);
 	g_free(c->remote_term);
+	g_free(c->remote_auth);
+	g_free(c->remote_key);
+	g_free(c->remote_agent);
 	g_free(c->term_type);
 }
 

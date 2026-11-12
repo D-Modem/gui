@@ -33,6 +33,10 @@ typedef struct Config {
 	/* the Remote page's last login ([remote]): "SSH", "Telnet" or
 	   "rlogin", the server, its port (0: the protocol's), the user */
 	char *remote_proto, *remote_host, *remote_user;
+	/* how SSH logs in: "auto" (OpenSSH's keys and the agent), "agent"
+	   or "key" (remote_key's file: OpenSSH's, PEM or PuTTY's .ppk);
+	   the agent's socket ("": SSH_AUTH_SOCK's) */
+	char *remote_auth, *remote_key, *remote_agent;
 	/* the terminals' kinds (dmc_vt profiles' ids) */
 	char *term_type, *remote_term;
 	int remote_port;

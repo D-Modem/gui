@@ -9,8 +9,11 @@
  * dmc_net for the protocol.  SSH is libdmodemssh (the apps' own client,
  * on libssh) on a thread of its own, its events brought to the main
  * loop; it reads OpenSSH's config, known_hosts, keys and agent, so that
- * they are the user's.  Either way the terminal only shows bytes and
- * gives what is typed.
+ * they are the user's.  Its login may instead be by the agent alone (an
+ * ssh-agent's socket, SSH_AUTH_SOCK's or one given) or by a key file:
+ * OpenSSH's, PEM or PuTTY's .ppk, which can also be imported into
+ * ~/.ssh in OpenSSH's form.  Either way the terminal only shows bytes
+ * and gives what is typed.
  */
 #include <errno.h>
 #include <netinet/in.h>
@@ -30,6 +33,8 @@ static const int protos[] = { DMC_NET_SSH, DMC_NET_TELNET, DMC_NET_RLOGIN };
 typedef struct Remote {
 	App *a;
 	GtkWidget *proto, *host, *port, *user, *go, *status;
+	/* how SSH logs in: its menu, the way, the key file, the agent */
+	GtkWidget *login, *auth, *key_label, *agent, *agent_state;
 	GtkWidget *term, *type;
 	int cols, rows;
 	/* what runs: its protocol (0: none) */
@@ -46,6 +51,10 @@ typedef struct Remote {
 	   the logins tried, a question's dialog */
 	struct Ssh *ssh;
 	int shell, tried, asks, exit_status;
+	/* the methods the server last offered; the key file's text and the
+	   passphrases tried for it */
+	int methods, key_tries;
+	char *key_text;
 	AdwDialog *dialog;
 	guint size_tick;
 } Remote;
@@ -64,6 +73,8 @@ static void controls(Remote *r)
 	gtk_widget_set_sensitive(r->host, idle);
 	gtk_widget_set_sensitive(r->port, idle);
 	gtk_widget_set_sensitive(r->user, idle);
+	if (r->login)
+		gtk_widget_set_sensitive(r->login, idle);
 	gtk_button_set_label(GTK_BUTTON(r->go), idle ? "Connect" : "Disconnect");
 	if (idle) {
 		gtk_widget_add_css_class(r->go, "suggested-action");
@@ -77,6 +88,15 @@ static void controls(Remote *r)
 static void show(Remote *r, const char *data, gssize n)
 {
 	termview_feed(r->term, data, n < 0 ? (int)strlen(data) : (int)n);
+}
+
+/* the key file's text let go of (wiped) */
+static void key_forget(Remote *r)
+{
+	if (r->key_text) {
+		memset(r->key_text, 0, strlen(r->key_text));
+		g_clear_pointer(&r->key_text, g_free);
+	}
 }
 
 static void ssh_disconnect(Remote *r);
@@ -110,6 +130,7 @@ static void ended(Remote *r, const char *why)
 	/* (the connection is freed once its thread has said it's closed) */
 	if (r->ssh)
 		ssh_disconnect(r);
+	key_forget(r);
 	r->shell = 0;
 	if (r->size_tick)
 		g_source_remove(r->size_tick);
@@ -424,16 +445,133 @@ static void ask(Remote *r, const char *heading, const char *body, int prompts)
 	gtk_widget_grab_focus(g_ptr_array_index(entries, 0));
 }
 
-/* what's tried, in OpenSSH's order: keys and the agent, then the
-   server's questions or a password (three times at most) */
-enum { TRIED_KEYS = 1 };
+/* a passphrase given (NULL: cancelled), to what asked for it */
+typedef void (*PassFn)(Remote *r, const char *pass, gpointer data);
+
+static void passphrase_given(AdwAlertDialog *d, const char *response, gpointer data)
+{
+	Remote *r = data;
+	PassFn fn = g_object_get_data(G_OBJECT(d), "fn");
+	GtkWidget *e = g_object_get_data(G_OBJECT(d), "entry");
+	if (r->dialog == ADW_DIALOG(d))
+		r->dialog = NULL;
+	fn(r, strcmp(response, "ok") ? NULL : gtk_editable_get_text(GTK_EDITABLE(e)),
+	   g_object_get_data(G_OBJECT(d), "arg"));
+}
+
+/* a key's passphrase asked for (why: a try's failure, or NULL); fn
+   gets it with arg (freed with free_arg); login: the connection's
+   dialog, closed with it */
+static void ask_passphrase(Remote *r, const char *name, const char *why,
+			   PassFn fn, gpointer arg, GDestroyNotify free_arg,
+			   gboolean login)
+{
+	char *head = g_strdup_printf("Passphrase for %s", name);
+	AdwDialog *d = adw_alert_dialog_new(head, why);
+	g_free(head);
+	GtkWidget *e = gtk_password_entry_new();
+	g_object_set(e, "placeholder-text", "Passphrase", "activates-default", TRUE, NULL);
+	adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(d), e);
+	adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(d), "cancel", "Cancel",
+				       "ok", "Unlock", NULL);
+	adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(d), "ok",
+						 ADW_RESPONSE_SUGGESTED);
+	adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(d), "ok");
+	adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(d), "cancel");
+	g_object_set_data(G_OBJECT(d), "fn", (gpointer)fn);
+	g_object_set_data(G_OBJECT(d), "entry", e);
+	g_object_set_data_full(G_OBJECT(d), "arg", arg, free_arg);
+	g_signal_connect(d, "response", G_CALLBACK(passphrase_given), r);
+	if (login)
+		r->dialog = d;
+	adw_dialog_present(d, GTK_WIDGET(r->a->window));
+	gtk_widget_grab_focus(e);
+}
+
+/* a path with ~/ at its start made the home folder's */
+static char *expand(const char *path)
+{
+	if (path[0] == '~' && path[1] == '/')
+		return g_build_filename(g_get_home_dir(), path + 2, NULL);
+	return g_strdup(path);
+}
+
+/* what's tried, in OpenSSH's order: keys and the agent (or what was
+   chosen: the agent alone, or a key file), then the server's questions
+   or a password (three times at most) */
+enum { TRIED_KEYS = 1, TRIED_FILE = 2 };
+
+static void ssh_auth(Remote *r, int methods, const char *why);
+
+/* the key file's passphrase given: the login by it, or another try */
+static void key_passphrase(Remote *r, const char *pass, gpointer data)
+{
+	Ssh *ssh = data;
+	if (ssh != r->ssh || !r->key_text)
+		return;
+	char *name = g_path_get_basename(r->a->cfg.remote_key);
+	if (pass && dmc_ssh_auth_key(ssh->s, r->key_text, pass) == 0) {
+		r->tried |= TRIED_FILE;
+	} else if (pass && ++r->key_tries < 3) {
+		ask_passphrase(r, name, "That passphrase does not open the key.",
+			       key_passphrase, ssh, NULL, TRUE);
+	} else {
+		r->tried |= TRIED_FILE;
+		key_forget(r);
+		ssh_auth(r, r->methods, "");
+	}
+	g_free(name);
+}
+
+/* the login by the key file: its passphrase asked for if it has one;
+   FALSE when there's nothing to try */
+static gboolean key_login(Remote *r)
+{
+	char *path = expand(r->a->cfg.remote_key);
+	char *name = g_path_get_basename(path);
+	gboolean ok = FALSE;
+
+	key_forget(r);
+	if (!g_file_get_contents(path, &r->key_text, NULL, NULL)) {
+		char *m = g_strdup_printf("\r\n[The key file %s can't be read]\r\n", path);
+		show(r, m, -1);
+		g_free(m);
+		r->tried |= TRIED_FILE;
+	} else if (dmc_ssh_key_encrypted(r->key_text)) {
+		r->key_tries = 0;
+		ask_passphrase(r, name, NULL, key_passphrase, r->ssh, NULL, TRUE);
+		ok = TRUE;
+	} else {
+		r->tried |= TRIED_FILE;
+		ok = dmc_ssh_auth_key(r->ssh->s, r->key_text, NULL) == 0;
+		if (!ok) {
+			char *m = g_strdup_printf("\r\n[%s is not a key that can be read]\r\n", path);
+			show(r, m, -1);
+			g_free(m);
+		}
+	}
+	g_free(name);
+	g_free(path);
+	return ok;
+}
 
 static void ssh_auth(Remote *r, int methods, const char *why)
 {
 	Ssh *ssh = r->ssh;
-	if ((methods & DMC_SSH_AUTH_PUBLICKEY) && !(r->tried & TRIED_KEYS)) {
+	const char *how = r->a->cfg.remote_auth;
+	gboolean file = !strcmp(how, "key") && *r->a->cfg.remote_key;
+
+	r->methods = methods;
+	if ((methods & DMC_SSH_AUTH_PUBLICKEY) && file && !(r->tried & TRIED_FILE)) {
+		if (key_login(r))
+			return;
+	} else if ((methods & DMC_SSH_AUTH_PUBLICKEY) && !file &&
+		   !(r->tried & TRIED_KEYS)) {
 		r->tried |= TRIED_KEYS;
-		dmc_ssh_auth_auto(ssh->s);
+		if (!strcmp(how, "agent"))
+			dmc_ssh_auth_agent(ssh->s);
+		else
+			dmc_ssh_auth_auto(ssh->s);
 		return;
 	}
 	if (r->asks++ >= 3) {
@@ -547,12 +685,20 @@ static gboolean start_ssh(Remote *r, const char *host, int port,
 	/* OpenSSH's own config and known hosts: the user's */
 	dmc_ssh_option(s, "config", "");
 	dmc_ssh_option(s, "knownhosts", "");
+	/* the agent: the one given, else SSH_AUTH_SOCK's */
+	const char *agent = r->a->cfg.remote_agent;
+	if (*agent)
+		dmc_ssh_option(s, "agent", agent);
+	if (!strcmp(r->a->cfg.remote_auth, "agent") && !dmc_ssh_agent_reachable(agent))
+		show(r, *agent ? "[No agent answers at the socket given]\r\n" :
+		     "[No agent answers: SSH_AUTH_SOCK names none]\r\n", -1);
 	Ssh *ssh = g_new0(Ssh, 1);
 	ssh->s = s;
 	r->ssh = ssh;
 	r->shell = 0;
 	r->tried = 0;
 	r->asks = 0;
+	key_forget(r);
 	r->exit_status = 0;
 	SshEv *start = g_new0(SshEv, 1);
 	start->r = r;
@@ -612,6 +758,8 @@ static void proto_changed(GObject *o, GParamSpec *p, gpointer data)
 	char ps[16];
 	g_snprintf(ps, sizeof(ps), "%d", dmc_net_default_port(chosen_proto(r)));
 	gtk_entry_set_placeholder_text(GTK_ENTRY(r->port), ps);
+	if (r->login)
+		gtk_widget_set_visible(r->login, chosen_proto(r) == DMC_NET_SSH);
 }
 
 static void connect_clicked(GtkWidget *w, gpointer data)
@@ -702,6 +850,316 @@ static void type_changed(GObject *o, GParamSpec *p, gpointer data)
 	config_save(&r->a->cfg);
 }
 
+/*
+ *    how SSH logs in: its menu
+ */
+
+/* the ways in the drop-down's order, as the config has them */
+static const char *const hows[] = { "auto", "agent", "key" };
+
+/* the key file shown (and its row's tooltip) */
+static void key_shown(Remote *r)
+{
+	const char *k = r->a->cfg.remote_key;
+	char *name = *k ? g_path_get_basename(k) : g_strdup("No key file chosen");
+	gtk_label_set_text(GTK_LABEL(r->key_label), name);
+	gtk_widget_set_tooltip_text(r->key_label, *k ? k : NULL);
+	g_free(name);
+}
+
+/* whether the agent answers, under its socket's entry */
+static void agent_shown(Remote *r)
+{
+	const char *a = r->a->cfg.remote_agent;
+	const char *m = dmc_ssh_agent_reachable(a) ? "An agent answers there" :
+			*a ? "No agent answers there" :
+			g_getenv("SSH_AUTH_SOCK") ? "No agent answers at SSH_AUTH_SOCK" :
+			"SSH_AUTH_SOCK is not set: give the agent's socket";
+	gtk_label_set_text(GTK_LABEL(r->agent_state), m);
+}
+
+/* the way chosen, kept */
+static void how_changed(GObject *o, GParamSpec *p, gpointer data)
+{
+	Remote *r = data;
+	(void)o;
+	(void)p;
+	guint i = gtk_drop_down_get_selected(GTK_DROP_DOWN(r->auth));
+	g_free(r->a->cfg.remote_auth);
+	r->a->cfg.remote_auth = g_strdup(hows[i < G_N_ELEMENTS(hows) ? i : 0]);
+	config_save(&r->a->cfg);
+}
+
+/* the key file set, and the login by it chosen */
+static void key_set(Remote *r, const char *path)
+{
+	g_free(r->a->cfg.remote_key);
+	r->a->cfg.remote_key = g_strdup(path);
+	gtk_drop_down_set_selected(GTK_DROP_DOWN(r->auth), 2);
+	config_save(&r->a->cfg);
+	key_shown(r);
+}
+
+/* the agent's socket typed, kept */
+static void agent_changed(GtkEditable *e, gpointer data)
+{
+	Remote *r = data;
+	g_free(r->a->cfg.remote_agent);
+	r->a->cfg.remote_agent = g_strstrip(g_strdup(gtk_editable_get_text(e)));
+	config_save(&r->a->cfg);
+	agent_shown(r);
+}
+
+/* a file dialog for keys, in ~/.ssh, *.ppk alone when ppk */
+static GtkFileDialog *key_dialog(const char *title, gboolean ppk)
+{
+	GtkFileDialog *d = gtk_file_dialog_new();
+	gtk_file_dialog_set_title(d, title);
+	char *dir = g_build_filename(g_get_home_dir(), ".ssh", NULL);
+	GFile *f = g_file_new_for_path(dir);
+	if (g_file_test(dir, G_FILE_TEST_IS_DIR))
+		gtk_file_dialog_set_initial_folder(d, f);
+	g_object_unref(f);
+	g_free(dir);
+	GListStore *filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
+	GtkFileFilter *putty = gtk_file_filter_new();
+	gtk_file_filter_set_name(putty, "PuTTY keys (.ppk)");
+	gtk_file_filter_add_pattern(putty, "*.ppk");
+	if (!ppk) {
+		GtkFileFilter *all = gtk_file_filter_new();
+		gtk_file_filter_set_name(all, "All keys (OpenSSH's, PEM, PuTTY's)");
+		gtk_file_filter_add_pattern(all, "*");
+		g_list_store_append(filters, all);
+		g_object_unref(all);
+	}
+	g_list_store_append(filters, putty);
+	g_object_unref(putty);
+	gtk_file_dialog_set_filters(d, G_LIST_MODEL(filters));
+	g_object_unref(filters);
+	return d;
+}
+
+static void key_chosen(GObject *src, GAsyncResult *res, gpointer data)
+{
+	GFile *f = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(src), res, NULL);
+	if (!f)
+		return;
+	char *p = g_file_get_path(f);
+	if (p)
+		key_set(data, p);
+	g_free(p);
+	g_object_unref(f);
+}
+
+static void choose_key(GtkButton *b, gpointer data)
+{
+	Remote *r = data;
+	gtk_menu_button_popdown(GTK_MENU_BUTTON(r->login));
+	(void)b;
+	GtkFileDialog *d = key_dialog("Choose a Private Key", FALSE);
+	gtk_file_dialog_open(d, r->a->window, NULL, key_chosen, r);
+	g_object_unref(d);
+}
+
+/* where an imported key goes: ~/.ssh/<its name>, a name not yet taken */
+static char *import_path(const char *ppk)
+{
+	char *dir = g_build_filename(g_get_home_dir(), ".ssh", NULL);
+	char *base = g_path_get_basename(ppk);
+	char *dot = strrchr(base, '.');
+	if (dot && !g_ascii_strcasecmp(dot, ".ppk"))
+		*dot = 0;
+	if (!*base) {
+		g_free(base);
+		base = g_strdup("putty-key");
+	}
+	g_mkdir_with_parents(dir, 0700);
+	char *path = NULL;
+	for (int i = 1; i < 100; i++) {
+		char *name = i == 1 ? g_strdup(base) : g_strdup_printf("%s-%d", base, i);
+		path = g_build_filename(dir, name, NULL);
+		char *pub = g_strconcat(path, ".pub", NULL);
+		gboolean taken = g_file_test(path, G_FILE_TEST_EXISTS) ||
+				 g_file_test(pub, G_FILE_TEST_EXISTS);
+		g_free(pub);
+		g_free(name);
+		if (!taken)
+			break;
+		g_clear_pointer(&path, g_free);
+	}
+	g_free(base);
+	g_free(dir);
+	return path;
+}
+
+/* a .ppk imported with its passphrase (NULL: cancelled): written to
+   ~/.ssh in OpenSSH's form, with the same passphrase, and chosen */
+static void import_with(Remote *r, const char *pass, gpointer data)
+{
+	const char *ppk = data;
+	char *text = NULL, *key = NULL, *pub = NULL;
+	char *name = g_path_get_basename(ppk);
+
+	if (!g_file_get_contents(ppk, &text, NULL, NULL)) {
+		window_toast(r->a, "The PuTTY key can't be read");
+		g_free(name);
+		return;
+	}
+	gboolean enc = dmc_ssh_key_encrypted(text);
+	if (enc && !pass)
+		goto done;
+	if (dmc_ssh_key_export(text, pass, pass, &key) || dmc_ssh_key_public(key, pass, &pub)) {
+		if (enc)
+			ask_passphrase(r, name, "That passphrase does not open the key.",
+				       import_with, g_strdup(ppk), g_free, FALSE);
+		else
+			window_toast(r->a, "That file is not a PuTTY key that can be read");
+		goto done;
+	}
+	char *path = import_path(ppk);
+	char *pubpath = path ? g_strconcat(path, ".pub", NULL) : NULL;
+	/* (the .pub line with the .ppk's comment, as OpenSSH's have theirs) */
+	const char *c = strstr(text, "\nComment: ");
+	char *comment = c ? g_strndup(c + 10, strcspn(c + 10, "\r\n")) : g_strdup("");
+	char *line = g_strdup_printf("%s%s%s\n", pub, *comment ? " " : "", comment);
+	GError *e = NULL;
+	if (path && g_file_set_contents_full(path, key, -1, G_FILE_SET_CONTENTS_CONSISTENT, 0600, &e) &&
+	    g_file_set_contents_full(pubpath, line, -1, G_FILE_SET_CONTENTS_CONSISTENT, 0644, &e)) {
+		key_set(r, path);
+		const char *home = g_get_home_dir();
+		gsize hl = strlen(home);
+		char *m = !strncmp(path, home, hl) && path[hl] == '/' ?
+			g_strdup_printf("Imported as ~%s, and chosen for SSH logins", path + hl) :
+			g_strdup_printf("Imported as %s, and chosen for SSH logins", path);
+		window_toast(r->a, m);
+		g_free(m);
+	} else {
+		char *m = g_strdup_printf("The key could not be saved: %s",
+					  e ? e->message : "no room in ~/.ssh");
+		window_toast(r->a, m);
+		g_free(m);
+	}
+	g_clear_error(&e);
+	g_free(line);
+	g_free(comment);
+	g_free(pubpath);
+	g_free(path);
+done:
+	if (key) {
+		memset(key, 0, strlen(key));
+		dmc_ssh_free_string(key);
+	}
+	dmc_ssh_free_string(pub);
+	memset(text, 0, strlen(text));
+	g_free(text);
+	g_free(name);
+}
+
+static void ppk_chosen(GObject *src, GAsyncResult *res, gpointer data)
+{
+	Remote *r = data;
+	GFile *f = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(src), res, NULL);
+	if (!f)
+		return;
+	char *p = g_file_get_path(f);
+	char *text = NULL;
+	if (p && g_file_get_contents(p, &text, NULL, NULL) && dmc_ssh_key_encrypted(text)) {
+		char *name = g_path_get_basename(p);
+		ask_passphrase(r, name, NULL, import_with, g_strdup(p), g_free, FALSE);
+		g_free(name);
+	} else if (p) {
+		import_with(r, NULL, p);
+	}
+	if (text) {
+		memset(text, 0, strlen(text));
+		g_free(text);
+	}
+	g_free(p);
+	g_object_unref(f);
+}
+
+static void import_clicked(GtkButton *b, gpointer data)
+{
+	Remote *r = data;
+	gtk_menu_button_popdown(GTK_MENU_BUTTON(r->login));
+	(void)b;
+	GtkFileDialog *d = key_dialog("Import a PuTTY Key", TRUE);
+	gtk_file_dialog_open(d, r->a->window, NULL, ppk_chosen, r);
+	g_object_unref(d);
+}
+
+/* the menu's button: the way to log in, the key file, the agent's
+   socket, and a .ppk's import */
+static GtkWidget *login_menu(Remote *r)
+{
+	App *a = r->a;
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+	gtk_widget_set_margin_start(box, 6);
+	gtk_widget_set_margin_end(box, 6);
+	gtk_widget_set_margin_top(box, 6);
+	gtk_widget_set_margin_bottom(box, 6);
+
+	GtkWidget *l = gtk_label_new("Log in to SSH servers with");
+	gtk_label_set_xalign(GTK_LABEL(l), 0);
+	gtk_widget_add_css_class(l, "heading");
+	gtk_box_append(GTK_BOX(box), l);
+	const char *names[] = { "My keys and agent, as ssh does",
+				"The agent's keys only", "A key file", NULL };
+	r->auth = gtk_drop_down_new_from_strings(names);
+	guint i;
+	for (i = 0; i < G_N_ELEMENTS(hows); i++)
+		if (!strcmp(a->cfg.remote_auth, hows[i]))
+			gtk_drop_down_set_selected(GTK_DROP_DOWN(r->auth), i);
+	g_signal_connect(r->auth, "notify::selected", G_CALLBACK(how_changed), r);
+	gtk_box_append(GTK_BOX(box), r->auth);
+
+	l = gtk_label_new("Key file (OpenSSH's, PEM or PuTTY's .ppk)");
+	gtk_label_set_xalign(GTK_LABEL(l), 0);
+	gtk_widget_add_css_class(l, "dim-label");
+	gtk_box_append(GTK_BOX(box), l);
+	GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	r->key_label = gtk_label_new(NULL);
+	gtk_label_set_xalign(GTK_LABEL(r->key_label), 0);
+	gtk_label_set_ellipsize(GTK_LABEL(r->key_label), PANGO_ELLIPSIZE_MIDDLE);
+	gtk_widget_set_hexpand(r->key_label, TRUE);
+	gtk_box_append(GTK_BOX(row), r->key_label);
+	GtkWidget *b = gtk_button_new_with_label("Choose…");
+	g_signal_connect(b, "clicked", G_CALLBACK(choose_key), r);
+	gtk_box_append(GTK_BOX(row), b);
+	gtk_box_append(GTK_BOX(box), row);
+	key_shown(r);
+
+	b = gtk_button_new_with_label("Import a PuTTY Key…");
+	gtk_widget_set_tooltip_text(b, "A .ppk saved in ~/.ssh in OpenSSH's form, "
+				    "with the same passphrase, and chosen");
+	g_signal_connect(b, "clicked", G_CALLBACK(import_clicked), r);
+	gtk_box_append(GTK_BOX(box), b);
+
+	l = gtk_label_new("Agent's socket");
+	gtk_label_set_xalign(GTK_LABEL(l), 0);
+	gtk_widget_add_css_class(l, "dim-label");
+	gtk_box_append(GTK_BOX(box), l);
+	r->agent = gtk_entry_new();
+	gtk_entry_set_placeholder_text(GTK_ENTRY(r->agent), "Empty: SSH_AUTH_SOCK's");
+	gtk_editable_set_text(GTK_EDITABLE(r->agent), a->cfg.remote_agent);
+	g_signal_connect(r->agent, "changed", G_CALLBACK(agent_changed), r);
+	gtk_box_append(GTK_BOX(box), r->agent);
+	r->agent_state = gtk_label_new(NULL);
+	gtk_label_set_xalign(GTK_LABEL(r->agent_state), 0);
+	gtk_widget_add_css_class(r->agent_state, "dim-label");
+	gtk_widget_add_css_class(r->agent_state, "caption");
+	gtk_box_append(GTK_BOX(box), r->agent_state);
+	agent_shown(r);
+
+	GtkWidget *pop = gtk_popover_new();
+	gtk_popover_set_child(GTK_POPOVER(pop), box);
+	r->login = gtk_menu_button_new();
+	gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(r->login), "dialog-password-symbolic");
+	gtk_widget_set_tooltip_text(r->login, "How SSH logs in: keys, the agent, a PuTTY key");
+	gtk_menu_button_set_popover(GTK_MENU_BUTTON(r->login), pop);
+	return r->login;
+}
+
 static int proto_index(const char *name)
 {
 	guint i;
@@ -746,6 +1204,7 @@ GtkWidget *remote_page_new(App *a)
 	gtk_entry_set_placeholder_text(GTK_ENTRY(r->user), "User");
 	gtk_editable_set_width_chars(GTK_EDITABLE(r->user), 12);
 	gtk_box_append(GTK_BOX(bar), r->user);
+	gtk_box_append(GTK_BOX(bar), login_menu(r));
 
 	r->go = gtk_button_new_with_label("Connect");
 	g_signal_connect(r->go, "clicked", G_CALLBACK(connect_clicked), r);
