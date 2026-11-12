@@ -8,6 +8,17 @@ set(DMODEMCTL_SOURCES
   src/model.c
   src/diag.c
   src/vt.c
+  src/vt_charsets.c
+  src/vt_data.c
+  src/vt_dec.c
+  src/vt_fonts.c
+  src/vt_gfx.c
+  src/vt_keys.c
+  src/vt_machine.c
+  src/vt_profiles.c
+  src/vt_regis.c
+  src/vt_rip.c
+  src/vt_vt52.c
   src/daemon.c
   src/voice.c
   src/util.c)
