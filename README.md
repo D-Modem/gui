@@ -14,7 +14,7 @@ behave the same.
 - **Phone**: voice calls through the sound card (dial, answer, keypad), and an
   answering machine that takes messages on this computer when turned on (off by default)
 - **Terminal**: the AT console, and the modem's own setup screens (AT!CF, AT!CT)
-- **Remote**: log in to a server by SSH (built in, on libssh: OpenSSH's keys, agent, config and known hosts), Telnet or rlogin, in a terminal of its own
+- **Remote**: log in to a server by SSH (built in, on libssh: OpenSSH's keys, agent, config and known hosts; PuTTY's `.ppk` keys used or imported; Pageant on Windows, an ssh-agent on Linux and macOS), Telnet or rlogin, in a terminal of its own
 - **Terminal types**: both terminals are the D-Modem app's emulator, ported to C:
   xterm, DEC's VT52 to VT525, ANSI-BBS (with Avatar, RIPscrip and Amiga ANSI),
   the Commodores' PETSCII, the Atari 8-bit's ATASCII and the ST, Viewdata,

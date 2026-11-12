@@ -41,7 +41,7 @@ Each app has the same seven pages, with the same words:
 | Modem | The state ("Idle", "Dialling", "Online") and its detail (the CONNECT line, the caller), Dial, Answer, Hang Up, the line and the device, Start or Stop |
 | Phone | A voice call's state, Call and Answer, the keypad (DTMF), Mute and Listen; the answering machine (on or off, rings, the greeting) and its messages |
 | Terminal | The AT console; the buttons **Full-screen setup** (AT!CF) and **Command-line setup** (AT!CT); the kind of terminal |
-| Remote | SSH, Telnet or rlogin; the server, its port (empty: the protocol's) and the user; Connect; a terminal of its own, whose size goes to the server as it changes, and its kind |
+| Remote | SSH, Telnet or rlogin; the server, its port (empty: the protocol's) and the user; how SSH logs in (keys and the agent, the agent alone, a key file; a PuTTY key's import); Connect; a terminal of its own, whose size goes to the server as it changes, and its kind |
 | Settings | Groups of settings as native controls, changed ones marked; Defaults (ATZ), the init string and Keep |
 | Call Stats | AT#UD's rows and ATI11's report, refreshed after each call |
 | Log | What dmodemd printed, and the command line it was started with |
@@ -118,6 +118,18 @@ same everywhere and needs nothing installed:
 - the login is OpenSSH's order: the agent and `~/.ssh`'s keys first,
   then keyboard-interactive or a password (three tries), in the app's own
   dialogs; `~/.ssh/config` is read (host aliases, users, ports);
+- or, as chosen beside the server (Linux's key menu, Windows' Login...,
+  macOS's key popover): the agent's keys alone, or a key file, OpenSSH's,
+  PEM or PuTTY's `.ppk` (versions 2 and 3: `ssh/src/ppk.c` reads them,
+  Argon2 and all, the same whatever libssh was built on), its passphrase
+  asked for in the app's dialog. A `.ppk` can also be imported: written
+  to `.ssh` in OpenSSH's form with the same passphrase, and chosen;
+- the agent is an ssh-agent's socket on Linux and macOS (`SSH_AUTH_SOCK`,
+  or one given, as `IdentityAgent`), and on Windows PuTTY's Pageant
+  (asked by WM_COPYDATA, as PuTTY's own tools ask it), else OpenSSH's
+  agent (`\\.\pipe\openssh-ssh-agent`), or a named pipe given;
+  `ssh/src/agent.c` stands between libssh and those two with a pair of
+  loopback sockets and a thread;
 - Ed25519, ECDSA and RSA keys; a shell on a pty with TERM
   `xterm-256color`, its size sent as it changes. The engine also has
   commands, direct channels (`-L`, `-D`), remote listens (`-R`), agent

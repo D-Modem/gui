@@ -54,6 +54,10 @@ static void nap(int ms)
 #endif
 
 #include "dmodemssh.h"
+#include "ppk.h"
+#include "agent.h"
+
+static int import_key(const char *text, const char *passphrase, ssh_key *k);
 
 #define MAX_CHANNELS 64
 #define MAX_EVENTS 256
@@ -128,6 +132,9 @@ struct dmc_ssh {
 	int qhead, qlen;
 	ev_t cur;		/* the event last handed back */
 	int over;		/* EV_CLOSED handed back */
+	char *agent_which;	/* the "agent" option */
+	dmc_agent *agent;	/* (Windows: what stands between) */
+	int agent_set;		/* the agent looked for */
 };
 
 /* -- small things -- */
@@ -343,6 +350,8 @@ void dmc_ssh_free(dmc_ssh *s)
 	if (ssh_is_connected(s->ssh))
 		ssh_disconnect(s->ssh);
 	ssh_free(s->ssh);
+	dmc_agent_detach(s->agent);
+	free(s->agent_which);
 	if (s->key)
 		ssh_key_free(s->key);
 	while (s->qlen) {
@@ -366,7 +375,8 @@ void dmc_ssh_free(dmc_ssh *s)
    OpenSSH's config read (a path; "" its own ~/.ssh/config)
    "knownhosts"  the host's key looked up there (a path; "" OpenSSH's)
    "hostkeys"    the host key algorithms, in order (a list with commas)
-   "timeout"     seconds to connect in "compression" "yes" or "no" */
+   "timeout"     seconds to connect in "compression" "yes" or "no"
+   "agent"       the agent logged in with (see dmc_ssh_agent_reachable) */
 int dmc_ssh_option(dmc_ssh *s, const char *name, const char *value)
 {
 	int r = -1;
@@ -390,6 +400,10 @@ int dmc_ssh_option(dmc_ssh *s, const char *name, const char *value)
 		r = ssh_options_set(s->ssh, SSH_OPTIONS_TIMEOUT, &t);
 	} else if (!strcmp(name, "compression")) {
 		r = ssh_options_set(s->ssh, SSH_OPTIONS_COMPRESSION, value);
+	} else if (!strcmp(name, "agent")) {
+		free(s->agent_which);
+		s->agent_which = copy(value);
+		r = s->agent_which ? 0 : -1;
 	}
 	UNLOCK(&s->lock);
 	return r == 0 ? 0 : -1;
@@ -495,6 +509,15 @@ static void login_result(dmc_ssh *s, int r)
 	post(s, DMC_SSH_EV_AUTH, 0, s->methods, why, -1);
 }
 
+/* the agent found, once, for the logins that use it */
+static void agent_setup(dmc_ssh *s)
+{
+	if (s->agent_set)
+		return;
+	s->agent_set = 1;
+	dmc_agent_attach(s->ssh, s->agent_which, &s->agent);
+}
+
 /* the login chosen, tried again until it's done */
 static void login(dmc_ssh *s)
 {
@@ -508,9 +531,11 @@ static void login(dmc_ssh *s)
 		r = ssh_userauth_publickey(s->ssh, NULL, s->key);
 		break;
 	case L_AGENT:
+		agent_setup(s);
 		r = ssh_userauth_agent(s->ssh, NULL);
 		break;
 	case L_AUTO:
+		agent_setup(s);
 		r = ssh_userauth_publickey_auto(s->ssh, NULL, NULL);
 		break;
 	case L_INTERACTIVE:
@@ -925,14 +950,13 @@ void dmc_ssh_auth_password(dmc_ssh *s, const char *password)
 	UNLOCK(&s->lock);
 }
 
-/* by a private key's text (OpenSSH's, PEM): 0, or -1 when it can't be
+/* by a private key's text (OpenSSH's, PEM or PuTTY's .ppk): 0, or -1 when it can't be
    read with that passphrase (nothing is tried: answer again) */
 int dmc_ssh_auth_key(dmc_ssh *s, const char *key, const char *passphrase)
 {
 	ssh_key k = NULL;
 
-	if (ssh_pki_import_privkey_base64(key, passphrase && *passphrase ? passphrase : NULL,
-					  NULL, NULL, &k) != SSH_OK)
+	if (import_key(key, passphrase, &k))
 		return -1;
 	LOCK(&s->lock);
 	if (s->step == S_CHOOSE && !s->login) {
@@ -948,12 +972,19 @@ int dmc_ssh_auth_key(dmc_ssh *s, const char *key, const char *passphrase)
 	return 0;
 }
 
-/* by the system's agent (SSH_AUTH_SOCK) */
+/* by the agent: the "agent" option's, else the system's (SSH_AUTH_SOCK;
+   on Windows Pageant, else OpenSSH's) */
 void dmc_ssh_auth_agent(dmc_ssh *s)
 {
 	LOCK(&s->lock);
 	choose(s, L_AGENT);
 	UNLOCK(&s->lock);
+}
+
+/* whether the agent answers (see dmodemssh.h): 1 or 0 */
+int dmc_ssh_agent_reachable(const char *agent)
+{
+	return dmc_agent_reachable(agent);
 }
 
 /* as OpenSSH's ssh does: the agent, then ~/.ssh's keys with no
@@ -1201,6 +1232,27 @@ void dmc_ssh_resize(dmc_ssh *s, int channel, int cols, int rows)
 
 /* -- keys -- */
 
+/* a private key's text read: OpenSSH's, PEM or PuTTY's .ppk, with its
+   passphrase (NULL or "": none): 0, or -1 */
+static int import_key(const char *text, const char *passphrase, ssh_key *k)
+{
+	const char *pp = passphrase && *passphrase ? passphrase : NULL;
+	char *openssh = NULL;
+	int r;
+
+	*k = NULL;
+	if (!text)
+		return -1;
+	if (!dmc_ppk_is(text))
+		return ssh_pki_import_privkey_base64(text, pp, NULL, NULL, k) == SSH_OK ? 0 : -1;
+	if (dmc_ppk_to_openssh(text, pp, &openssh))
+		return -1;
+	r = ssh_pki_import_privkey_base64(openssh, NULL, NULL, NULL, k) == SSH_OK ? 0 : -1;
+	memset(openssh, 0, strlen(openssh));
+	free(openssh);
+	return r;
+}
+
 /* "type base64" of a public key, malloc'd, or NULL */
 static char *pub_line(ssh_key k)
 {
@@ -1318,8 +1370,7 @@ int dmc_ssh_key_public(const char *key, const char *passphrase, char **public_ke
 
 	init_once();
 	*public_key = NULL;
-	if (ssh_pki_import_privkey_base64(key, passphrase && *passphrase ? passphrase : NULL,
-					  NULL, NULL, &k) != SSH_OK)
+	if (import_key(key, passphrase, &k))
 		return -1;
 	*public_key = pub_line(k);
 	ssh_key_free(k);
@@ -1336,12 +1387,18 @@ int dmc_ssh_key_export(const char *key, const char *passphrase,
 
 	init_once();
 	*out = NULL;
-	if (ssh_pki_import_privkey_base64(key, passphrase && *passphrase ? passphrase : NULL,
-					  NULL, NULL, &k) != SSH_OK)
+	if (import_key(key, passphrase, &k))
 		return -1;
 	r = export_key(k, new_passphrase, out);
 	ssh_key_free(k);
 	return r;
+}
+
+/* whether a private key's text needs a passphrase (OpenSSH's, PEM or
+   PuTTY's .ppk): 1 or 0 */
+int dmc_ssh_key_encrypted(const char *key)
+{
+	return dmc_key_text_encrypted(key);
 }
 
 /* a string these functions gave, freed */

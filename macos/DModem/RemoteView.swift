@@ -7,8 +7,12 @@
 // Telnet and rlogin are a socket made here and libdmodemctl's dmc_net
 // for the protocol. SSH is libdmodemssh (the apps' own client, on
 // libssh) through SSHConnection.swift: it reads OpenSSH's config,
-// known_hosts, keys and agent, so that they are the user's.
+// known_hosts, keys and agent, so that they are the user's. Its login
+// may instead be by the agent alone (SSH_AUTH_SOCK's, or a socket given)
+// or by a key file: OpenSSH's, PEM or PuTTY's .ppk, which can also be
+// imported into ~/.ssh in OpenSSH's form.
 
+import AppKit
 import Darwin
 import Foundation
 import SwiftUI
@@ -45,9 +49,47 @@ final class RemoteSession: ObservableObject, TerminalHost {
         case newHost(type: String, fingerprint: String)
         /// a password; why the last was refused
         case password(why: String)
+        /// a key file's passphrase (for the login, or for its import from
+        /// the .ppk at importing); why the last didn't open it
+        case passphrase(name: String, why: String, importing: String?)
         /// the server's questions (keyboard-interactive): each with
         /// whether its answer may be shown
         case prompts(title: String, instruction: String, questions: [(String, Bool)])
+    }
+
+    /// how SSH logs in
+    enum LoginWay: String, CaseIterable, Identifiable {
+        case auto, agent, key
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .auto: return "My keys and agent, as ssh does"
+            case .agent: return "The agent's keys only"
+            case .key: return "A key file"
+            }
+        }
+    }
+
+    @Published var loginWay = LoginWay(rawValue: UserDefaults.standard.string(forKey: "remoteLogin") ?? "") ?? .auto {
+        didSet { defaults.set(loginWay.rawValue, forKey: "remoteLogin") }
+    }
+    /// the key file (OpenSSH's, PEM or PuTTY's .ppk)
+    @Published var keyPath = UserDefaults.standard.string(forKey: "remoteKey") ?? "" {
+        didSet { defaults.set(keyPath, forKey: "remoteKey") }
+    }
+    /// the agent's socket (empty: SSH_AUTH_SOCK's)
+    @Published var agentSocket = UserDefaults.standard.string(forKey: "remoteAgent") ?? "" {
+        didSet { defaults.set(agentSocket, forKey: "remoteAgent") }
+    }
+    /// what an import last said
+    @Published var importNote = ""
+
+    /// whether the agent answers, in words
+    var agentState: String {
+        if dmc_ssh_agent_reachable(agentSocket) != 0 { return "An agent answers there" }
+        if !agentSocket.isEmpty { return "No agent answers there" }
+        return ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"] == nil ?
+            "SSH_AUTH_SOCK is not set: give the agent's socket" : "No agent answers at SSH_AUTH_SOCK"
     }
 
     /// the kind of terminal (a dmc_vt profile's id): the far end is told
@@ -69,6 +111,10 @@ final class RemoteSession: ObservableObject, TerminalHost {
     private var ssh: SSHConnection?
     private var shell: Int32 = 0
     private var triedKeys = false
+    private var triedFile = false
+    /// the key file's text while its login goes on, and passphrases tried
+    private var keyText: String?
+    private var keyTries = 0
     private var asks = 0
     private var exitStatus = 0
     private var pending: [UInt8] = []
@@ -162,9 +208,17 @@ final class RemoteSession: ObservableObject, TerminalHost {
     private func startSSH(host: String, port: Int) -> Bool {
         let u = user.isEmpty ? NSUserName() : user
         guard let c = SSHConnection(host: host, port: port, user: u) else { return false }
+        // the agent: the one given, else SSH_AUTH_SOCK's
+        if !agentSocket.isEmpty { c.option("agent", agentSocket) }
+        if loginWay == .agent && dmc_ssh_agent_reachable(agentSocket) == 0 {
+            show(agentSocket.isEmpty ? "[No agent answers: SSH_AUTH_SOCK names none]\r\n" :
+                 "[No agent answers at the socket given]\r\n")
+        }
         ssh = c
         shell = 0
         triedKeys = false
+        triedFile = false
+        keyText = nil
         asks = 0
         exitStatus = 0
         c.start { [weak self, weak c] ev in
@@ -255,14 +309,48 @@ final class RemoteSession: ObservableObject, TerminalHost {
         question = .newHost(type: type, fingerprint: print)
     }
 
-    /// what's tried, in OpenSSH's order: its keys and agent, then the
-    /// server's questions or a password (three times at most)
+    /// a path with ~/ at its start made the home folder's
+    private func expand(_ path: String) -> String {
+        (path as NSString).expandingTildeInPath
+    }
+
+    /// the login by the key file (its passphrase asked if it has one):
+    /// false when there's nothing to try
+    private func keyLogin(_ c: SSHConnection) -> Bool {
+        triedFile = true
+        let path = expand(keyPath)
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+            show("\r\n[The key file \(path) can't be read]\r\n")
+            return false
+        }
+        if dmc_ssh_key_encrypted(text) != 0 {
+            keyText = text
+            keyTries = 0
+            question = .passphrase(name: (path as NSString).lastPathComponent, why: "", importing: nil)
+            return true
+        }
+        if dmc_ssh_auth_key(c.s, text, nil) == 0 { return true }
+        show("\r\n[\(path) is not a key that can be read]\r\n")
+        return false
+    }
+
+    /// the methods the server last offered
+    private var methods = 0
+
+    /// what's tried, in OpenSSH's order: its keys and agent (or what was
+    /// chosen: the agent alone, or a key file), then the server's
+    /// questions or a password (three times at most)
     private func login(_ c: SSHConnection, methods: Int, why: String) {
-        if methods & DMC_SSH_AUTH_PUBLICKEY != 0 && !triedKeys {
+        self.methods = methods
+        let file = loginWay == .key && !keyPath.isEmpty
+        if methods & DMC_SSH_AUTH_PUBLICKEY != 0 && file && !triedFile {
+            if keyLogin(c) { return }
+        } else if methods & DMC_SSH_AUTH_PUBLICKEY != 0 && !file && !triedKeys {
             triedKeys = true
-            dmc_ssh_auth_auto(c.s)
+            if loginWay == .agent { dmc_ssh_auth_agent(c.s) } else { dmc_ssh_auth_auto(c.s) }
             return
         }
+        keyText = nil
         asks += 1
         if asks > 3 {
             dmc_ssh_auth_cancel(c.s)
@@ -278,7 +366,13 @@ final class RemoteSession: ObservableObject, TerminalHost {
     /// the user's answer to [question]: the answers (none for a new
     /// host's yes), or nil for no
     func answer(_ answers: [String]?) {
-        guard let q = question, let c = ssh else { return }
+        guard let q = question else { return }
+        if case .passphrase(let name, _, let importing) = q {
+            question = nil
+            passphrase(answers?.first, name: name, importing: importing)
+            return
+        }
+        guard let c = ssh else { return }
         question = nil
         guard let answers else {
             if case .newHost = q { dmc_ssh_trust(c.s, 0, 0) } else { dmc_ssh_auth_cancel(c.s) }
@@ -289,10 +383,128 @@ final class RemoteSession: ObservableObject, TerminalHost {
             dmc_ssh_trust(c.s, 1, 1)
         case .password:
             dmc_ssh_auth_password(c.s, answers.first ?? "")
+        case .passphrase:
+            break
         case .prompts:
             for (i, a) in answers.enumerated() { dmc_ssh_answer(c.s, Int32(i), a) }
             dmc_ssh_answered(c.s)
         }
+    }
+
+    /// a key's passphrase given (nil: cancelled), for the login or for an
+    /// import
+    private func passphrase(_ pass: String?, name: String, importing: String?) {
+        if let importing {
+            if let pass { importPPK(importing, passphrase: pass) }
+            return
+        }
+        guard let c = ssh, let text = keyText else { return }
+        if let pass, dmc_ssh_auth_key(c.s, text, pass) == 0 {
+            keyText = nil
+            return
+        }
+        keyTries += 1
+        if pass != nil && keyTries < 3 {
+            // (asked again once this alert has gone, for a new one)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.ssh === c else { return }
+                self.question = .passphrase(name: name, why: "That passphrase does not open the key.", importing: nil)
+            }
+            return
+        }
+        keyText = nil
+        login(c, methods: methods, why: "")
+    }
+
+    /// a key file chosen
+    func chooseKey() {
+        let p = NSOpenPanel()
+        p.title = "Choose a Private Key"
+        p.showsHiddenFiles = true
+        p.directoryURL = URL(fileURLWithPath: expand("~/.ssh"))
+        if p.runModal() == .OK, let u = p.url {
+            keyPath = u.path
+            loginWay = .key
+        }
+    }
+
+    /// a .ppk chosen to import
+    func chooseImport() {
+        let p = NSOpenPanel()
+        p.title = "Import a PuTTY Key"
+        p.message = "The key is saved in ~/.ssh in OpenSSH's form, with the same passphrase."
+        p.showsHiddenFiles = true
+        if p.runModal() == .OK, let u = p.url {
+            guard let text = try? String(contentsOfFile: u.path, encoding: .utf8) else {
+                importNote = "That file can't be read"
+                return
+            }
+            if dmc_ssh_key_encrypted(text) != 0 {
+                question = .passphrase(name: u.lastPathComponent, why: "", importing: u.path)
+            } else {
+                importPPK(u.path, passphrase: nil)
+            }
+        }
+    }
+
+    /// a .ppk imported: written to ~/.ssh in OpenSSH's form (with the
+    /// same passphrase) and chosen
+    private func importPPK(_ path: String, passphrase: String?) {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+            importNote = "That file can't be read"
+            return
+        }
+        var key: UnsafeMutablePointer<CChar>?
+        var pub: UnsafeMutablePointer<CChar>?
+        defer {
+            if let key {
+                memset(key, 0, strlen(key))
+                dmc_ssh_free_string(key)
+            }
+            dmc_ssh_free_string(pub)
+        }
+        guard dmc_ssh_key_export(text, passphrase, passphrase, &key) == 0, let k = key,
+              dmc_ssh_key_public(k, passphrase, &pub) == 0, let p = pub else {
+            if passphrase != nil {
+                DispatchQueue.main.async { [weak self] in
+                    self?.question = .passphrase(name: (path as NSString).lastPathComponent,
+                                                 why: "That passphrase does not open the key.", importing: path)
+                }
+            } else {
+                importNote = "That file is not a PuTTY key that can be read"
+            }
+            return
+        }
+        // (~/.ssh/<its name>, a name not yet taken)
+        let dir = expand("~/.ssh")
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true,
+                                attributes: [.posixPermissions: 0o700])
+        var base = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+        if base.isEmpty { base = "putty-key" }
+        var dest = ""
+        for i in 1..<100 {
+            let d = (dir as NSString).appendingPathComponent(i == 1 ? base : "\(base)-\(i)")
+            if !fm.fileExists(atPath: d) && !fm.fileExists(atPath: d + ".pub") {
+                dest = d
+                break
+            }
+        }
+        // (the .pub line with the .ppk's comment)
+        let comment = text.split(separator: "\n").first { $0.hasPrefix("Comment: ") }
+            .map { String($0.dropFirst(9)).trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        let line = String(cString: p) + (comment.isEmpty ? "" : " " + comment) + "\n"
+        guard !dest.isEmpty,
+              fm.createFile(atPath: dest, contents: Data(bytes: k, count: strlen(k)),
+                            attributes: [.posixPermissions: 0o600]),
+              fm.createFile(atPath: dest + ".pub", contents: line.data(using: .utf8),
+                            attributes: [.posixPermissions: 0o644]) else {
+            importNote = "The key could not be saved in ~/.ssh"
+            return
+        }
+        keyPath = dest
+        loginWay = .key
+        importNote = "Imported as ~/.ssh/\((dest as NSString).lastPathComponent), and chosen"
     }
 
     private func feed(_ d: [UInt8]) {
@@ -489,7 +701,12 @@ final class RemoteSession: ObservableObject, TerminalHost {
         ssh?.disconnect()
         ssh = nil
         shell = 0
-        question = nil
+        keyText = nil
+        if case .some(.passphrase(_, _, let importing)) = question, importing != nil {
+            // (an import's question stays)
+        } else {
+            question = nil
+        }
         if fd >= 0 {
             close(fd)
             fd = -1
@@ -524,6 +741,18 @@ struct RemotePage: View {
                 TextField("User", text: $session.user)
                     .frame(width: 120)
                     .disabled(session.running)
+                if session.proto == .ssh {
+                    Button {
+                        showLogin.toggle()
+                    } label: {
+                        Image(systemName: "key")
+                    }
+                    .help("How SSH logs in: keys, the agent, a PuTTY key")
+                    .disabled(session.running)
+                    .popover(isPresented: $showLogin, arrowEdge: .bottom) {
+                        LoginOptions(session: session, shown: $showLogin)
+                    }
+                }
                 if session.running {
                     Button("Disconnect", role: .destructive) { session.stop() }
                 } else {
@@ -552,6 +781,10 @@ struct RemotePage: View {
                 SecureField("Password", text: answerBinding(0))
                 Button("Log In") { session.answer([answers[0]]) }
                 Button("Cancel", role: .cancel) { session.answer(nil) }
+            case .passphrase:
+                SecureField("Passphrase", text: answerBinding(0))
+                Button("Unlock") { session.answer([answers[0]]) }
+                Button("Cancel", role: .cancel) { session.answer(nil) }
             case .prompts(_, _, let qs):
                 ForEach(qs.indices, id: \.self) { i in
                     if qs[i].1 {
@@ -570,6 +803,8 @@ struct RemotePage: View {
                      "If it's the one you expect, it will be added to ~/.ssh/known_hosts.")
             case .password(let why):
                 Text(why)
+            case .passphrase(_, let why, _):
+                Text(why)
             case .prompts(_, let instruction, let qs):
                 Text(instruction.isEmpty ? qs.map(\.0).joined(separator: "\n") : instruction)
             }
@@ -578,6 +813,8 @@ struct RemotePage: View {
 
     /// the answers being typed, cleared for each question
     @State private var answers = ["", "", "", "", "", "", "", ""]
+    /// the login options' popover
+    @State private var showLogin = false
 
     private func answerBinding(_ i: Int) -> Binding<String> {
         Binding(get: { i < answers.count ? answers[i] : "" },
@@ -593,8 +830,52 @@ struct RemotePage: View {
         switch session.question {
         case .newHost: return "Connect to a new server?"
         case .password: return "Log in to \(session.host)"
+        case .passphrase(let name, _, _): return "Passphrase for \(name)"
         case .prompts(let t, _, _): return t
         case nil: return ""
         }
+    }
+}
+
+/// how SSH logs in: the way, the key file, a PuTTY key's import, the
+/// agent's socket
+struct LoginOptions: View {
+    @ObservedObject var session: RemoteSession
+    @Binding var shown: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Log in to SSH servers with").font(.headline)
+            Picker("", selection: $session.loginWay) {
+                ForEach(RemoteSession.LoginWay.allCases) { Text($0.label).tag($0) }
+            }
+            .labelsHidden()
+            Text("Key file (OpenSSH's, PEM or PuTTY's .ppk)").foregroundStyle(.secondary)
+            HStack {
+                Text(session.keyPath.isEmpty ? "No key file chosen" :
+                        (session.keyPath as NSString).lastPathComponent)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(session.keyPath)
+                Spacer()
+                Button("Choose…") {
+                    shown = false
+                    session.chooseKey()
+                }
+            }
+            Button("Import a PuTTY Key…") {
+                shown = false
+                session.chooseImport()
+            }
+            .help("A .ppk saved in ~/.ssh in OpenSSH's form, with the same passphrase, and chosen")
+            if !session.importNote.isEmpty {
+                Text(session.importNote).font(.caption).foregroundStyle(.secondary)
+            }
+            Text("Agent's socket").foregroundStyle(.secondary)
+            TextField("Empty: SSH_AUTH_SOCK's", text: $session.agentSocket)
+            Text(session.agentState).font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(width: 320)
     }
 }

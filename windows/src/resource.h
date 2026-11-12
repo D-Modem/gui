@@ -54,6 +54,7 @@
 #define IDC_R_STATUS    1109
 #define IDC_R_TYPELABEL 1110
 #define IDC_R_TYPE      1111
+#define IDC_R_LOGIN     1112
 
 /* the Settings page */
 #define IDC_GROUPS      600
@@ -136,5 +137,14 @@
 #define IDC_A_Q0        963
 #define IDC_A_E0        967
 #define IDC_A_E0P       971
+
+/* the Remote page's SSH Login dialog: the way, the key file, the agent */
+#define IDD_LOGIN       980
+#define IDC_K_HOW       981
+#define IDC_K_KEY       982
+#define IDC_K_BROWSE    983
+#define IDC_K_IMPORT    984
+#define IDC_K_AGENT     985
+#define IDC_K_STATE     986
 
 #endif
