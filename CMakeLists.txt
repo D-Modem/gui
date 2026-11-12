@@ -14,6 +14,7 @@ option(DMODEM_GUI_LINUX "Build the GTK 4 app (linux/)" ON)
 add_subdirectory(core)
 enable_testing()
 add_subdirectory(core/test)
+add_subdirectory(ssh)
 
 if(WIN32)
   add_subdirectory(windows)
