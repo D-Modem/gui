@@ -50,6 +50,16 @@ final class RemoteSession: ObservableObject, TerminalHost {
         case prompts(title: String, instruction: String, questions: [(String, Bool)])
     }
 
+    /// the kind of terminal (a dmc_vt profile's id): the far end is told
+    /// it when connecting
+    @Published var terminalType = UserDefaults.standard.string(forKey: "remoteTerminal") ?? "xterm" {
+        didSet {
+            dmc_vt_set_profile(vt, terminalType)
+            defaults.set(terminalType, forKey: "remoteTerminal")
+            screenVersion += 1
+        }
+    }
+
     let vt: OpaquePointer
     private var fd: Int32 = -1          // Telnet's and rlogin's socket
     private var source: DispatchSourceRead?
@@ -71,10 +81,14 @@ final class RemoteSession: ObservableObject, TerminalHost {
 
     init() {
         vt = dmc_vt_new(80, 24, 2000)
+        // (Backspace is DEL to a host, not the modem's BS)
+        dmc_vt_set_backspace(vt, 0x7f)
+        dmc_vt_set_theme(vt, 0xe8f0ff, 0x0a0f1c, 0xe8f0ff, nil)
         proto = Proto(rawValue: defaults.string(forKey: "remoteProtocol") ?? "") ?? .ssh
         host = defaults.string(forKey: "remoteHost") ?? ""
         port = defaults.string(forKey: "remotePort") ?? ""
         user = defaults.string(forKey: "remoteUser") ?? ""
+        dmc_vt_set_profile(vt, terminalType)
     }
 
     deinit {
@@ -84,20 +98,7 @@ final class RemoteSession: ObservableObject, TerminalHost {
 
     // MARK: - TerminalHost
 
-    func type(_ text: String) { send(Array(text.utf8)) }
-
-    func key(_ k: Int) {
-        // (Backspace is DEL to a host, not the modem's BS)
-        if k == Int(DMC_KEY_BACKSPACE) {
-            send([0x7f])
-            return
-        }
-        var buf = [CChar](repeating: 0, count: 16)
-        let n = dmc_vt_key(vt, Int32(k), &buf, Int32(buf.count))
-        if n > 0 { send(buf[0..<Int(n)].map { UInt8(bitPattern: $0) }) }
-    }
-
-    private func send(_ bytes: [UInt8]) {
+    func send(_ bytes: [UInt8]) {
         guard running, !bytes.isEmpty else { return }
         if let ssh {
             if shell > 0 { ssh.write(shell, bytes) }
@@ -144,7 +145,9 @@ final class RemoteSession: ObservableObject, TerminalHost {
                 return
             }
         } else {
-            net = dmc_net_new(proto.net, user, "ansi", Int32(cols), Int32(rows))
+            // (Telnet's TERMINAL-TYPE, rlogin's TERM)
+            let type = proto == .telnet ? dmc_vt_profile_telnet(terminalType) : dmc_vt_profile_term(terminalType)
+            net = dmc_net_new(proto.net, user, type, Int32(cols), Int32(rows))
             connectSocket(host: h, port: p, gen: gen)
         }
         let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.tick() }
@@ -208,7 +211,7 @@ final class RemoteSession: ObservableObject, TerminalHost {
             }
         case DMC_SSH_EV_READY:
             if let d = ev.data, !d.isEmpty { feed(d) }
-            shell = dmc_ssh_shell(c.s, "xterm-256color", Int32(cols), Int32(rows), 0)
+            shell = dmc_ssh_shell(c.s, dmc_vt_profile_term(terminalType), Int32(cols), Int32(rows), 0)
             status = "Connected by SSH"
         case DMC_SSH_EV_OPEN:
             if ev.value == 0 {
@@ -403,6 +406,7 @@ final class RemoteSession: ObservableObject, TerminalHost {
                 dmc_vt_feed(vt, buf, n)
             }
         }
+        TerminalTypes.afterFeed(vt)
         // the screen's answers (where the cursor is), as if typed
         while true {
             let k = dmc_vt_reply(vt, &buf, Int32(buf.count))
@@ -532,6 +536,7 @@ struct RemotePage: View {
             HStack {
                 Text(session.status).foregroundStyle(.secondary)
                 Spacer()
+                TerminalTypePicker(selection: $session.terminalType)
             }
             .padding(.horizontal, 8).padding(.vertical, 4)
         }

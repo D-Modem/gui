@@ -21,9 +21,11 @@
  *    page.
  *  - dmc_diag: the last call's statistics, from AT#UD (Microsoft's
  *    Unimodem diagnostics), as labelled rows.
- *  - dmc_vt: a small ANSI terminal screen, for the apps whose toolkit
- *    has no terminal widget (Windows and macOS): the AT console and the
- *    full-screen configurator (AT!CF).
+ *  - dmc_vt: a terminal emulator, the app's ported to C: the AT
+ *    console and the full-screen configurator (AT!CF), and the BBSes and
+ *    hosts reached, as any of the terminals of the DEC VT line, xterm, a
+ *    PC's ANSI-BBS, the Commodores', the Ataris', Viewdata, the Minitel
+ *    and the Tektronix 4014.
  *  - dmc_daemon_*: starting dmodemd and reading what it prints.
  *  - dmc_net: a remote login's protocol (Telnet, rlogin) on a TCP
  *    connection the app makes, for the Remote page.
@@ -54,7 +56,7 @@ extern "C" {
 #endif
 
 /* the library's version: major * 10000 + minor * 100 + patch */
-#define DMC_VERSION 10200
+#define DMC_VERSION 10300
 DMC_API int dmc_version(void);
 
 /*
@@ -321,57 +323,216 @@ DMC_API int dmc_diag_has_call(const dmc_diag *d);
 
 /*
  * The terminal screen
+ *
+ * A terminal emulator: the app's (D-Modem/app) ported to C, as one of
+ * many kinds of terminal (a profile): DEC's VT52 to VT525, xterm, a PC's
+ * ANSI-BBS (with Avatar, RIPscrip and Amiga ANSI), the Commodores'
+ * PETSCII, the Atari's ATASCII and ST, Viewdata, the Minitel and the
+ * Tektronix 4014.  Bytes from the remote go to dmc_vt_feed(); what it
+ * answers (dmc_vt_reply()) and what keys send (dmc_vt_key_mods(),
+ * dmc_vt_char_bytes()) go back to it.  A view draws each cell from
+ * dmc_vt_cell(): its character, its colours resolved, its attributes, and
+ * where the profile has its machine's font, the glyph's bitmap.
  */
 
 typedef struct dmc_vt dmc_vt;
 
-/* a cell's attributes */
+/* a cell's attributes (dmc_vt_attr) */
 enum {
 	DMC_BOLD = 1,
 	DMC_UNDERLINE = 2,
 	DMC_REVERSE = 4
 };
 
-/* the keys dmc_vt_key() encodes */
+/* the keys dmc_vt_key() encodes (the values stay as they are: new ones
+   are added at the end) */
 enum {
 	DMC_KEY_UP = 1, DMC_KEY_DOWN, DMC_KEY_RIGHT, DMC_KEY_LEFT,
 	DMC_KEY_HOME, DMC_KEY_END, DMC_KEY_PGUP, DMC_KEY_PGDN,
 	DMC_KEY_INSERT, DMC_KEY_DELETE, DMC_KEY_BACKTAB,
 	DMC_KEY_F1, DMC_KEY_F2, DMC_KEY_F3, DMC_KEY_F4, DMC_KEY_F5,
 	DMC_KEY_F6, DMC_KEY_F7, DMC_KEY_F8, DMC_KEY_F9, DMC_KEY_F10,
-	DMC_KEY_ENTER, DMC_KEY_BACKSPACE, DMC_KEY_TAB, DMC_KEY_ESCAPE
+	DMC_KEY_ENTER, DMC_KEY_BACKSPACE, DMC_KEY_TAB, DMC_KEY_ESCAPE,
+	DMC_KEY_F11, DMC_KEY_F12,
+	/* an LK201's F13-F20 (F15 its Help, F16 its Do), Find and Select */
+	DMC_KEY_F13, DMC_KEY_F14, DMC_KEY_F15, DMC_KEY_F16, DMC_KEY_F17,
+	DMC_KEY_F18, DMC_KEY_F19, DMC_KEY_F20, DMC_KEY_FIND, DMC_KEY_SELECT,
+	/* the DEC keypad */
+	DMC_KEY_PF1, DMC_KEY_PF2, DMC_KEY_PF3, DMC_KEY_PF4,
+	DMC_KEY_KP_0, DMC_KEY_KP_1, DMC_KEY_KP_2, DMC_KEY_KP_3, DMC_KEY_KP_4,
+	DMC_KEY_KP_5, DMC_KEY_KP_6, DMC_KEY_KP_7, DMC_KEY_KP_8, DMC_KEY_KP_9,
+	DMC_KEY_KP_MINUS, DMC_KEY_KP_COMMA, DMC_KEY_KP_PERIOD, DMC_KEY_KP_ENTER
 };
 
-/* a screen of cols by rows, with scrollback lines kept above it */
+/* the modifiers held with a key */
+enum { DMC_MOD_SHIFT = 1, DMC_MOD_ALT = 2, DMC_MOD_CTRL = 4 };
+
+/* the character sets the remote may speak (a profile can have its own) */
+enum { DMC_CHARSET_UTF8, DMC_CHARSET_CP437, DMC_CHARSET_LATIN1 };
+
+/* a cell as a view draws it (dmc_vt_cell) */
+enum {
+	DMC_CELL_BOLD = 1,              /* a heavy face (bold not shown as bright) */
+	DMC_CELL_ITALIC = 2,
+	DMC_CELL_UNDERLINE = 4,
+	DMC_CELL_DOUBLE_UNDERLINE = 8,
+	DMC_CELL_CURLY_UNDERLINE = 16,
+	DMC_CELL_STRIKE = 32,
+	DMC_CELL_OVERLINE = 64,
+	DMC_CELL_BLINK = 128,           /* drawn blank in the blink's off phase */
+	DMC_CELL_INVISIBLE = 256,       /* not drawn (its background is) */
+	DMC_CELL_WIDE = 512,            /* two cells wide: the next is its tail */
+	DMC_CELL_WIDE_TAIL = 1024,      /* the right half of the one before */
+	DMC_CELL_IMAGE = 2048,          /* a picture's tile (dmc_vt_cell_image) */
+	DMC_CELL_GLYPH = 4096,          /* drawn from a bitmap (dmc_vt_glyph_row) */
+	DMC_CELL_COMBINING = 8192,      /* has combining marks (dmc_vt_cell_text) */
+	DMC_CELL_LINK = 16384           /* a hyperlink (dmc_vt_cell_link) */
+};
+
+typedef struct dmc_cell {
+	uint32_t ch;            /* a code point (32 blank, 0 a wide tail) */
+	uint32_t fg, bg;        /* 0xRRGGBB, resolved (bold, inverse ...) */
+	int flags;              /* DMC_CELL_* */
+} dmc_cell;
+
+/* where a cell's tile is in a picture */
+typedef struct dmc_image {
+	uint32_t id;            /* the same while the picture is */
+	int width, height;      /* the picture's pixels */
+	int cell_width, cell_height; /* its tiles' size */
+	int tx, ty;             /* this cell's tile */
+} dmc_image;
+
+/* the line sizes (DECDWL, DECDHL) */
+enum {
+	DMC_LINE_SINGLE, DMC_LINE_DOUBLE_WIDTH, DMC_LINE_DOUBLE_TOP,
+	DMC_LINE_DOUBLE_BOTTOM
+};
+
+/* a screen of cols by rows, with scrollback lines kept above it; an
+   xterm until dmc_vt_set_profile() */
 DMC_API dmc_vt *dmc_vt_new(int cols, int rows, int scrollback);
 DMC_API void dmc_vt_free(dmc_vt *t);
 DMC_API void dmc_vt_resize(dmc_vt *t, int cols, int rows);
+/* everything as at the start, the scrollback cleared */
 DMC_API void dmc_vt_reset(dmc_vt *t);
 DMC_API int dmc_vt_cols(const dmc_vt *t);
 DMC_API int dmc_vt_rows(const dmc_vt *t);
-/* bytes from the modem (dmc_terminal()'s) */
+/* bytes from the remote (dmc_terminal()'s) */
 DMC_API void dmc_vt_feed(dmc_vt *t, const char *data, int n);
-/* the screen's answers to the modem's questions (where the cursor is:
-   ESC [6n), to write to the modem as if typed */
+/* the screen's answers to the remote's questions (where the cursor is,
+   what terminal it is), to write to it as if typed */
 DMC_API int dmc_vt_reply(dmc_vt *t, char *buf, int max);
 /* how many lines of scrollback there are now */
 DMC_API int dmc_vt_history(const dmc_vt *t);
 /* a cell: row 0 the screen's top, -1 the newest scrollback line and so
    on; its character (a Unicode code point, 32 for none), colours (0 to
-   15 the ANSI palette, -1 the default) and attributes */
+   255 the palette, -1 the default or a 24-bit one) and attributes */
 DMC_API uint32_t dmc_vt_char(const dmc_vt *t, int row, int col);
 DMC_API int dmc_vt_fg(const dmc_vt *t, int row, int col);
 DMC_API int dmc_vt_bg(const dmc_vt *t, int row, int col);
 DMC_API int dmc_vt_attr(const dmc_vt *t, int row, int col);
+/* a cell as it is drawn: 0 off the screen (c then blank) */
+DMC_API int dmc_vt_cell(const dmc_vt *t, int row, int col, dmc_cell *c);
+/* a cell's character with its combining marks, as UTF-8 */
+DMC_API const char *dmc_vt_cell_text(dmc_vt *t, int row, int col);
+/* a cell's hyperlink (OSC 8), NULL for none */
+DMC_API const char *dmc_vt_cell_link(const dmc_vt *t, int row, int col);
+/* the picture a cell shows a tile of: its pixels (0xAARRGGBB, width *
+   height, not premultiplied), NULL for none */
+DMC_API const uint32_t *dmc_vt_cell_image(const dmc_vt *t, int row, int col,
+					  dmc_image *im);
+/* a row's size (DMC_LINE_*): its cells twice as wide, and for double
+   height the top or bottom half of them */
+DMC_API int dmc_vt_line_size(const dmc_vt *t, int row);
 /* a row as UTF-8 text, trailing blanks dropped */
 DMC_API const char *dmc_vt_text(dmc_vt *t, int row);
+/* the text from (row, col) to (row2, col2), inclusive: wrapped lines
+   joined, the others ended with a newline */
+DMC_API const char *dmc_vt_text_range(dmc_vt *t, int row, int col, int row2,
+				      int col2);
 DMC_API int dmc_vt_cursor_row(const dmc_vt *t);
 DMC_API int dmc_vt_cursor_col(const dmc_vt *t);
 DMC_API int dmc_vt_cursor_visible(const dmc_vt *t);
+/* DECSCUSR: 0 the view's; 1, 2 block; 3, 4 underline; 5, 6 bar */
+DMC_API int dmc_vt_cursor_style(const dmc_vt *t);
 /* the screen changed since the last call (and clears the mark) */
 DMC_API int dmc_vt_changed(dmc_vt *t);
-/* the bytes a key sends, into buf: how many */
+
+/* the bytes a key sends, into buf: how many (dmc_vt_key: no modifiers) */
 DMC_API int dmc_vt_key(const dmc_vt *t, int key, char *buf, int max);
+DMC_API int dmc_vt_key_mods(dmc_vt *t, int key, int mods, char *buf, int max);
+/* the bytes a character typed (or pasted) sends, as this terminal sends
+   it (a Commodore's PETSCII, Ctrl's control codes, Alt as ESC) */
+DMC_API int dmc_vt_char_bytes(dmc_vt *t, uint32_t cp, int mods, char *buf,
+			      int max);
+/* what Enter sends (0 CR, 1 CR LF, 2 LF) and Backspace (0x08 or 0x7f) */
+DMC_API void dmc_vt_set_enter(dmc_vt *t, int mode);
+DMC_API void dmc_vt_set_backspace(dmc_vt *t, int code);
+/* a mouse event, when the remote asked for them: button 0-2, 64 and 65
+   the wheel; the bytes to send (0: none) */
+DMC_API int dmc_vt_mouse_wanted(const dmc_vt *t);
+DMC_API int dmc_vt_mouse(dmc_vt *t, int button, int col, int row, int press,
+			 int motion, int mods, char *buf, int max);
+/* a click at (fx, fy), fractions of the screen from its top left: what
+   it sends (a RIPscrip button's), 0 for nothing */
+DMC_API int dmc_vt_tap(dmc_vt *t, double fx, double fy, char *buf, int max);
+/* the remote asked for pastes bracketed (ESC [200~ ... ESC [201~) */
+DMC_API int dmc_vt_bracketed_paste(const dmc_vt *t);
+/* the focus's change, when the remote asked to be told */
+DMC_API int dmc_vt_focus(dmc_vt *t, int focused, char *buf, int max);
+
+/* the kinds of terminal, in the pickers' order: their ids (kept in
+   settings), names, the TERM for SSH and the TERMINAL-TYPE for telnet */
+DMC_API int dmc_vt_profile_count(void);
+DMC_API const char *dmc_vt_profile_id(int i);
+DMC_API const char *dmc_vt_profile_label(int i);
+DMC_API const char *dmc_vt_profile_term(const char *id);
+DMC_API const char *dmc_vt_profile_telnet(const char *id);
+/* the kind of terminal it is (1), or 0 for an id not known */
+DMC_API int dmc_vt_set_profile(dmc_vt *t, const char *id);
+DMC_API const char *dmc_vt_get_profile(const dmc_vt *t);
+/* the user's character set, for the profiles that haven't their own */
+DMC_API void dmc_vt_set_charset(dmc_vt *t, int charset);
+/* the columns and rows the view should fit (DECCOLM's 80 or 132, a
+   Commodore's 40x25), 0 for as many as fit */
+DMC_API int dmc_vt_requested_cols(const dmc_vt *t);
+DMC_API int dmc_vt_requested_rows(const dmc_vt *t);
+/* a cell's size in pixels as the view draws it (sixel images are
+   measured in it, and it is reported to the remote) */
+DMC_API void dmc_vt_set_cell_pixels(dmc_vt *t, int w, int h);
+/* the theme: the default foreground, background and cursor (0xRRGGBB) and
+   the 16 colours (NULL: kept); bold shown as the bright colours */
+DMC_API void dmc_vt_set_theme(dmc_vt *t, uint32_t fg, uint32_t bg,
+			      uint32_t cursor, const uint32_t *palette16);
+DMC_API void dmc_vt_set_bold_bright(dmc_vt *t, int on);
+/* the screen's background, foreground and cursor as shown now (a
+   machine's own, or the remote's, or the theme's) */
+DMC_API uint32_t dmc_vt_background(const dmc_vt *t);
+DMC_API uint32_t dmc_vt_foreground(const dmc_vt *t);
+DMC_API uint32_t dmc_vt_cursor_color(const dmc_vt *t);
+/* the bitmap font the profile's machine had (its cell's size: 1), 0 for
+   the view's own font */
+DMC_API int dmc_vt_glyph_cell(const dmc_vt *t, int *w, int *h);
+/* whether cp is drawn from a bitmap (the machine's font, a soft
+   character), and its size */
+DMC_API int dmc_vt_glyph(const dmc_vt *t, uint32_t cp, int *w, int *h);
+/* row (0 top) of cp's bitmap, its leftmost pixel bit w - 1 */
+DMC_API uint32_t dmc_vt_glyph_row(const dmc_vt *t, uint32_t cp, int row);
+/* what the status line below the screen shows ("" for none: no line) */
+DMC_API const char *dmc_vt_status_line(dmc_vt *t);
+/* the window's title as the remote set it, and whether it changed */
+DMC_API const char *dmc_vt_title(dmc_vt *t);
+DMC_API int dmc_vt_title_changed(const dmc_vt *t);
+/* how many times the bell rang since the last call */
+DMC_API int dmc_vt_bells(dmc_vt *t);
+/* ANSI music: the next note to play (1), its pitch in hundredths of a
+   hertz (0 a rest), how long it sounds and the silence after it */
+DMC_API int dmc_vt_music(dmc_vt *t, uint32_t *hz100, int *ms, int *rest_ms);
+/* what the remote sent to the printer (UTF-8), taken */
+DMC_API int dmc_vt_printed(dmc_vt *t, char *buf, int max);
+/* the line speed the remote asked its text be shown at (CSI * r), 0 */
+DMC_API int dmc_vt_emulated_bps(const dmc_vt *t);
 /* the RGB of palette colour c (0 to 15), as 0xRRGGBB */
 DMC_API uint32_t dmc_vt_palette(int c);
 

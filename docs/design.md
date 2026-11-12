@@ -14,7 +14,7 @@ keeps it easy to call from C (GTK), C++ (Win32) and Swift, and easy to test
 | `dmc_session` | The AT conversation: a queue of commands and their responses, the call's state from the result codes (RING, CONNECT, NO CARRIER), caller ID, the escape (`+++` with its guard times) and hanging up, and the byte stream for the terminal |
 | `dmc_model` | The modem's settings from AT!M, with each setting's check and the command that sets it |
 | `dmc_diag` | The last call's statistics from AT#UD, as labelled rows (the V.58 code tables decoded) |
-| `dmc_vt` | A small VT100/ANSI screen, for Windows and macOS, whose toolkits have no terminal widget |
+| `dmc_vt` | The terminal emulator of the D-Modem app (D-Modem/app's `shared/.../terminal`), ported to C: every kind of terminal it is (see below), drawn by each app from its cells |
 | `dmc_net` | Telnet (option negotiation, terminal type, window size) and rlogin (the handshake, window size on the server's urgent request), for the Remote page |
 | `dmc_daemon_*` | Reading what dmodemd prints when it starts: the device it made, or its error |
 
@@ -40,14 +40,49 @@ Each app has the same seven pages, with the same words:
 | --- | --- |
 | Modem | The state ("Idle", "Dialling", "Online") and its detail (the CONNECT line, the caller), Dial, Answer, Hang Up, the line and the device, Start or Stop |
 | Phone | A voice call's state, Call and Answer, the keypad (DTMF), Mute and Listen; the answering machine (on or off, rings, the greeting) and its messages |
-| Terminal | The AT console; the buttons **Full-screen setup** (AT!CF) and **Command-line setup** (AT!CT) |
-| Remote | SSH, Telnet or rlogin; the server, its port (empty: the protocol's) and the user; Connect; a terminal of its own, whose size goes to the server as it changes |
+| Terminal | The AT console; the buttons **Full-screen setup** (AT!CF) and **Command-line setup** (AT!CT); the kind of terminal |
+| Remote | SSH, Telnet or rlogin; the server, its port (empty: the protocol's) and the user; Connect; a terminal of its own, whose size goes to the server as it changes, and its kind |
 | Settings | Groups of settings as native controls, changed ones marked; Defaults (ATZ), the init string and Keep |
 | Call Stats | AT#UD's rows and ATI11's report, refreshed after each call |
 | Log | What dmodemd printed, and the command line it was started with |
 
 The terminal sends Backspace as BS (0x08), the modem's S5: it does not take
 DEL. Colours are the brand's: background `#0a0f1c`, text `#e8f0ff`.
+
+## The terminals
+
+Both terminals (the modem's console and the Remote page's) are
+libdmodemctl's `dmc_vt`: the app's emulator in C, with the app's 29 kinds
+of terminal (profiles), picked beside each terminal and kept with the
+page's settings:
+
+| Kind | What it is |
+| --- | --- |
+| xterm (the default) | A VT220 with colours (8, 16, 256, 24-bit), sixel, the mouse, bracketed paste, the alternate screen, titles, OSC 8 links and Tek mode |
+| DEC VT52 to VT525 | Each model's answers and sequences: the VT52's own, VT100 to VT320's levels, the VT340's sixel, ReGIS and Tek mode, the VT420's rectangles, margins and pages, the VT525's colours; soft fonts (DECDLD), user-defined keys, the printer port, the status line |
+| ANSI-BBS, Avatar, RIPscrip, Amiga ANSI | A PC's BBS terminal in code page 437 and the VGA's font (SyncTERM's font switching, CSI SP D, among the machines' fonts), ANSI music, iCE colours, doorway mode; Avatar's codes; RIPscrip's graphics and mouse buttons on 80x43; the Amiga's Topaz and palette |
+| Commodore 64, 128 (40 and 80 col.), Plus/4, VIC-20, PET (40 and 80) | PETSCII and each machine's screen, colours and ROM font |
+| Atari 8-bit (and international), Atari ST (80 and 40 col.) | ATASCII; the ST's TOS VT52 with its pens |
+| Viewdata, Minitel | Prestel's 40x24 with its mosaics; the Minitel's videotex and its Téléinformatique (a VT100) |
+| Tektronix 4014 | The storage tube, on its own |
+
+The library is sans-I/O as the rest: bytes in (`dmc_vt_feed`), answers
+out (`dmc_vt_reply`), and each key or character typed turned into what
+the kind of terminal sends (`dmc_vt_key_mods`, `dmc_vt_char_bytes`: a
+Commodore's PETSCII, an Atari's ATASCII). A view draws each cell
+(`dmc_vt_cell`): its character and resolved colours, its attributes, the
+bitmap of a machine's font (`dmc_vt_glyph_row`: SyncTERM's copies of the
+ROMs, generated into `core/src/vt_data.c` by `tools/gen_vt_data.py`) and
+a picture's tile (`dmc_vt_cell_image`: sixel, ReGIS, RIPscrip, the
+Tektronix). A machine whose screen has its own size (a C64's 40x25) asks
+for it (`dmc_vt_requested_cols`), and the view stretches its cells to
+fill the window, by whole pixels where they fit.
+
+| | The view |
+| --- | --- |
+| Windows | `termview.cpp`: GDI, a row at a time into a DIB section (text by `ExtTextOutW`, glyphs and pictures by pixel), copied (or stretched, for DEC's double width and height) to the window |
+| Linux | `termview.c`: a GtkDrawingArea drawn with Cairo and Pango (VTE is no longer used) |
+| macOS | `TerminalView.swift`: an NSView drawn with Core Graphics |
 
 ## Starting dmodemd
 
@@ -100,6 +135,11 @@ later).
 | Linux | GSocketClient, its socket on the main loop (G_IO_PRI for rlogin's urgent byte) | libdmodemssh on a GThread, events by `g_main_context_invoke`, AdwAlertDialogs | `settings.ini`, `[remote]` |
 | Windows | Winsock 1.1, `WSAAsyncSelect` (FD_OOB for rlogin), on every Windows from 95 | libdmodemssh on a thread, events posted (`WM_APP_SSH`), the profile's `.ssh` | `dmodem.ini`, `[remote]` |
 | macOS | a BSD socket on a dispatch source | libdmodemssh (`SSHConnection.swift`) on a thread, events on the main queue, SwiftUI alerts | UserDefaults |
+
+SSH's TERM and rlogin's terminal are the kind of terminal's (`xterm-256color`,
+`vt220`, `ansi`, `petscii` ...), and Telnet's TERMINAL-TYPE its own
+(`XTERM-256COLOR`, `DEC-VT220`, `ANSI` ...: `dmc_vt_profile_term`,
+`dmc_vt_profile_telnet`).
 
 Telnet tells the server the terminal type and the window's size (NAWS),
 and sends a typed CR as CR NUL. rlogin sends the user as both the local

@@ -300,10 +300,9 @@ static GtkWidget *modem_page(App *a)
  *    the Terminal page
  */
 
-static void committed(VteTerminal *t, char *text, guint size, gpointer data)
+static void typed(const char *data, int n, void *ctx)
 {
-	(void)t;
-	modem_type(data, text, size);
+	modem_type(ctx, data, n);
 }
 
 static void typed_command(App *a, const char *cmd)
@@ -311,7 +310,7 @@ static void typed_command(App *a, const char *cmd)
 	if (dmc_state(a->s) != DMC_IDLE)
 		return;
 	modem_type(a, cmd, strlen(cmd));
-	gtk_widget_grab_focus(GTK_WIDGET(a->term));
+	termview_focus(a->term);
 }
 
 static void setup_screen(GtkWidget *w, gpointer data)
@@ -330,7 +329,18 @@ static void clear_term(GtkWidget *w, gpointer data)
 {
 	(void)w;
 	App *a = data;
-	vte_terminal_reset(a->term, TRUE, TRUE);
+	termview_reset(a->term);
+}
+
+static void term_type_changed(GObject *o, GParamSpec *p, gpointer data)
+{
+	App *a = data;
+	(void)o;
+	(void)p;
+	termview_set_profile(a->term, term_types_chosen(a->term_type));
+	g_free(a->cfg.term_type);
+	a->cfg.term_type = g_strdup(term_types_chosen(a->term_type));
+	config_save(&a->cfg);
 }
 
 static GtkWidget *terminal_page(App *a)
@@ -355,6 +365,12 @@ static GtkWidget *terminal_page(App *a)
 	GtkWidget *spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	gtk_widget_set_hexpand(spacer, TRUE);
 	gtk_box_append(GTK_BOX(bar), spacer);
+	/* the kind of terminal (a BBS by modem may want ANSI-BBS, PETSCII,
+	   Viewdata ...) */
+	a->term_type = term_types_new(a->cfg.term_type);
+	g_signal_connect(a->term_type, "notify::selected",
+			 G_CALLBACK(term_type_changed), a);
+	gtk_box_append(GTK_BOX(bar), a->term_type);
 	b = gtk_button_new_from_icon_name("edit-clear-all-symbolic");
 	gtk_widget_set_tooltip_text(b, "Clear");
 	gtk_widget_add_css_class(b, "flat");
@@ -362,27 +378,11 @@ static GtkWidget *terminal_page(App *a)
 	gtk_box_append(GTK_BOX(bar), b);
 	gtk_box_append(GTK_BOX(box), bar);
 
-	a->term = VTE_TERMINAL(vte_terminal_new());
-	vte_terminal_set_scrollback_lines(a->term, 5000);
-	vte_terminal_set_size(a->term, 80, 25);
+	a->term = termview_new(typed, a);
 	/* (the modem takes S5, a backspace, not DEL) */
-	vte_terminal_set_backspace_binding(a->term, VTE_ERASE_ASCII_BACKSPACE);
-	PangoFontDescription *f = pango_font_description_from_string("Monospace 11");
-	vte_terminal_set_font(a->term, f);
-	pango_font_description_free(f);
-	/* the brand's colours */
-	GdkRGBA fg, bg;
-	gdk_rgba_parse(&fg, "#e8f0ff");
-	gdk_rgba_parse(&bg, "#0a0f1c");
-	vte_terminal_set_colors(a->term, &fg, &bg, NULL, 0);
-	gtk_widget_set_vexpand(GTK_WIDGET(a->term), TRUE);
-	gtk_widget_set_hexpand(GTK_WIDGET(a->term), TRUE);
-	g_signal_connect(a->term, "commit", G_CALLBACK(committed), a);
-	GtkWidget *scroll = gtk_scrolled_window_new();
-	gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll),
-				      GTK_WIDGET(a->term));
-	gtk_widget_set_vexpand(scroll, TRUE);
-	gtk_box_append(GTK_BOX(box), scroll);
+	termview_set_backspace(a->term, 0x08);
+	termview_set_profile(a->term, a->cfg.term_type);
+	gtk_box_append(GTK_BOX(box), a->term);
 	return box;
 }
 
