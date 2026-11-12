@@ -297,8 +297,7 @@ void modem_start(App *a)
 			     "set its path in the line settings");
 		return;
 	}
-	if (!g_strcmp0(c->line, "sip") &&
-	    (!*c->sip_user || !*c->sip_server)) {
+	if (!g_strcmp0(c->line, "sip") && !config_sip_ready(c)) {
 		window_toast(a, "Set up the SIP account first");
 		prefs_show(a);
 		g_free(exe);
@@ -332,8 +331,10 @@ void modem_start(App *a)
 	GSubprocessLauncher *l = g_subprocess_launcher_new(
 		G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE);
 	if (!g_strcmp0(c->line, "sip")) {
-		char *login = g_strdup_printf("%s:%s@%s", c->sip_user,
-					      c->sip_password, c->sip_server);
+		/* (no account: dmodemd's anonymous user agent) */
+		char *login = c->sip_anonymous ? g_strdup("anonymous") :
+			g_strdup_printf("%s:%s@%s", c->sip_user,
+					c->sip_password, c->sip_server);
 		g_subprocess_launcher_setenv(l, "SIP_LOGIN", login, TRUE);
 		g_free(login);
 	}

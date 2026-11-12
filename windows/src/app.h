@@ -47,6 +47,10 @@ enum LineKind { LINE_DMODEMD = 0, LINE_TCP, LINE_COM };
 struct Config {
 	int line;                       /* LineKind */
 	char sip_user[128], sip_password[128], sip_server[256];
+	/* SIP with no account (dmodemd's SIP_LOGIN=anonymous): nothing
+	   registered, SIP addresses (sip:user@host, user@host) dialled as
+	   they are, from "Anonymous" */
+	int sip_anonymous;
 	int listen, t38, v152, v150;
 	char country[64];
 	char usb[64];                   /* --usb, "" for a SIP line */
@@ -66,6 +70,8 @@ void config_load(Config *c);
 void config_save(const Config *c);
 /* "SIP: alice@sip.example.com" and the like, into out */
 void config_summary(const Config *c, char *out, int n);
+/* the SIP line has what dmodemd needs: an account, or none (anonymous) */
+bool config_sip_ready(const Config *c);
 /* the Line Settings dialog: true if changed */
 bool line_dialog(HWND owner, Config *c);
 

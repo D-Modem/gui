@@ -120,6 +120,7 @@
 #define IDC_L_ADDRESS   915
 #define IDC_L_PORT      916
 #define IDC_L_INIT      917
+#define IDC_L_ANONYMOUS 918
 
 /* the Change Setting dialog */
 #define IDD_SETTING     950

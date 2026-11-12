@@ -82,6 +82,7 @@ void config_load(Config *c)
 	get(ini, "sip-user", "", c->sip_user, sizeof(c->sip_user));
 	get(ini, "sip-password", "", c->sip_password, sizeof(c->sip_password));
 	get(ini, "sip-server", "", c->sip_server, sizeof(c->sip_server));
+	c->sip_anonymous = get_i(ini, "sip-anonymous", 0);
 	c->listen = get_i(ini, "listen", 0);
 	c->t38 = get_i(ini, "t38", 1);
 	c->v152 = get_i(ini, "v152", 1);
@@ -110,6 +111,7 @@ void config_save(const Config *c)
 	put(ini, "sip-user", c->sip_user);
 	put(ini, "sip-password", c->sip_password);
 	put(ini, "sip-server", c->sip_server);
+	put_i(ini, "sip-anonymous", c->sip_anonymous);
 	put_i(ini, "listen", c->listen);
 	put_i(ini, "t38", c->t38);
 	put_i(ini, "v152", c->v152);
@@ -144,6 +146,9 @@ void config_summary(const Config *c, char *out, int n)
 	default:
 		if (c->usb[0])
 			_snprintf(out, n, "dmodemd: USB modem (%s)", c->usb);
+		else if (c->sip_anonymous)
+			_snprintf(out, n, "dmodemd: SIP, anonymous (no account)%s",
+				  c->listen ? ", taking calls" : "");
 		else if (!c->sip_user[0] || !c->sip_server[0])
 			_snprintf(out, n, "dmodemd: SIP account not set up");
 		else
@@ -152,6 +157,11 @@ void config_summary(const Config *c, char *out, int n)
 		break;
 	}
 	out[n - 1] = '\0';
+}
+
+bool config_sip_ready(const Config *c)
+{
+	return c->sip_anonymous || (c->sip_user[0] && c->sip_server[0]);
 }
 
 /*
@@ -165,13 +175,20 @@ static void enable(HWND d)
 	bool here = IsDlgButtonChecked(d, IDC_L_DMODEMD) == BST_CHECKED;
 	bool tcp = IsDlgButtonChecked(d, IDC_L_TCP) == BST_CHECKED;
 	bool com = IsDlgButtonChecked(d, IDC_L_COM) == BST_CHECKED;
+	bool anon = IsDlgButtonChecked(d, IDC_L_ANONYMOUS) == BST_CHECKED;
+	static const int account_ids[] = {
+		IDC_L_USER, IDC_L_PASSWORD, IDC_L_SERVER, 0
+	};
 	static const int dmodemd_ids[] = {
-		IDC_L_USER, IDC_L_PASSWORD, IDC_L_SERVER, IDC_L_LISTEN,
+		IDC_L_ANONYMOUS, IDC_L_LISTEN,
 		IDC_L_T38, IDC_L_V152, IDC_L_V150, IDC_L_COUNTRY, IDC_L_USB,
 		IDC_L_PATH, IDC_L_BROWSE, 0
 	};
 	for (int i = 0; dmodemd_ids[i]; i++)
 		EnableWindow(GetDlgItem(d, dmodemd_ids[i]), here);
+	/* (no account: anonymous, its fields kept but not used) */
+	for (int i = 0; account_ids[i]; i++)
+		EnableWindow(GetDlgItem(d, account_ids[i]), here && !anon);
 	EnableWindow(GetDlgItem(d, IDC_L_ADDRESS), tcp);
 	EnableWindow(GetDlgItem(d, IDC_L_PORT), com);
 }
@@ -214,6 +231,7 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 		SetDlgItemText(d, IDC_L_USER, c->sip_user);
 		SetDlgItemText(d, IDC_L_PASSWORD, c->sip_password);
 		SetDlgItemText(d, IDC_L_SERVER, c->sip_server);
+		check(d, IDC_L_ANONYMOUS, c->sip_anonymous);
 		check(d, IDC_L_LISTEN, c->listen);
 		check(d, IDC_L_T38, c->t38);
 		check(d, IDC_L_V152, c->v152);
@@ -239,6 +257,7 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 		case IDC_L_DMODEMD:
 		case IDC_L_TCP:
 		case IDC_L_COM:
+		case IDC_L_ANONYMOUS:
 			enable(d);
 			return TRUE;
 		case IDC_L_BROWSE:
@@ -252,6 +271,7 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 				       sizeof(c->sip_password));
 			GetDlgItemText(d, IDC_L_SERVER, c->sip_server,
 				       sizeof(c->sip_server));
+			c->sip_anonymous = checked(d, IDC_L_ANONYMOUS);
 			c->listen = checked(d, IDC_L_LISTEN);
 			c->t38 = checked(d, IDC_L_T38);
 			c->v152 = checked(d, IDC_L_V152);

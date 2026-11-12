@@ -585,7 +585,7 @@ static void call(GtkWidget *w, gpointer data)
 	(void)w;
 	const char *n = gtk_editable_get_text(GTK_EDITABLE(a->voice->number));
 	if (!*n) {
-		window_toast(a, "Enter a number to call");
+		window_toast(a, "Enter a number or SIP address to call");
 		return;
 	}
 	stop_sound(a);
@@ -828,7 +828,7 @@ GtkWidget *voice_page_new(App *a)
 
 	v->number = adw_entry_row_new();
 	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(v->number),
-				      "Number to call");
+				      "Number or SIP address (sip:user@host)");
 	v->call_btn = button("Call", G_CALLBACK(call), a);
 	gtk_widget_add_css_class(v->call_btn, "suggested-action");
 	adw_entry_row_add_suffix(ADW_ENTRY_ROW(v->number), v->call_btn);

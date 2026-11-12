@@ -227,7 +227,7 @@ static char *environment(const char *const *add)
 static bool start_dmodemd()
 {
 	Config &c = app.cfg;
-	if (!c.usb[0] && (!c.sip_user[0] || !c.sip_server[0])) {
+	if (!c.usb[0] && !config_sip_ready(&c)) {
 		app_message("Set up the SIP account first (Modem, Line Settings)");
 		return false;
 	}
@@ -255,8 +255,12 @@ static bool start_dmodemd()
 	cmd[sizeof(cmd) - 1] = '\0';
 
 	char login[600];
-	_snprintf(login, sizeof(login), "SIP_LOGIN=%s:%s@%s", c.sip_user,
-		  c.sip_password, c.sip_server);
+	/* (no account: dmodemd's anonymous user agent) */
+	if (c.sip_anonymous)
+		_snprintf(login, sizeof(login), "SIP_LOGIN=anonymous");
+	else
+		_snprintf(login, sizeof(login), "SIP_LOGIN=%s:%s@%s",
+			  c.sip_user, c.sip_password, c.sip_server);
 	login[sizeof(login) - 1] = '\0';
 	const char *add[6];
 	int k = 0;

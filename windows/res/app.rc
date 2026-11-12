@@ -36,6 +36,7 @@ BEGIN
     AUTORADIOBUTTON "Start &dmodemd on this computer (Windows 7 or later)", IDC_L_DMODEMD, 8, 8, 284, 10, WS_GROUP | WS_TABSTOP
     LTEXT           "SIP &user:", -1, 20, 24, 60, 8
     EDITTEXT        IDC_L_USER, 84, 22, 120, 12, ES_AUTOHSCROLL
+    AUTOCHECKBOX    "&No account", IDC_L_ANONYMOUS, 210, 23, 82, 10, WS_TABSTOP
     LTEXT           "&Password:", -1, 20, 40, 60, 8
     EDITTEXT        IDC_L_PASSWORD, 84, 38, 120, 12, ES_AUTOHSCROLL | ES_PASSWORD
     LTEXT           "Ser&ver:", -1, 20, 56, 60, 8

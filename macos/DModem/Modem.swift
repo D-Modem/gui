@@ -466,7 +466,8 @@ final class Modem: ObservableObject {
         }
         var env = ProcessInfo.processInfo.environment
         if c.line == .sip {
-            env["SIP_LOGIN"] = "\(c.sipUser):\(c.sipPassword)@\(c.sipServer)"
+            // (no account: dmodemd's anonymous user agent)
+            env["SIP_LOGIN"] = c.sipAnonymous ? "anonymous" : "\(c.sipUser):\(c.sipPassword)@\(c.sipServer)"
         }
         if !c.t38 { env["SIP_T38"] = "no" }
         if !c.v152 { env["SIP_V152"] = "no" }
