@@ -19,7 +19,8 @@ behave the same.
   xterm, DEC's VT52 to VT525, ANSI-BBS (with Avatar, RIPscrip and Amiga ANSI),
   the Commodores' PETSCII, the Atari 8-bit's ATASCII and the ST, Viewdata,
   the Minitel and the Tektronix 4014, with sixel, ReGIS and Tektronix
-  graphics, and each machine's own font (SyncTERM's copies of their ROMs)
+  graphics, and each machine's own font (SyncTERM's copies of their ROMs,
+  LGPL-2.0-or-later: `core/licenses/syncterm-fonts-LGPL-2.0.txt`)
 - **Settings**: every modem setting as a native control, from AT!M
 - **Call Stats**: the last call's rate, modulation, error control and line figures (AT#UD, ATI11)
 - **Line settings**: a SIP account, a USB modem, or a modem that already runs
