@@ -14,6 +14,7 @@ behave the same.
 - **Phone**: voice calls through the sound card (dial, answer, keypad), and an
   answering machine that takes messages on this computer when turned on (off by default)
 - **Terminal**: the AT console, and the modem's own setup screens (AT!CF, AT!CT)
+- **Remote**: log in to a server by SSH, Telnet or rlogin, in a terminal of its own
 - **Settings**: every modem setting as a native control, from AT!M
 - **Call Stats**: the last call's rate, modulation, error control and line figures (AT#UD, ATI11)
 - **Line settings**: a SIP account, a USB modem, or a modem that already runs

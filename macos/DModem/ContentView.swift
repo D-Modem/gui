@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 D-Modem Authors
 //
-// ContentView.swift - the window: its pages (Modem, Terminal, Settings,
-// Call Stats, Log) in a sidebar
+// ContentView.swift - the window: its pages (Modem, Phone, Terminal,
+// Remote, Settings, Call Stats, Log) in a sidebar
 
 import SwiftUI
 
 enum Page: String, CaseIterable, Identifiable {
-    case modem = "Modem", phone = "Phone", terminal = "Terminal", settings = "Settings"
+    case modem = "Modem", phone = "Phone", terminal = "Terminal", remote = "Remote"
+    case settings = "Settings"
     case stats = "Call Stats", log = "Log"
     var id: String { rawValue }
     var icon: String {
@@ -15,6 +16,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .modem: return "phone.connection"
         case .phone: return "phone"
         case .terminal: return "terminal"
+        case .remote: return "network"
         case .settings: return "slider.horizontal.3"
         case .stats: return "chart.bar"
         case .log: return "doc.plaintext"
@@ -24,6 +26,7 @@ enum Page: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject var modem: Modem
+    @EnvironmentObject var remote: RemoteSession
     @State private var page: Page? = Page(rawValue: ProcessInfo.processInfo.environment["DMODEM_GUI_PAGE"] ?? "") ?? .modem
 
     var body: some View {
@@ -38,6 +41,7 @@ struct ContentView: View {
                 case .modem: ModemPage()
                 case .phone: PhonePage()
                 case .terminal: TerminalPane()
+                case .remote: RemotePage(session: remote)
                 case .settings: SettingsPage()
                 case .stats: StatsPage()
                 case .log: LogPage()

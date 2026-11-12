@@ -7,6 +7,16 @@
 import AppKit
 import SwiftUI
 
+/// what a terminal view shows and where its keys go: the modem, or a
+/// remote login (RemoteView.swift)
+protocol TerminalHost: AnyObject {
+    var vt: OpaquePointer { get }
+    func type(_ text: String)
+    func key(_ k: Int)
+}
+
+extension Modem: TerminalHost {}
+
 struct TerminalPane: View {
     @EnvironmentObject var modem: Modem
 
@@ -22,29 +32,29 @@ struct TerminalPane: View {
             }
             .disabled(!modem.isIdle)
             .padding(8)
-            TerminalView(modem: modem, version: modem.screenVersion)
+            TerminalView(host: modem, version: modem.screenVersion)
         }
     }
 }
 
 struct TerminalView: NSViewRepresentable {
-    let modem: Modem
+    let host: TerminalHost
     let version: Int
 
     func makeNSView(context: Context) -> TerminalNSView {
         let v = TerminalNSView()
-        v.modem = modem
+        v.host = host
         return v
     }
 
     func updateNSView(_ v: TerminalNSView, context: Context) {
-        v.modem = modem
+        v.host = host
         v.needsDisplay = true
     }
 }
 
 final class TerminalNSView: NSView {
-    weak var modem: Modem?
+    weak var host: TerminalHost?
     private let font = NSFont(name: "Menlo", size: 13) ?? .monospacedSystemFont(ofSize: 13, weight: .regular)
     private lazy var bold = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
     private var cell = NSSize(width: 8, height: 16)
@@ -74,7 +84,7 @@ final class TerminalNSView: NSView {
 
     override func setFrameSize(_ size: NSSize) {
         super.setFrameSize(size)
-        guard let vt = modem?.vt else { return }
+        guard let vt = host?.vt else { return }
         let cols = max(20, min(160, Int((size.width - 8) / cell.width)))
         let rows = max(5, min(100, Int((size.height - 8) / cell.height)))
         if cols != Int(dmc_vt_cols(vt)) || rows != Int(dmc_vt_rows(vt)) {
@@ -93,7 +103,7 @@ final class TerminalNSView: NSView {
     override func draw(_ dirty: NSRect) {
         Self.background.setFill()
         bounds.fill()
-        guard let vt = modem?.vt else { return }
+        guard let vt = host?.vt else { return }
         let rows = Int(dmc_vt_rows(vt)), cols = Int(dmc_vt_cols(vt))
         scroll = min(scroll, Int(dmc_vt_history(vt)))
         let ox: CGFloat = 4, oy: CGFloat = 4
@@ -151,7 +161,7 @@ final class TerminalNSView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard let vt = modem?.vt else { return }
+        guard let vt = host?.vt else { return }
         let d = Int((event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? cell.height : 1)).rounded())
         scroll = max(0, min(Int(dmc_vt_history(vt)), scroll + d))
         needsDisplay = true
@@ -160,7 +170,7 @@ final class TerminalNSView: NSView {
     // MARK: - keys
 
     override func keyDown(with event: NSEvent) {
-        guard let modem else { return }
+        guard let host else { return }
         scroll = 0
         let mods = event.modifierFlags
         if mods.contains(.command) {
@@ -168,7 +178,7 @@ final class TerminalNSView: NSView {
             return
         }
         if let k = special(event) {
-            modem.key(k)
+            host.key(k)
             return
         }
         guard var s = event.characters, !s.isEmpty else { return }
@@ -176,7 +186,7 @@ final class TerminalNSView: NSView {
         if mods.contains(.option), let plain = event.charactersIgnoringModifiers {
             s = "\u{1b}" + plain
         }
-        modem.type(s)
+        host.type(s)
     }
 
     private func special(_ e: NSEvent) -> Int? {
@@ -207,8 +217,8 @@ final class TerminalNSView: NSView {
 
     @objc func paste(_ sender: Any?) {
         guard let s = NSPasteboard.general.string(forType: .string) else { return }
-        // lines end in CR, as the modem takes them
-        modem?.type(s.replacingOccurrences(of: "\r\n", with: "\r")
+        // lines end in CR, as a terminal sends them
+        host?.type(s.replacingOccurrences(of: "\r\n", with: "\r")
                         .replacingOccurrences(of: "\n", with: "\r"))
     }
 
