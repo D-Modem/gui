@@ -899,7 +899,7 @@ static bool choose_key(HWND d, bool ppk, char *file, int n)
 	ssh_dir(dir, sizeof(dir));
 	OPENFILENAME o;
 	memset(&o, 0, sizeof(o));
-	o.lStructSize = OPENFILENAME_SIZE_VERSION_400;
+	o.lStructSize = sizeof(o);	/* (the SSH build is for Windows 7 on) */
 	o.hwndOwner = d;
 	o.lpstrFilter = ppk ? "PuTTY keys (*.ppk)\0*.ppk\0" :
 		"All keys\0*.*\0PuTTY keys (*.ppk)\0*.ppk\0";
