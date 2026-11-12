@@ -281,6 +281,7 @@ static int which_pipe(const char *which)
 	return which && *which && _stricmp(which, "pageant") != 0;
 }
 
+/* whether the agent answers (see agent.h) */
 int dmc_agent_reachable(const char *which)
 {
 	HANDLE h;
@@ -296,6 +297,7 @@ int dmc_agent_reachable(const char *which)
 	return 1;
 }
 
+/* the session's agent set, before its login by the agent (see agent.h) */
 int dmc_agent_attach(ssh_session ssh, const char *which, dmc_agent **out)
 {
 	struct dmc_agent *a;
@@ -340,6 +342,7 @@ int dmc_agent_attach(ssh_session ssh, const char *which, dmc_agent **out)
 	return 0;
 }
 
+/* what dmc_agent_attach() made, freed after its session */
 void dmc_agent_detach(dmc_agent *a)
 {
 	if (!a)
@@ -355,6 +358,7 @@ void dmc_agent_detach(dmc_agent *a)
 
 #else
 
+/* whether the agent answers (see agent.h) */
 int dmc_agent_reachable(const char *which)
 {
 	const char *path = which && *which ? which : getenv("SSH_AUTH_SOCK");
@@ -380,6 +384,7 @@ int dmc_agent_reachable(const char *which)
 	return ok;
 }
 
+/* the session's agent set, before its login by the agent (see agent.h) */
 int dmc_agent_attach(ssh_session ssh, const char *which, dmc_agent **out)
 {
 	*out = NULL;
@@ -389,6 +394,7 @@ int dmc_agent_attach(ssh_session ssh, const char *which, dmc_agent **out)
 	return 0;
 }
 
+/* what dmc_agent_attach() made, freed after its session */
 void dmc_agent_detach(dmc_agent *a)
 {
 	(void)a;
