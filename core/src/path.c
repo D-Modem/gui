@@ -109,7 +109,7 @@ static void make(dmc_path *p)
 		     set ? p->where : "Not set yet");
 		step(&s[2], p->line == DMC_LINE_TCP ? DMC_KIND_SOFTMODEM :
 		     DMC_KIND_MODEM, p->line == DMC_LINE_TCP ? "D-Modem" : "Modem",
-		     set ? DMC_STEP_READY : DMC_STEP_SETUP,
+		     DMC_STEP_READY,
 		     p->running && p->state != DMC_CLOSED ? "Running" :
 		     "Already running");
 		step(&s[3], DMC_KIND_PHONE_LINE, "Phone line", DMC_STEP_READY,
