@@ -7,6 +7,7 @@ set(DMODEMCTL_SOURCES
   src/session.c
   src/model.c
   src/diag.c
+  src/path.c
   src/vt.c
   src/vt_charsets.c
   src/vt_data.c

@@ -8,6 +8,7 @@ add_executable(dmodem WIN32
   src/pages.cpp
   src/term.cpp
   src/settings.cpp
+  src/pathview.cpp
   src/config.cpp
   src/voice.cpp
   src/audio.cpp
