@@ -13,6 +13,7 @@ keeps it easy to call from C (GTK), C++ (Win32) and Swift, and easy to test
 | --- | --- |
 | `dmc_session` | The AT conversation: a queue of commands and their responses, the call's state from the result codes (RING, CONNECT, NO CARRIER), caller ID, the escape (`+++` with its guard times) and hanging up, and the byte stream for the terminal |
 | `dmc_model` | The modem's settings from AT!M, with each setting's check and the command that sets it |
+| `dmc_path` | The connection path at the top of the Settings page: the terminal, the modem, the line and what it reaches, each step's role, name, state and what it is set to, from the line settings and the session's state |
 | `dmc_diag` | The last call's statistics from AT#UD, as labelled rows (the V.58 code tables decoded) |
 | `dmc_vt` | The terminal emulator of the D-Modem app (D-Modem/app's `shared/.../terminal`), ported to C: every kind of terminal it is (see below), drawn by each app from its cells |
 | `dmc_net` | Telnet (option negotiation, terminal type, window size) and rlogin (the handshake, window size on the server's urgent request), for the Remote page |
@@ -42,12 +43,36 @@ Each app has the same seven pages, with the same words:
 | Phone | A voice call's state, Call and Answer, the keypad (DTMF), Mute and Listen; the answering machine (on or off, rings, the greeting) and its messages |
 | Terminal | The AT console; the buttons **Full-screen setup** (AT!CF) and **Command-line setup** (AT!CT); the kind of terminal |
 | Remote | SSH, Telnet or rlogin; the server, its port (empty: the protocol's) and the user; how SSH logs in (keys and the agent, the agent alone, a key file; a PuTTY key's import); Connect; a terminal of its own, whose size goes to the server as it changes, and its kind |
-| Settings | Groups of settings as native controls, changed ones marked; Defaults (ATZ), the init string and Keep |
+| Settings | The connection path; groups of settings as native controls, changed ones marked; Defaults (ATZ), the init string and Keep |
 | Call Stats | AT#UD's rows and ATI11's report, refreshed after each call |
 | Log | What dmodemd printed, and the command line it was started with |
 
 The terminal sends Backspace as BS (0x08), the modem's S5: it does not take
 DEL. Colours are the brand's: background `#0a0f1c`, text `#e8f0ff`.
+
+## The connection path
+
+The top of the Settings page shows how a call is made, as PCOMM's
+"Connection Overview" draws its link: four steps joined by one line, each
+with its role above its icon and what it is below.
+
+| Line | Program | Modem (or Port) | Line (or Modem) | Reaches (or Line) |
+| --- | --- | --- | --- | --- |
+| SIP account | Terminal | D-Modem | SIP: the account, registered when taking calls | The phone network, through the server |
+| SIP, anonymous | Terminal | D-Modem | SIP: nothing registered | SIP addresses, dialled directly |
+| USB modem | Terminal | D-Modem | The USB modem | Its phone line |
+| Codec (Linux) | Terminal | D-Modem | The ALSA device | Its phone line |
+| A modem that already runs | Terminal | Its device, TCP address or COM port | The modem | Its phone line |
+
+Idle, each step is as the line settings set it up: ready in the accent
+colour, or still to set (no SIP account, no device) in red with its line
+dashed, and the line below says what. Starting, dialling and online, the
+steps light as the call goes (green), the line below saying the CONNECT.
+libdmodemctl's `dmc_path` has the words, so the three apps say the same;
+each draws them (`pathview.c`, `pathview.cpp` in GDI with Windows 95's
+Wingdings, `PathView.swift`). The D-Modem app has the same picture at the
+top of its Settings, with its own lines (Wi-Fi and Bluetooth to another
+phone, the phone's mobile calls, external modems).
 
 ## The terminals
 

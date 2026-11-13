@@ -322,6 +322,75 @@ DMC_API const char *dmc_diag_raw(const dmc_diag *d, int key);
 DMC_API int dmc_diag_has_call(const dmc_diag *d);
 
 /*
+ * The connection path
+ *
+ * The picture at the top of the Settings page of how a call is made, as
+ * PCOMM's "Connection Overview" draws its link: four steps, left to right,
+ * each with its role above its icon and what it is below, one line
+ * joining them.  Idle, each step is as the line settings set it up (ready,
+ * or something still to set); starting, calling and online, as it is now.
+ * The words are here so that every app says the same; each draws them.
+ */
+
+typedef struct dmc_path dmc_path;
+
+/* the line settings' kinds of line */
+enum {
+	DMC_LINE_SIP = 0,       /* dmodemd on a SIP account (or none) */
+	DMC_LINE_USB,           /* dmodemd on a USB modem's phone line */
+	DMC_LINE_CODEC,         /* dmodemd on a softmodem codec (ALSA) */
+	DMC_LINE_DEVICE,        /* a modem that already runs, at a device */
+	DMC_LINE_TCP,           /* dmodemd that already runs, over TCP */
+	DMC_LINE_COM            /* a modem on a COM port */
+};
+
+/* a step's state: ready (set up, idle), something to set first, not in
+   use, starting or connecting, in the call */
+enum {
+	DMC_STEP_READY = 0, DMC_STEP_SETUP, DMC_STEP_OFF, DMC_STEP_WORKING,
+	DMC_STEP_ACTIVE
+};
+
+/* what a step is, for its icon */
+enum {
+	DMC_KIND_TERMINAL = 0, DMC_KIND_SOFTMODEM, DMC_KIND_MODEM,
+	DMC_KIND_SIP, DMC_KIND_USB, DMC_KIND_CODEC, DMC_KIND_SERIAL,
+	DMC_KIND_NETWORK, DMC_KIND_PHONE_NETWORK, DMC_KIND_SIP_ADDRESS,
+	DMC_KIND_PHONE_LINE
+};
+
+DMC_API dmc_path *dmc_path_new(void);
+DMC_API void dmc_path_free(dmc_path *p);
+/* the line settings: the kind of line (DMC_LINE_*), where it is (--usb's
+   device, the codec, the device's path, the TCP address, the COM port;
+   NULL or "" for none), and the SIP account: none (anonymous), its user
+   and server, taking calls (registering) */
+DMC_API void dmc_path_set_line(dmc_path *p, int line, const char *where,
+			       int sip_anonymous, const char *sip_user,
+			       const char *sip_server, int listen);
+/* now: dmodemd (or the device) started, the session's state
+   (dmc_state(), DMC_CLOSED for none), the CONNECT line online */
+DMC_API void dmc_path_set_live(dmc_path *p, int running, int state,
+			       const char *connect);
+/* the steps: how many, each one's kind, state (DMC_STEP_*), role ("Modem",
+   the label above it), title ("D-Modem") and what it is ("Registers as
+   alice@example.com") */
+DMC_API int dmc_path_steps(const dmc_path *p);
+DMC_API int dmc_path_kind(const dmc_path *p, int i);
+DMC_API int dmc_path_state(const dmc_path *p, int i);
+DMC_API const char *dmc_path_role(const dmc_path *p, int i);
+DMC_API const char *dmc_path_title(const dmc_path *p, int i);
+DMC_API const char *dmc_path_detail(const dmc_path *p, int i);
+/* the line from step i to the next: the lesser of the two's states
+   (off, then to set, working, ready, active) */
+DMC_API int dmc_path_link(const dmc_path *p, int i);
+/* the whole in a line: what needs setting, or what it's doing, or that
+   it's ready */
+DMC_API const char *dmc_path_headline(const dmc_path *p);
+/* some step is still to set */
+DMC_API int dmc_path_needs_setup(const dmc_path *p);
+
+/*
  * The terminal screen
  *
  * A terminal emulator: the app's (D-Modem/app) ported to C, as one of

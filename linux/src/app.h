@@ -176,6 +176,11 @@ GtkWidget *remote_page_new(App *a);
 /* its connection ended (the app is quitting) */
 void remote_stop(App *a);
 
+/* pathview.c: the connection path at the top of the Settings page, as
+   the line settings and the modem are now */
+GtkWidget *pathview_new(App *a);
+void pathview_update(App *a);
+
 /* stats.c */
 GtkWidget *stats_page_new(App *a);
 void stats_refresh(App *a);

@@ -314,6 +314,12 @@ GtkWidget *settings_page_new(App *a)
 	a->setting_rows = g_ptr_array_new();
 	a->settings_page = ADW_PREFERENCES_PAGE(adw_preferences_page_new());
 
+	/* how a call is made, step by step: as set up when idle, as it is in
+	   a call */
+	GtkWidget *path = adw_preferences_group_new();
+	adw_preferences_group_add(ADW_PREFERENCES_GROUP(path), pathview_new(a));
+	adw_preferences_page_add(a->settings_page, ADW_PREFERENCES_GROUP(path));
+
 	GtkWidget *top = adw_preferences_group_new();
 	adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(top), "The modem's settings");
 	adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(top),

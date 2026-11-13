@@ -175,6 +175,11 @@ void remote_stop();
 
 /* settings.cpp: the Settings page */
 HWND settings_page_new(HWND parent);
+/* pathview.cpp: the connection path at the top of the Settings page, as
+   the line settings and the modem are now; its height */
+HWND pathview_new(HWND parent);
+void pathview_update();
+int pathview_height();
 void settings_page_layout(HWND page, int w, int h);
 void settings_load();
 void settings_clear();

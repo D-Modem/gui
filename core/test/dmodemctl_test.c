@@ -1180,6 +1180,57 @@ static void test_net(void)
 	dmc_net_free(n);
 }
 
+/* the connection path: each line's steps, idle as set up, in a call as
+   it is */
+static void test_path(void)
+{
+	dmc_path *p = dmc_path_new();
+	dmc_path_set_line(p, DMC_LINE_SIP, "", 0, "alice", "sip.example.com", 1);
+	CHECK(dmc_path_steps(p) == 4);
+	CHECK(dmc_path_kind(p, 0) == DMC_KIND_TERMINAL);
+	CHECK(dmc_path_kind(p, 1) == DMC_KIND_SOFTMODEM);
+	CHECK(dmc_path_kind(p, 3) == DMC_KIND_PHONE_NETWORK);
+	CHECK_STR(dmc_path_role(p, 2), "Line");
+	CHECK_STR(dmc_path_detail(p, 2), "Registers as alice@sip.example.com");
+	CHECK(!dmc_path_needs_setup(p));
+	CHECK_STR(dmc_path_headline(p), "Ready: start the modem to dial");
+
+	/* no account yet */
+	dmc_path_set_line(p, DMC_LINE_SIP, "", 0, "", "", 0);
+	CHECK(dmc_path_state(p, 2) == DMC_STEP_SETUP);
+	CHECK(dmc_path_link(p, 1) == DMC_STEP_SETUP);
+	CHECK(dmc_path_link(p, 0) == DMC_STEP_READY);
+	CHECK_STR(dmc_path_headline(p), "Not ready: SIP (no account set up)");
+
+	/* anonymous */
+	dmc_path_set_line(p, DMC_LINE_SIP, "", 1, "", "", 0);
+	CHECK(dmc_path_kind(p, 3) == DMC_KIND_SIP_ADDRESS);
+	CHECK(!dmc_path_needs_setup(p));
+
+	/* a modem that already runs: reached by its port */
+	dmc_path_set_line(p, DMC_LINE_COM, "COM2", 0, "", "", 0);
+	CHECK(dmc_path_kind(p, 1) == DMC_KIND_SERIAL);
+	CHECK_STR(dmc_path_role(p, 1), "Port");
+	CHECK_STR(dmc_path_detail(p, 1), "COM2");
+	dmc_path_set_line(p, DMC_LINE_DEVICE, "", 0, "", "", 0);
+	CHECK(dmc_path_state(p, 1) == DMC_STEP_SETUP);
+
+	/* starting, dialling, online */
+	dmc_path_set_line(p, DMC_LINE_USB, "auto", 0, "", "", 0);
+	dmc_path_set_live(p, 1, DMC_CLOSED, "");
+	CHECK(dmc_path_state(p, 1) == DMC_STEP_WORKING);
+	CHECK(dmc_path_state(p, 2) == DMC_STEP_READY);
+	CHECK_STR(dmc_path_headline(p), "Starting the modem");
+	dmc_path_set_live(p, 1, DMC_DIALING, "");
+	CHECK(dmc_path_link(p, 2) == DMC_STEP_WORKING);
+	dmc_path_set_live(p, 1, DMC_ONLINE, "CONNECT 48000/26400");
+	for (int i = 0; i < 4; i++)
+		CHECK(dmc_path_state(p, i) == DMC_STEP_ACTIVE);
+	CHECK_STR(dmc_path_headline(p), "Online: CONNECT 48000/26400");
+	CHECK(dmc_path_state(p, 9) == DMC_STEP_OFF);
+	dmc_path_free(p);
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : ".";
@@ -1199,6 +1250,7 @@ int main(int argc, char **argv)
 	test_wav();
 	test_formats();
 	test_net();
+	test_path();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }
