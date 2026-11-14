@@ -71,7 +71,7 @@ D-Modem 1.0.
 | [app](https://github.com/D-Modem/app) | The D-Modem app for Android and iOS: a dial-up modem on a SIP call |
 | [gui](https://github.com/D-Modem/gui) | D-Modem on the desktop: native apps for Windows, macOS and Linux |
 | [hardware](https://github.com/D-Modem/hardware) | pico-serial: RP2040 serial adapters and phone-line USB sticks |
-| [menu](https://github.com/D-Modem/menu) | modemmenu: the login and the menu that dial-up callers get to |
+| [menu](https://github.com/D-Modem/menu) | modemmenu: the login and menu dial-up callers reach |
 | [bbs](https://github.com/D-Modem/bbs) | A bulletin board for telnet, SSH, TN3270 and modem callers |
 | [go3270](https://github.com/D-Modem/go3270) | A Go library for 3270 terminal servers, used by bbs |
 | [brand](https://github.com/D-Modem/brand) | Logos, colours, type and the naming guide |
