@@ -1,7 +1,9 @@
 # Contributing
 
-Contributions are welcome: issues, fixes and features alike.  Before
-sending a change, build it on the platforms it affects ([README.md](README.md)).
+We accept contributions: issues, fixes and features. Before you send a
+change, build it on the platforms that it affects ([README.md](README.md)).
+
+Write all technical documentation in ASD-STE100 Simplified Technical English. Follow docs/STYLE.md.
 
 ## The contributor agreement
 
@@ -50,9 +52,9 @@ does it):
 It says that you agree to the above for that commit.  A contribution
 without it cannot be merged.
 
-A check on each pull request looks for that line, with the commit
-author's email, on every commit.  If it's missing, `git rebase --signoff
-main` (or `git commit --amend -s` for the last commit) adds it; then
-force-push.  Pull requests from the D-Modem Authors themselves (the
-repository's owner and the D-Modem organization's members) are not
-checked.
+A check on each pull request looks for that line, with the email of the
+commit author, on each commit. If the line is missing, use
+`git rebase --signoff main` to add it. For the last commit only, you can
+use `git commit --amend -s`. Then force-push. The check does not examine
+pull requests from the D-Modem Authors (the owner of the repository and
+the members of the D-Modem organization).
