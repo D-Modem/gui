@@ -13,6 +13,11 @@ add_executable(dmodem-gui
   src/termview.c
   src/audio.c)
 target_link_libraries(dmodem-gui PRIVATE dmodemctl dmodemssh PkgConfig::GTK)
+# where the MT9234MU's firmware is installed, and where it is in the source
+include(GNUInstallDirs)
+target_compile_definitions(dmodem-gui PRIVATE
+  DMODEM_FIRMWARE_DIR="${CMAKE_INSTALL_FULL_DATADIR}/dmodem-gui/firmware"
+  DMODEM_FIRMWARE_SRC="${CMAKE_CURRENT_SOURCE_DIR}/firmware")
 # the sound of voice calls: PulseAudio's client (PipeWire serves it
 # too); without it the app has no sound
 pkg_check_modules(PULSE IMPORTED_TARGET libpulse-mainloop-glib)
@@ -39,6 +44,16 @@ install(FILES data/io.github.d_modem.DModem.desktop
   DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/io.github.d_modem.DModem.metainfo.xml
   DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+# MultiTech's firmware for the MT9234MU (licence unknown: linux/firmware/README.md)
+install(FILES firmware/mts_mt9234mu.fw firmware/README.md
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/dmodem-gui/firmware)
+option(DMODEM_GUI_INSTALL_FIRMWARE
+  "Also install mts_mt9234mu.fw (and mts_mt9234zba.fw) in /lib/firmware" OFF)
+if(DMODEM_GUI_INSTALL_FIRMWARE)
+  install(FILES firmware/mts_mt9234mu.fw DESTINATION /lib/firmware)
+  install(FILES firmware/mts_mt9234mu.fw DESTINATION /lib/firmware
+    RENAME mts_mt9234zba.fw)
+endif()
 install(FILES ${PROJECT_SOURCE_DIR}/assets/dmodem.svg
   DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
   RENAME io.github.d_modem.DModem.svg)

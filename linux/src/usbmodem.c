@@ -31,6 +31,8 @@ static const char *const firmware[] = {
 	"/lib/firmware/mts_mt9234mu.fw",
 	"/usr/lib/firmware/updates/mts_mt9234mu.fw",
 	"/usr/lib/firmware/mts_mt9234mu.fw",
+	"/lib/firmware/mts_mt9234zba.fw",
+	"/usr/lib/firmware/mts_mt9234zba.fw",
 	NULL
 };
 
@@ -113,14 +115,36 @@ UsbModem *usbmodem_find(void)
 	return m;
 }
 
+char *usbmodem_shipped_firmware(void)
+{
+	static const char *const dirs[] = {
+		DMODEM_FIRMWARE_DIR, DMODEM_FIRMWARE_SRC, NULL
+	};
+	for (int i = 0; dirs[i]; i++) {
+		char *p = g_build_filename(dirs[i], "mts_mt9234mu.fw", NULL);
+		if (g_file_test(p, G_FILE_TEST_EXISTS))
+			return p;
+		g_free(p);
+	}
+	return NULL;
+}
+
 char *usbmodem_describe(const UsbModem *m)
 {
 	if (m->tty)
 		return g_strdup_printf("%s at %s", m->name, m->tty);
-	if (m->no_firmware && !usbmodem_firmware_present())
-		return g_strdup_printf("%s, with no firmware: put "
-				       "mts_mt9234mu.fw in /lib/firmware, "
-				       "then connect the modem again", m->name);
+	if (m->no_firmware && !usbmodem_firmware_present()) {
+		char *fw = usbmodem_shipped_firmware();
+		/* (the MT9234ZBA-USB's driver asks for its own name) */
+		const char *to = strstr(m->name, "ZBA") ?
+			"/lib/firmware/mts_mt9234zba.fw" : "/lib/firmware/";
+		char *d = g_strdup_printf("%s, with no firmware: copy %s to "
+					  "%s (sudo cp), then connect the "
+					  "modem again", m->name,
+					  fw ? fw : "mts_mt9234mu.fw", to);
+		g_free(fw);
+		return d;
+	}
 	if (m->no_firmware)
 		return g_strdup_printf("%s, with no firmware: load the "
 				       "ti_usb_3410_5052 driver, then connect "

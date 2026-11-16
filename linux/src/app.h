@@ -115,6 +115,8 @@ UsbModem *usbmodem_find(void);
 char *usbmodem_describe(const UsbModem *m);
 /* whether Linux has its firmware file (mts_mt9234mu.fw) */
 gboolean usbmodem_firmware_present(void);
+/* the copy of mts_mt9234mu.fw that comes with the app, or NULL */
+char *usbmodem_shipped_firmware(void);
 /* whether tty path is such a modem's */
 gboolean usbmodem_is(const char *path);
 void usbmodem_free(UsbModem *m);

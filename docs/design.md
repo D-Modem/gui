@@ -128,13 +128,16 @@ firmware into the chip each time you connect the modem.
 
 Linux does not include `mts_mt9234mu.fw` after June 2026. MultiTech gave no
 license that lets other persons distribute it, thus linux-firmware removed
-it. Get the file from the Linux driver of MultiTech, or from a
-linux-firmware package from before that date. Put it in `/lib/firmware`,
+it. This repository includes the file, with a notice
+(`linux/firmware/README.md`). The AGPL-3.0 license does not apply to it.
+`cmake --install` puts it in `share/dmodem-gui/firmware`, and
+`-DDMODEM_GUI_INSTALL_FIRMWARE=ON` also puts it in `/lib/firmware`. Else,
+copy it to `/lib/firmware` (for the MT9234ZBA-USB, as `mts_mt9234zba.fw`),
 then disconnect the modem and connect it again.
 
 On Linux, the app finds the modem in sysfs (`linux/src/usbmodem.c`). The
 line settings show where the modem is, with a "Use" button. If the modem
-has no firmware, they show what to do. When the app opens the port of the
+has no firmware, they show the command that copies the file. When the app opens the port of the
 modem, it sets RTS/CTS flow control (`CRTSCTS`). The modem uses `&K3` from
 the factory.
 
