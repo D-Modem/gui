@@ -5,6 +5,7 @@ add_executable(dmodem-gui
   src/window.c
   src/modem.c
   src/config.c
+  src/usbmodem.c
   src/settings.c
   src/stats.c
   src/voice.c
