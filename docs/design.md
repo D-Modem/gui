@@ -109,6 +109,50 @@ the pty in the group of the user (`-g`). Thus dmodemd does not need root.
 Each app can also use a modem that already runs: a device path on Linux and
 macOS, or a TCP address or a COM port on Windows.
 
+## Hardware modems: the MultiTech MT9234MU
+
+The "device" line can also open a hardware modem. The apps send AT commands
+to it and read its result codes, as they do with dmodemd. The Settings page
+needs `AT!M`, thus it operates only with dmodemd.
+
+The MultiTech MultiMobile MT9234MU (USB 06E0:F114) and the MT9234ZBA-USB
+(06E0:F115, 06E0:0319) are V.92 data and fax modems. They have a TI TUSB3410
+USB UART. The TUSB3410 has no firmware of its own. The host downloads the
+firmware into the chip each time you connect the modem.
+
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| Driver | `ti_usb_3410_5052` (in the kernel) | we do not know a driver for the MT9234MU. The CDC-ACM models (MT9234MU-CDC) use the driver of the system | the driver of MultiTech |
+| Firmware | `mts_mt9234mu.fw` in `/lib/firmware` | not applicable | the driver of MultiTech has it |
+| The port | `/dev/ttyUSB0` | `/dev/cu.usbmodem*` (CDC-ACM models) | a COM port |
+
+Linux does not include `mts_mt9234mu.fw` after June 2026. MultiTech gave no
+license that lets other persons distribute it, thus linux-firmware removed
+it. This repository includes the file, with a notice
+(`linux/firmware/README.md`). The AGPL-3.0 license does not apply to it.
+`cmake --install` puts it in `share/dmodem-gui/firmware`, and
+`-DDMODEM_GUI_INSTALL_FIRMWARE=ON` also puts it in `/lib/firmware`. Else,
+copy it to `/lib/firmware` (for the MT9234ZBA-USB, as `mts_mt9234zba.fw`),
+then disconnect the modem and connect it again.
+
+On Linux, the app finds the modem in sysfs (`linux/src/usbmodem.c`). The
+line settings show where the modem is, with a "Use" button. If the modem
+has no firmware, they show the command that copies the file. When the app opens the port of the
+modem, it sets RTS/CTS flow control (`CRTSCTS`). The modem uses `&K3` from
+the factory.
+
+Set the country of the line with `AT%T19,0,<code>` and `AT&F&W` in the
+"Commands when the modem opens" field one time, or in the Terminal page.
+`AT%T19,0,34` is the default (North America and Europe).
+
+`ATI11` on these modems (and on other Agere modems) shows its report on two
+pages. After each page, the modem waits for a key ("Press any key"). The
+library sends a space when a command of the app gets this prompt, thus the
+Call Stats page gets the full report. It does this for 8 pages at most. In
+the Terminal page, you push the key.
+
+We did not test this yet with a real MT9234MU.
+
 ## Remote logins
 
 The Remote page logs in to a server, next to the modem, in a separate

@@ -23,7 +23,7 @@ libdmodemctl. Thus they operate in the same way.
   LGPL-2.0-or-later: `core/licenses/syncterm-fonts-LGPL-2.0.txt`)
 - **Settings**: each modem setting as a native control, from AT!M
 - **Call Stats**: the rate, modulation, error control and line figures of the last call (AT#UD, ATI11)
-- **Line settings**: a SIP account, a USB modem, or a modem that already runs
+- **Line settings**: a SIP account, a USB modem, or a modem that already runs (dmodemd, or a hardware modem such as the MultiTech MT9234MU)
 - **Windows 95 and later**: plain Win32, built with Open Watcom. On Windows 9x, the app connects to a modem through TCP or a COM port
 
 | | Windows | macOS | Linux |
@@ -59,7 +59,7 @@ D-Modem 1.0.
 
 ## Documentation
 
-- [Design](docs/design.md): how the apps are built, what they share, and the Windows 9x notes
+- [Design](docs/design.md): how the apps are built, what they share, hardware modems (the MultiTech MT9234MU), and the Windows 9x notes
 - [libdmodemctl](core/include/dmodemctl.h): the API of the library
 - [Documentation style](docs/STYLE.md): the rules for ASD-STE100 Simplified Technical English
 

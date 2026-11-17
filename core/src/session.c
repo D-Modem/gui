@@ -43,6 +43,8 @@
 /* a line longer than this keeps only its end (a configurator's
    screens come with no line ends, and its OK after the last one) */
 #define LINE_MAX 4096
+/* the most pages of one response that the session pages on */
+#define PAGES_MAX 8
 
 /* voice: how far ahead of the line our samples go (60 ms), how many of
    the far end's are kept (1 s), how many of ours may wait (a third of
@@ -120,6 +122,10 @@ struct dmc_session {
 	struct command *queue, *active;
 	int64_t active_until;
 	int echo_seen;
+	/* the pages of its response that the session paged on (a key sent
+	   to "Press any key") */
+	int pages;
+	int prompt;             /* the rest of the prompt's line: dropped */
 	dmc_buf response;
 	int next_tag;
 	/* the events, and the one dmc_next_event() last gave */
@@ -378,6 +384,8 @@ static void pump(dmc_session *s)
 	s->active = c;
 	s->active_until = s->now + c->timeout_ms;
 	s->echo_seen = 0;
+	s->pages = 0;
+	s->prompt = 0;
 	buf_clear(&s->response);
 	buf_adds(&s->out, c->cmd);
 	buf_addc(&s->out, '\r');
@@ -770,6 +778,17 @@ static void line_in(dmc_session *s, const char *l)
 
 static void voice_byte(dmc_session *s, unsigned char c);
 
+/* whether l is a pager's prompt: a modem that shows a long response in
+   pages (ATI11 on the Agere modems, the MultiTech MT9234 among them)
+   stops after each page at "Press any key to continue; ESC to quit" */
+static int pager_prompt(const char *l)
+{
+	for (; *l; l++)
+		if (starts_ci(l, "any key"))
+			return 1;
+	return 0;
+}
+
 void dmc_feed(dmc_session *s, const char *data, int n)
 {
 	if (s->state == DMC_CLOSED)
@@ -783,16 +802,35 @@ void dmc_feed(dmc_session *s, const char *data, int n)
 		int quiet = s->active && (s->active->flags & DMC_QUIET);
 		if (!quiet)
 			buf_addc(&s->term, c);
+		if (c == '\n' && s->prompt) {
+			s->prompt = 0;
+			continue;
+		}
 		if (c == '\n') {
 			line_in(s, buf_str(&s->line));
 			buf_clear(&s->line);
 			continue;
 		}
-		if (c == '\r')
+		if (c == '\r') {
+			s->prompt = 0;
+			continue;
+		}
+		if (s->prompt)
 			continue;
 		if (s->line.n >= LINE_MAX)
 			buf_drop(&s->line, s->line.n - LINE_MAX / 2);
 		buf_addc(&s->line, c);
+		/* a command's response in pages: the next page asked for
+		   (a space), the prompt kept out of the response */
+		if (s->active && (s->state == DMC_IDLE ||
+				  s->state == DMC_ONLINE_COMMAND) &&
+		    s->pages < PAGES_MAX && pager_prompt(buf_str(&s->line))) {
+			buf_addc(&s->out, ' ');
+			buf_clear(&s->line);
+			s->prompt = 1;
+			s->pages++;
+			s->active_until = s->now + s->active->timeout_ms;
+		}
 	}
 }
 

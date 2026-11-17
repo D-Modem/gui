@@ -157,6 +157,10 @@ static gboolean open_dte(App *a, const char *path)
 		cfsetispeed(&t, B115200);
 		cfsetospeed(&t, B115200);
 		t.c_cflag |= CLOCAL | CREAD;
+		/* (a MultiTech MT9234MU: RTS/CTS, its &K3, so that the
+		   modem's buffer does not overflow in a fast call) */
+		if (usbmodem_is(path))
+			t.c_cflag |= CRTSCTS;
 		tcsetattr(fd, TCSANOW, &t);
 	}
 	a->fd = fd;
