@@ -24,7 +24,7 @@ libdmodemctl. Thus they operate in the same way.
 - **Settings**: each modem setting as a native control, from AT!M
 - **Call Stats**: the rate, modulation, error control and line figures of the last call (AT#UD, ATI11)
 - **Line settings**: a SIP account, a USB modem, or a modem that already runs (dmodemd, or a hardware modem such as the MultiTech MT9234MU)
-- **Windows 95 and later**: plain Win32, built with Open Watcom. On Windows 9x, the app connects to a modem through TCP or a COM port
+- **Windows 95 and later**: plain Win32, built with [clang-retro](https://clang-retro.github.io/). On Windows 9x, the app connects to a modem through TCP or a COM port
 
 | | Windows | macOS | Linux |
 | --- | --- | --- | --- |
@@ -43,14 +43,30 @@ Linux:
         libsndfile1-dev
     cmake -S . -B build && cmake --build build && ./build/linux/dmodem-gui
 
-Windows: use `cmake -S . -B build -A Win32 && cmake --build build --config Release`.
-For Windows 95 and later, use `windows/build-watcom.sh` with Open Watcom 2.0.
+Windows: we build the Windows app with clang-retro. Get its toolchain
+package (`clang-dos-linux-x86_64.tar.xz` or `clang-dos-windows-x86_64.zip`,
+from the [nightly release](https://github.com/clang-retro/dos-sdk/releases/tag/nightly)).
+Then set `CLANG_DOS` to the directory of the package:
+
+    # Windows 95, 98, ME, NT 4.0 and later (no SSH, no C runtime DLL)
+    cmake -S . -B build/win9x -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake
+    cmake --build build/win9x
+
+    # Windows 7 and later, with SSH
+    cmake -S . -B build/win7 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake \
+        -DCLANG_RETRO_CONFIG=win7 -DDMODEM_GUI_SSH=ON
+    cmake --build build/win7
+
+The app is in `windows/dmodem.exe` of the build directory. MSVC
+(`cmake -S . -B build -A Win32`) and MinGW also build the same code.
 
 macOS: first use `cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build`
 (this builds libssh, for SSH). Then use `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
 
 The first CMake build downloads libssh and mbedTLS for SSH. This always
-occurs on Windows and macOS. On Linux, it occurs if the libssh of the system
+occurs on Windows (when SSH is on) and macOS. On Linux, it occurs if the libssh of the system
 is older than 0.11.
 
 The Settings page needs a dmodemd with AT!M (the main branch of D-Modem

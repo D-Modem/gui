@@ -32,7 +32,6 @@ static char proc_line[1024];
 static int proc_n;
 static char port_out[8192];             /* what the DTE has yet to take */
 static int port_out_n;
-static DWORD start_tick;
 static int connect_tries;
 
 static int64_t now_ms()
@@ -322,7 +321,6 @@ static bool start_dmodemd()
 	proc = pi.hProcess;
 	proc_out = rd;
 	proc_n = 0;
-	start_tick = GetTickCount();
 	connect_tries = 0;
 	return true;
 }
