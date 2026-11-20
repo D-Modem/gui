@@ -6,8 +6,10 @@
  *                  picolibc).  The one of mingw-w64's libws2_32.a calls
  *                  FormatMessageW, which Windows 9x has only as a stub.
  *                  This one is linked before it (ssh/CMakeLists.txt) and
- *                  calls FormatMessageA.
+ *                  calls FormatMessageA.  (Only Windows: the macOS
+ *                  project compiles each file of ssh/src.)
  */
+#ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <stdio.h>
@@ -27,3 +29,6 @@ char *gai_strerrorA(int ecode)
 		snprintf(text, sizeof text, "name lookup error %d", ecode);
 	return text;
 }
+#else
+typedef int dmodem_gai_strerror_unused; /* (ISO C: no empty file) */
+#endif
