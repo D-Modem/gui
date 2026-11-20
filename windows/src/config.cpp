@@ -13,6 +13,9 @@
 #include "app.h"
 #include <commdlg.h>
 #include "resource.h"
+#ifdef DMODEM_WINPORT
+#include <shlobj.h>
+#endif
 
 #ifndef OPENFILENAME_SIZE_VERSION_400
 #define OPENFILENAME_SIZE_VERSION_400 76
@@ -22,11 +25,12 @@ void app_data_dir(char *out, int n)
 {
 	char dir[MAX_PATH];
 #ifdef DMODEM_WINPORT
-	/* (Linux and macOS, winport/: ~/.config/D-Modem) */
-	const char *home = getenv("HOME");
-	if (home && strlen(home) < sizeof(dir) - 20) {
-		_snprintf(dir, sizeof(dir), "%s/.config", home);
-		CreateDirectory(dir, NULL);
+	/* (Linux and macOS, winport/: the layer's CSIDL_APPDATA, ~/.config or
+	   ~/Library/Application Support; Windows 95 has no SHGetFolderPath,
+	   so Windows uses APPDATA) */
+	if (SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE,
+				      NULL, 0, dir)) &&
+	    strlen(dir) < sizeof(dir) - 10) {
 		strcat(dir, "/D-Modem");
 		CreateDirectory(dir, NULL);
 		_snprintf(out, n, "%s", dir);
@@ -92,10 +96,10 @@ void config_load(Config *c)
 	GetVersionEx(&v);
 	bool old = v.dwPlatformId != VER_PLATFORM_WIN32_NT || v.dwMajorVersion < 6;
 #ifdef DMODEM_WINPORT
-	/* (Linux and macOS, winport/: no COM ports or dmodemd started by the
-	   app yet, so a dmodemd that runs, through TCP) */
+	/* (Linux and macOS, winport/: dmodemd runs there, whatever Windows
+	   version the layer reports) */
 	(void)old;
-	c->line = get_i(ini, "line", LINE_TCP);
+	c->line = get_i(ini, "line", LINE_DMODEMD);
 #else
 	c->line = get_i(ini, "line", old ? LINE_COM : LINE_DMODEMD);
 #endif

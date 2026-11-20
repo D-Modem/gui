@@ -331,43 +331,33 @@ machine through TCP.
 
 ## The Windows app on Linux and macOS
 
-The Windows app also builds for Linux and macOS. This is a first pass.
-clang-retro MFC has a portable Win32 layer (`port/`, `libwinport.a`). The
-layer supplies the Win32 API on X11, Wayland and Cocoa. The app links
-with this layer and not with Windows. Its source code is the same as on
-Windows.
+The Windows app also builds for Linux and macOS. clang-retro MFC has a
+portable Win32 layer (`port/`, `libwinport.a`). The layer supplies the
+Win32 API on X11, Wayland and Cocoa: windows and controls, Winsock,
+files, COM ports, processes and pipes, and sound (`waveOut`, `waveIn`
+and ACM). The app links with this layer and not with Windows. Its source
+code is the same as on Windows.
 
 - Use `-DDMODEM_GUI_WINPORT=ON` and set `CLANG_RETRO_MFC` to a checkout of
   clang-retro MFC. Use clang. `winport/CMakeLists.txt` builds
   `libwinport.a` with the Makefile of MFC. It converts `app.rc` to C++
   with `port/tools/res2cpp.py` (this needs `llvm-rc`). The app is
-  `winport/dmodem-win32` in the build directory.
+  `winport/dmodem-win32` in the build directory. `windows/sources.cmake`
+  is the list of sources for the two builds.
 - `DMODEM_WINPORT` is defined for this build. The app uses it in these
   locations only:
-  - The settings file is `~/.config/D-Modem/dmodem.ini`.
-  - The line is TCP by default (`127.0.0.1:2323`, a dmodemd that runs).
-    The app does not start dmodemd on these systems yet.
-  - SSH uses `~/.ssh` and `/` in paths.
-  - The path view on the Settings page draws its pictures from Unicode
-    (DejaVu Sans), because these systems do not have Wingdings.
-  - The group boxes go under the other controls. The hit test of the
-    layer stops at a window that answers `HTTRANSPARENT`, and does not
-    try the windows under it. Windows tries them. Thus without this
-    change, a click on a control in a group box goes to the page.
-- The layer does not have these functions yet. `winport/include` and
-  `winport/src/stubs.cpp` supply stand-ins for them:
-
-  | Function | The stand-in |
-  | --- | --- |
-  | `waveOut*`, `waveIn*` (`mmsystem.h`), `acm*` (`msacm.h`) | Returns `MMSYSERR_NODRIVER`. The Phone page cannot play or record. |
-  | `GetCommState`, `SetCommState`, `SetCommTimeouts` (COM ports) | Returns `FALSE` (`ERROR_NOT_SUPPORTED`). Do not use a COM port. |
-  | `CreatePipe`, `PeekNamedPipe` | Returns `FALSE`. The app cannot start dmodemd. |
-  | `GetEnvironmentStrings`, `GetUserName`, `Beep` | Uses `environ`, `$USER` and `MessageBeep`. |
-  | `ListView_*`, `TabCtrl_*` (`commctrl.h`), `winsock.h` | Macros and an include of `winsock2.h`. |
-
-  When the layer gets these functions, remove the stand-ins (and the
-  group box change). Each stand-in is in `winport/` only, or in a
-  `DMODEM_WINPORT` block.
-- CI builds the app on Linux and macOS. On Linux, it starts the app in
-  Xvfb with `winport/test/smoke.sh`. The test makes sure that the app
-  stays up and sends AT commands to a test modem through TCP.
+  - The settings file is in the `CSIDL_APPDATA` folder of the layer
+    (`~/.config/D-Modem` on Linux, `~/Library/Application Support/D-Modem`
+    on macOS). On Windows, the app uses `APPDATA`, because Windows 95 has
+    no `SHGetFolderPath`.
+  - The line is dmodemd by default. The layer tells the app that Windows
+    is version 5, and on Windows the app then uses a COM port by default.
+  - dmodemd is `dmodemd` next to the app, or else on the `PATH`.
+  - SSH uses `~/.ssh` and `/` in paths, because libssh uses POSIX paths
+    on these systems.
+- The layer changes a COM port name to a device: `COM1` is `/dev/ttyS0`.
+- CI builds the app on Linux and macOS. On Linux, `winport/test/smoke.sh`
+  starts the app in Xvfb two times: with a TCP line, and with a dmodemd
+  that the app starts (`winport/test/dmodemd`, a test dmodemd). Each time,
+  the test makes sure that the app stays up and sends AT commands to a
+  test modem.
