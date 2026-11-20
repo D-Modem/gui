@@ -227,6 +227,10 @@ bool xfer_running();
 bool xfer_busy(XferLine *l);
 bool xfer_auto();
 void xfer_set_auto(bool on);
+/* ZMODEM with zstd (where the other side has it too: D-Modem's BBS, GUI
+   and app) */
+bool xfer_zstd();
+void xfer_set_zstd(bool on);
 /* the transfer's dialog's keys (IsDialogMessage) */
 bool xfer_dialog_key(MSG *m);
 

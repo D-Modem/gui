@@ -37,6 +37,7 @@ BEGIN
         MENUITEM "&Receive File...", IDM_RECEIVE
         MENUITEM SEPARATOR
         MENUITEM "&Automatic Receive (ZMODEM, Kermit)", IDM_AUTORECV
+        MENUITEM "ZMODEM Compression (&zstd)", IDM_XZSTD
         MENUITEM SEPARATOR
         MENUITEM "&Cancel Transfer", IDM_XCANCEL
         MENUITEM SEPARATOR

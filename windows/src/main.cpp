@@ -335,6 +335,9 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		case IDM_AUTORECV:
 			xfer_set_auto(!xfer_auto());
 			return 0;
+		case IDM_XZSTD:
+			xfer_set_zstd(!xfer_zstd());
+			return 0;
 		case IDM_XCANCEL:
 			xfer_cancel();
 			return 0;
@@ -381,6 +384,8 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		EnableMenuItem(m, IDM_XCANCEL, MF_BYCOMMAND | (busy ? MF_ENABLED : MF_GRAYED));
 		CheckMenuItem(m, IDM_AUTORECV, MF_BYCOMMAND |
 			      (xfer_auto() ? MF_CHECKED : MF_UNCHECKED));
+		CheckMenuItem(m, IDM_XZSTD, MF_BYCOMMAND |
+			      (xfer_zstd() ? MF_CHECKED : MF_UNCHECKED));
 		HWND v = view_now();
 		UINT has_view = v ? MF_ENABLED : MF_GRAYED;
 		EnableMenuItem(m, IDM_EDCOPY, MF_BYCOMMAND |

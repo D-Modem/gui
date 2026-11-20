@@ -170,6 +170,23 @@ protocols are:
   ZF0 to ZCRECOV (`sz -r`). If the file is there whole, the receiver sends
   ZSKIP. When a transfer stops, the receiver keeps the part that it
   received. The sender with this option sets ZF0 to ZCRECOV.
+- ZMODEM with zstd (the specification is `docs/zmodem-zstd.md` in the
+  D-Modem repository). The D-Modem BBS, GUI and app use this mode. The
+  receiver sets `CANZSTD` (0x40) in ZF1 of its ZRINIT. The sender sets
+  `ZTZSTD` (8) in ZF2 of the ZFILE for each file that it compresses. Then
+  the sender sends the file as independent zstd frames, one frame for each
+  chunk of 64 KB. After a ZRPOS, the chunk is half as large (minimum 1 KB).
+  After an ACK, the chunk is two times as large (maximum 64 KB). The
+  receiver writes only complete frames. All positions are file offsets,
+  thus ZRPOS and crash recovery operate as without zstd. The sender does
+  not compress a file of 0 bytes, a file with a compressed extension (for
+  example `.zip`, `.gz` or `.jpg`), or a file whose first 64 KB do not
+  become 5% smaller. When the other side does not use this mode, the
+  transfer is normal ZMODEM. To stop zstd, set `dmc_xfer_options.no_zstd`
+  (the Windows app: Transfer, ZMODEM Compression (zstd)).
+  `dmc_xfer_zstd` tells if the file now goes with zstd. The zstd encoder
+  and decoder are in `core/src/zstd_codec.c`. They are a C port of the
+  codec of the D-Modem app (`Zstd.kt`), and they do not use libzstd.
 - YMODEM, XMODEM and XMODEM-1K.
 - YMODEM-G: the receiver asks with G. The sender sends the blocks and does
   not wait for an ACK. Use it only on a line that corrects its errors (V.42).

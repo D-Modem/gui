@@ -695,6 +695,11 @@ typedef struct dmc_xfer_options {
 	/* plain text sent: a wait after each line, and after each
 	   character, in ms */
 	int line_delay_ms, char_delay_ms;
+	/* ZMODEM with zstd stopped: files are not compressed (sending), and
+	   compressed files are not taken (receiving).  When it is not
+	   stopped, zstd is used only where the other side can use it too
+	   (D-Modem's BBS, GUI and app) */
+	int no_zstd;
 } dmc_xfer_options;
 
 /* files from the remote into folder (name: XMODEM's file, which it does
@@ -715,6 +720,8 @@ DMC_API dmc_xfer *dmc_xfer_send_opt(int protocol, const char *const *paths,
 DMC_API void dmc_xfer_skip(dmc_xfer *x);
 /* whether the protocol can skip a file (receiving) */
 DMC_API int dmc_xfer_can_skip(int protocol);
+/* whether the file now goes compressed with zstd (ZMODEM with zstd) */
+DMC_API int dmc_xfer_zstd(dmc_xfer *x);
 /* bytes from the remote */
 DMC_API void dmc_xfer_feed(dmc_xfer *x, const char *data, int n);
 /* bytes for the remote: how many */

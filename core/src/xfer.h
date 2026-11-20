@@ -77,6 +77,7 @@ struct dmc_xfer {
 	int keep_partial;               /* crash recovery: a part is kept */
 	dmc_xfer_options opt;
 	volatile int skip;              /* the user skipped the file now */
+	volatile int zstd;              /* the file now goes with zstd */
 	void *heap;                     /* freed at the end */
 	void *proto;                    /* the protocol's state (Kermit's) */
 	void (*proto_free)(void *);     /* how it's freed (NULL: free) */
@@ -129,6 +130,8 @@ void xfer_create(dmc_xfer *x, const char *name);
    continued (its length, appended to), or a new one (0); -2 when the
    file is there whole (size known), and nothing opened */
 long long xfer_create_resume(dmc_xfer *x, const char *name, long long size);
+/* whether the file now goes compressed with zstd (ZMODEM) */
+void xfer_zstd(dmc_xfer *x, int on);
 /* the user's skip of the file now, taken (once) */
 int xfer_skip_wanted(dmc_xfer *x);
 /* the received file written */

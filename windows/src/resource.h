@@ -27,6 +27,7 @@
 #define IDM_CAPSTOP     214
 #define IDM_CAPPRINT    215
 #define IDM_PRNPAUSE    216
+#define IDM_XZSTD       217
 
 #define IDC_STATUS      300
 #define IDC_TABS        301

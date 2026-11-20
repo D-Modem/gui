@@ -28,6 +28,7 @@
 
 #include "dmodemctl.h"
 #include "xfer.h"
+#include "zstd_codec.h"
 
 static int failures;
 
@@ -85,9 +86,12 @@ static void empty_dir(const char *dir)
 
 /* the two transfers' line, until both end: every noise-th byte from a
    damaged (0 none) */
+static long long line_bytes;             /* what a sent in the last link2 */
+
 static void link2(dmc_xfer *a, dmc_xfer *b, int noise)
 {
 	char buf[4096];
+	line_bytes = 0;
 	long long count = 0, end = xfer_now() + 180000;
 	for (;;) {
 		dmc_xfer_status sa, sb;
@@ -106,6 +110,7 @@ static void link2(dmc_xfer *a, dmc_xfer *b, int noise)
 				if (++count % noise == 0)
 					buf[i] ^= 0x55;
 			dmc_xfer_feed(b, buf, n);
+			line_bytes += n;
 			moved = 1;
 		}
 		while ((n = dmc_xfer_output(b, buf, sizeof(buf))) > 0) {
@@ -373,6 +378,206 @@ static void resume(void)
 	free(part);
 	dmc_xfer_free(s);
 	dmc_xfer_free(r);
+}
+
+/* ------------------------------------------------------------------ */
+/* ZMODEM with zstd */
+
+static int have(const char *prog);
+
+/* n bytes of text that compresses, as a BBS's text files do */
+static unsigned char *text(size_t n, unsigned seed)
+{
+	static const char *const words[] = {
+		"modem", "carrier", "the", "BBS", "file", "area", "sysop",
+		"message", "ZMODEM", "of", "and", "a", "upload", "download",
+		"baud", "line", "\r\n"
+	};
+	unsigned char *d = (unsigned char *)malloc(n + 16);
+	size_t at = 0;
+	unsigned r = seed * 2654435761u + 1;
+	while (at < n) {
+		r = r * 1103515245u + 12345u;
+		const char *w = words[(r >> 16) % (sizeof(words) / sizeof(words[0]))];
+		size_t l = strlen(w);
+		for (size_t i = 0; i < l && at < n; i++)
+			d[at++] = (unsigned char)w[i];
+		if (at < n)
+			d[at++] = ' ';
+	}
+	return d;
+}
+
+/* the codec: the specification's frame, there and back, against the
+   reference zstd (where it is installed) */
+static void zstd_codec(void)
+{
+	static const unsigned char vec[55] = {
+		0x28, 0xb5, 0x2f, 0xfd, 0x24, 0x66, 0x55, 0x01, 0x00, 0x24, 0x02, 0x44, 0x2d, 0x4d,
+		0x6f, 0x64, 0x65, 0x6d, 0x20, 0x5a, 0x4d, 0x4f, 0x44, 0x45, 0x4d, 0x20, 0x7a, 0x73,
+		0x74, 0x64, 0x20, 0x74, 0x65, 0x73, 0x74, 0x20, 0x76, 0x65, 0x63, 0x74, 0x6f, 0x72,
+		0x2e, 0x0d, 0x0a, 0x01, 0x00, 0x8a, 0x82, 0xaa, 0x27, 0x32, 0x21, 0x69, 0x9d
+	};
+	const char *line = "D-Modem ZMODEM zstd test vector.\r\n";
+	char want[103];
+	snprintf(want, sizeof(want), "%s%s%s", line, line, line);
+	int n;
+	const char *why;
+	unsigned char *d = zc_decode(vec, 55, 1024, &n, &why);
+	CHECK(d && n == 102 && !memcmp(d, want, 102), "zstd: the vector: %s", why ? why : "differs");
+	free(d);
+	CHECK(zc_frame_len(vec, 55, 1024) == 55 && zc_frame_len(vec, 54, 1024) == 0,
+	      "zstd: the vector's length");
+	unsigned char bad[55];
+	memcpy(bad, vec, 55);
+	bad[20] ^= 1;
+	d = zc_decode(bad, 55, 1024, &n, &why);
+	CHECK(!d, "zstd: a byte wrong, taken");
+	free(d);
+	d = zc_decode(vec, 55, 100, &n, &why);
+	CHECK(!d, "zstd: over the limit, taken");
+	free(d);
+	CHECK(zc_xxh64(NULL, 0) == 0xEF46DB3751D8E999ULL &&
+	      zc_xxh64((const unsigned char *)"a", 1) == 0xD24EC4F1A98C6E5BULL &&
+	      zc_xxh64((const unsigned char *)"Nobody inspects the spammish repetition", 39) ==
+	      0xFBCEA83C8A378BF1ULL, "zstd: XXH64");
+
+	int ref = have("zstd");
+	size_t sizes[] = { 0, 1, 255, 256, 65535, 65791, 65792, 200000 };
+	for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+		for (int kind = 0; kind < 3; kind++) {
+			size_t sz = sizes[i];
+			unsigned char *t = kind == 0 ? text(sz, (unsigned)i) : (unsigned char *)malloc(sz + 1);
+			for (size_t k = 0; kind > 0 && k < sz; k++)
+				t[k] = kind == 1 ? big[k % sizeof(big)] : (unsigned char)(k / 1000);
+			int fn = 0, back = 0;
+			unsigned char *f = zc_encode(t, (int)sz, &fn);
+			d = f ? zc_decode(f, fn, 256 * 1024, &back, &why) : NULL;
+			CHECK(d && (size_t)back == sz && !memcmp(d, t, sz),
+			      "zstd: %zu bytes (%d) there and back: %s", sz, kind, why ? why : "differs");
+			CHECK(f && zc_frame_len(f, fn, 256 * 1024) == fn, "zstd: %zu bytes: its length", sz);
+			if (kind == 0 && sz == 65535)
+				CHECK(fn * 3 < (int)sz, "zstd: 64 KB of text in %d bytes", fn);
+			/* the reference zstd: ours decoded, and its frame decoded */
+			if (sz > 0 && ref && f) {
+				char a[700], b[700], cmd[1500];
+				snprintf(a, sizeof(a), "%s/z.raw", tmp);
+				snprintf(b, sizeof(b), "%s/z.zst", tmp);
+				write_file(b, f, (size_t)fn);
+				snprintf(cmd, sizeof(cmd), "zstd -q -d -f -o '%s' '%s'", a, b);
+				CHECK(system(cmd) == 0, "zstd -d: our frame of %zu bytes", sz);
+				check_same(a, t, sz, 0, "zstd -d");
+				write_file(a, t, sz);
+				snprintf(cmd, sizeof(cmd), "zstd -q -19 --check -f -o '%s' '%s'", b, a);
+				CHECK(system(cmd) == 0, "zstd -19: %zu bytes", sz);
+				size_t rn;
+				unsigned char *r = read_file(b, &rn);
+				unsigned char *rd = r ? zc_decode(r, (int)rn, 1 << 23, &back, &why) : NULL;
+				CHECK(rd && (size_t)back == sz && !memcmp(rd, t, sz),
+				      "zstd: the reference's frame of %zu bytes: %s", sz, why ? why : "differs");
+				free(r);
+				free(rd);
+			}
+			free(d);
+			free(f);
+			free(t);
+		}
+	}
+	if (ref)
+		printf("zstd: against the reference zstd\n");
+}
+
+/* one ZMODEM transfer of the files (paths) to dst with the two sides'
+   options: both ends' results checked */
+static void zstd_link(const char *const *paths, int n, const char *dst,
+		      const dmc_xfer_options *so, const dmc_xfer_options *ro,
+		      int noise, const char *what)
+{
+	dmc_xfer *r = dmc_xfer_receive_opt(DMC_XFER_ZMODEM, dst, NULL, ro);
+	dmc_xfer *s = dmc_xfer_send_opt(DMC_XFER_ZMODEM, paths, n, so);
+	link2(s, r, noise);
+	dmc_xfer_status ss, rs;
+	dmc_xfer_get_status(s, &ss);
+	dmc_xfer_get_status(r, &rs);
+	CHECK(!ss.result[0], "%s: the sender: %s", what, ss.result);
+	CHECK(!rs.result[0], "%s: the receiver: %s", what, rs.result);
+	if (noise)
+		CHECK(rs.errors + ss.errors > 0, "%s: no errors on a noisy line", what);
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+}
+
+/* ZMODEM with zstd: smaller on the line, whole after errors, resumed,
+   plain when one side doesn't take it or the file is compressed */
+static void zstd_transfers(void)
+{
+	char src[600], dst[600], p[5][700], got[700];
+	const char *paths[5];
+	size_t sizes[5] = { 0, 1, 65536, 65537, 300001 };
+	unsigned char *d[5];
+	long long total = 0;
+	dmc_xfer_options on, off;
+	memset(&on, 0, sizeof(on));
+	memset(&off, 0, sizeof(off));
+	off.no_zstd = 1;
+	snprintf(src, sizeof(src), "%s/src", tmp);
+	snprintf(dst, sizeof(dst), "%s/dst", tmp);
+	empty_dir(src);
+	empty_dir(dst);
+	for (int i = 0; i < 5; i++) {
+		d[i] = text(sizes[i], (unsigned)i + 1);
+		snprintf(p[i], sizeof(p[i]), "%s/f%d.txt", src, i);
+		write_file(p[i], d[i], sizes[i]);
+		paths[i] = p[i];
+		total += (long long)sizes[i];
+	}
+	zstd_link(paths, 5, dst, &on, &on, 0, "zstd");
+	for (int i = 0; i < 5; i++) {
+		snprintf(got, sizeof(got), "%s/f%d.txt", dst, i);
+		check_same(got, d[i], sizes[i], 0, "zstd");
+	}
+	CHECK(line_bytes * 2 < total, "zstd: %lld bytes on the line for %lld", line_bytes, total);
+	printf("ZMODEM with zstd: %lld bytes on the line for %lld\n", line_bytes, total);
+
+	/* on a noisy line */
+	empty_dir(dst);
+	zstd_link(paths + 4, 1, dst, &on, &on, 3001, "zstd (noisy)");
+	snprintf(got, sizeof(got), "%s/f4.txt", dst);
+	check_same(got, d[4], sizes[4], 0, "zstd (noisy)");
+
+	/* zstd stopped on either side, or a compressed file: plain */
+	for (int k = 0; k < 3; k++) {
+		char zip[700];
+		const char *one[1] = { paths[4] };
+		empty_dir(dst);
+		if (k == 2) {
+			snprintf(zip, sizeof(zip), "%s/f4.zip", src);
+			write_file(zip, d[4], sizes[4]);
+			one[0] = zip;
+		}
+		zstd_link(one, 1, dst, k == 0 ? &off : &on, k == 1 ? &off : &on, 0, "zstd off");
+		snprintf(got, sizeof(got), "%s/f4.%s", dst, k == 2 ? "zip" : "txt");
+		check_same(got, d[4], sizes[4], 0, "zstd off");
+		CHECK(line_bytes >= (long long)sizes[4],
+		      "zstd off (%d): %lld bytes on the line: compressed", k, line_bytes);
+	}
+
+	/* crash recovery with zstd: from the end of the part (fewer bytes on
+	   the line than for the whole file) */
+	dmc_xfer_options res = on;
+	res.resume = 1;
+	empty_dir(dst);
+	zstd_link(paths + 4, 1, dst, &on, &on, 0, "zstd (whole)");
+	long long whole = line_bytes;
+	empty_dir(dst);
+	snprintf(got, sizeof(got), "%s/f4.txt", dst);
+	write_file(got, d[4], 123457);
+	zstd_link(paths + 4, 1, dst, &on, &res, 0, "zstd (resume)");
+	check_same(got, d[4], sizes[4], 0, "zstd (resume)");
+	CHECK(line_bytes * 4 < whole * 3,
+	      "zstd (resume): %lld bytes on the line, %lld for all: not resumed", line_bytes, whole);
+	for (int i = 0; i < 5; i++)
+		free(d[i]);
 }
 
 /* plain text with the waits of ASCII Setup */
@@ -719,6 +924,9 @@ int main(void)
 	printf("skip file\n");
 	resume();
 	printf("ZMODEM crash recovery\n");
+	zstd_codec();
+	printf("zstd\n");
+	zstd_transfers();
 	cancel();
 	detect();
 	interop();
