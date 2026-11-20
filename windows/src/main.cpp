@@ -173,6 +173,37 @@ void app_event(const dmc_event *ev)
 	}
 }
 
+/* a page's labels (static controls) and group boxes under its other
+   controls, and clipped by them (WS_CLIPSIBLINGS): a label paints all of
+   its rectangle, and without this it paints over a control that it
+   overlaps. The group boxes go lowest. (Only the pages: in a dialog box,
+   a label's mnemonic goes to the control after it in this order.) */
+static void lower_labels(HWND page)
+{
+	HWND kids[128];
+	int n = 0;
+	for (HWND c = GetWindow(page, GW_CHILD); c && n < 128;
+	     c = GetWindow(c, GW_HWNDNEXT))
+		kids[n++] = c;
+	for (int pass = 0; pass < 2; pass++) {
+		for (int i = 0; i < n; i++) {
+			char cls[16];
+			if (!GetClassName(kids[i], cls, sizeof(cls)))
+				continue;
+			LONG st = GetWindowLong(kids[i], GWL_STYLE);
+			bool group = !lstrcmpi(cls, "BUTTON") &&
+				(st & BS_TYPEMASK) == BS_GROUPBOX;
+			bool label = !lstrcmpi(cls, "STATIC");
+			if (pass == 0 ? !label : !group)
+				continue;
+			SetWindowLong(kids[i], GWL_STYLE, st | WS_CLIPSIBLINGS);
+			SetWindowPos(kids[i], HWND_BOTTOM, 0, 0, 0, 0,
+				     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+				     SWP_FRAMECHANGED);
+		}
+	}
+}
+
 static void show_page(int i)
 {
 	for (int p = 0; p < PAGES; p++)
@@ -242,9 +273,11 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		app.pages[PAGE_SETTINGS] = settings_page_new(w);
 		app.pages[PAGE_STATS] = stats_page_new(w);
 		app.pages[PAGE_LOG] = log_page_new(w);
-		for (int p = 0; p < PAGES; p++)
+		for (int p = 0; p < PAGES; p++) {
 			SetWindowPos(app.pages[p], HWND_TOP, 0, 0, 0, 0,
 				     SWP_NOMOVE | SWP_NOSIZE);
+			lower_labels(app.pages[p]);
+		}
 		show_page(PAGE_MODEM);
 		SetTimer(w, TIMER_PUMP, 50, NULL);
 		app_state();
