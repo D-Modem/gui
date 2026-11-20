@@ -173,22 +173,36 @@ void app_event(const dmc_event *ev)
 	}
 }
 
-#ifdef DMODEM_WINPORT
-/* (Linux and macOS, winport/: the layer's hit test stops at a group box,
-   which answers HTTRANSPARENT, and does not try the controls under it.
-   Windows tries them. Until the layer does too, put the group boxes
-   under the other controls.) */
-static BOOL CALLBACK lower_group_box(HWND c, LPARAM lp)
+/* a page's labels (static controls) and group boxes under its other
+   controls, and clipped by them (WS_CLIPSIBLINGS): a label paints all of
+   its rectangle, and without this it paints over a control that it
+   overlaps. The group boxes go lowest. (Only the pages: in a dialog box,
+   a label's mnemonic goes to the control after it in this order.) */
+static void lower_labels(HWND page)
 {
-	char cls[16];
-	(void)lp;
-	if (GetClassName(c, cls, sizeof(cls)) && !lstrcmpi(cls, "BUTTON") &&
-	    (GetWindowLong(c, GWL_STYLE) & BS_TYPEMASK) == BS_GROUPBOX)
-		SetWindowPos(c, HWND_BOTTOM, 0, 0, 0, 0,
-			     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-	return TRUE;
+	HWND kids[128];
+	int n = 0;
+	for (HWND c = GetWindow(page, GW_CHILD); c && n < 128;
+	     c = GetWindow(c, GW_HWNDNEXT))
+		kids[n++] = c;
+	for (int pass = 0; pass < 2; pass++) {
+		for (int i = 0; i < n; i++) {
+			char cls[16];
+			if (!GetClassName(kids[i], cls, sizeof(cls)))
+				continue;
+			LONG st = GetWindowLong(kids[i], GWL_STYLE);
+			bool group = !lstrcmpi(cls, "BUTTON") &&
+				(st & BS_TYPEMASK) == BS_GROUPBOX;
+			bool label = !lstrcmpi(cls, "STATIC");
+			if (pass == 0 ? !label : !group)
+				continue;
+			SetWindowLong(kids[i], GWL_STYLE, st | WS_CLIPSIBLINGS);
+			SetWindowPos(kids[i], HWND_BOTTOM, 0, 0, 0, 0,
+				     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+				     SWP_FRAMECHANGED);
+		}
+	}
 }
-#endif
 
 static void show_page(int i)
 {
@@ -259,17 +273,32 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		app.pages[PAGE_SETTINGS] = settings_page_new(w);
 		app.pages[PAGE_STATS] = stats_page_new(w);
 		app.pages[PAGE_LOG] = log_page_new(w);
-		for (int p = 0; p < PAGES; p++)
+		for (int p = 0; p < PAGES; p++) {
 			SetWindowPos(app.pages[p], HWND_TOP, 0, 0, 0, 0,
 				     SWP_NOMOVE | SWP_NOSIZE);
-#ifdef DMODEM_WINPORT
-		for (int p = 0; p < PAGES; p++)
-			EnumChildWindows(app.pages[p], lower_group_box, 0);
-#endif
+			lower_labels(app.pages[p]);
+		}
 		show_page(PAGE_MODEM);
 		SetTimer(w, TIMER_PUMP, 50, NULL);
 		app_state();
 		return 0;
+	}
+	case WM_ACTIVATE: {
+		/* the control with the focus kept while another window (a
+		   dialog box) is active, and given back after: the default
+		   gives the focus to this window */
+		static HWND last_focus;
+		if (LOWORD(wp) == WA_INACTIVE) {
+			HWND f = GetFocus();
+			if (f && IsChild(w, f))
+				last_focus = f;
+		} else if (last_focus && IsWindow(last_focus) &&
+			   IsWindowVisible(last_focus) &&
+			   IsWindowEnabled(last_focus)) {
+			SetFocus(last_focus);
+			return 0;
+		}
+		break;
 	}
 	case WM_SIZE:
 		layout();

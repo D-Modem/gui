@@ -175,7 +175,7 @@ static bool open_com(const char *name)
 	return true;
 }
 
-/* dmodemd.exe: the configured one, or next to this app */
+/* dmodemd: the configured one, or next to this app */
 static void dmodemd_path(char *out, int n)
 {
 	if (app.cfg.dmodemd[0]) {
@@ -184,9 +184,17 @@ static void dmodemd_path(char *out, int n)
 		return;
 	}
 	GetModuleFileName(NULL, out, n);
-	char *slash = strrchr(out, '\\');
+	char *slash = strrchr(out, DIR_SEP[0]);
 	if (slash)
-		strcpy(slash + 1, "dmodemd.exe");
+		strcpy(slash + 1, DMODEMD_EXE);
+#ifdef DMODEM_WINPORT
+	/* (Linux and macOS, winport/: else the one on the PATH) */
+	char found[MAX_PATH];
+	if (GetFileAttributes(out) == (DWORD)-1 &&
+	    SearchPath(NULL, DMODEMD_EXE, NULL, sizeof(found), found, NULL))
+		_snprintf(out, n, "%s", found);
+	out[n - 1] = '\0';
+#endif
 }
 
 /* an environment block: ours, and these */
@@ -234,7 +242,7 @@ static bool start_dmodemd()
 	dmodemd_path(exe, sizeof(exe));
 	if (GetFileAttributes(exe) == (DWORD)-1) {
 		char m[MAX_PATH + 64];
-		_snprintf(m, sizeof(m), "dmodemd.exe was not found (%s)", exe);
+		_snprintf(m, sizeof(m), DMODEMD_EXE " was not found (%s)", exe);
 		m[sizeof(m) - 1] = '\0';
 		app_message(m);
 		app_log(m);

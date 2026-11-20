@@ -121,7 +121,7 @@ jobs:
           path: build/win7/windows/dmodem.exe
 
   # The Windows app for Linux and macOS (winport/), over the portable
-  # Win32 layer of clang-retro MFC. First pass: TCP and SSH only.
+  # Win32 layer of clang-retro MFC.
   winport-linux:
     name: Windows app on Linux (clang-retro MFC's Win32 layer)
     runs-on: ubuntu-24.04
