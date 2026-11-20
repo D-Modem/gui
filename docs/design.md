@@ -173,10 +173,31 @@ modem's. `dmodem.ini` keeps the settings in `[terminal]` (the modem) and
 - `exit_on_disconnect` (modem only): the app closes when a call ends.
 
 The status bar shows the connect timer during a call ("Online 0:01:05").
-Send Break (Modem menu, or Ctrl+Break in a terminal) sends a break. On a
+Send Break (Call menu, or Ctrl+Break in a terminal) sends a break. On a
 COM port, the app holds the line at space for 250 ms (`SetCommBreak`). On
 Telnet, the app sends IAC BRK (`dmc_net_break`). TCP to dmodemd, rlogin
 and SSH cannot send a break, and the status bar tells you.
+
+`calls.cpp` has the Call menu, as HyperTerminal has it:
+
+- Call opens the Call dialog. A session is a name and a number (or a SIP
+  address). `dmodem.ini` keeps the sessions in the `[sessions]` section
+  (`count`, `name1`, `number1` ...). Save adds or changes a session, and
+  Delete removes it. Call dials the number (ATD) and shows the Terminal
+  page.
+- Wait for a Call sends ATS0=1: the modem answers at the first ring. The
+  app sends ATS0=1 again each time the modem opens. When you clear the
+  check mark, the app sends ATS0=0.
+- Disconnect hangs up the call (`dmc_hangup`), or closes the Remote
+  connection when the Remote page shows.
+
+The Line Settings dialog has the settings of a COM port, as the Configure
+dialog of HyperTerminal: bits per second (110 to 921,600), data bits (5 to
+8), parity (none, odd, even, mark, space), stop bits (1, 1.5, 2) and flow
+control (none, Xon/Xoff, hardware). `dmodem.ini` keeps them as `com-bps`,
+`com-data-bits`, `com-parity`, `com-stop-bits` and `com-flow`. The default
+is 115,200 bps, 8 data bits, no parity, 1 stop bit and hardware flow
+control.
 
 `capture.cpp` has the captures. Each capture is of one line (the modem or
 the Remote login). The capture does not get the bytes of a file transfer.
@@ -522,7 +543,7 @@ Windows.
   | Function | The stand-in |
   | --- | --- |
   | `waveOut*`, `waveIn*` (`mmsystem.h`), `acm*` (`msacm.h`) | Returns `MMSYSERR_NODRIVER`. The Phone page cannot play or record. |
-  | `GetCommState`, `SetCommState`, `SetCommTimeouts` (COM ports) | Returns `FALSE` (`ERROR_NOT_SUPPORTED`). Do not use a COM port. |
+  | `GetCommState`, `SetCommState`, `SetCommTimeouts`, `SetCommBreak`, `ClearCommBreak` (COM ports) | Returns `FALSE` (`ERROR_NOT_SUPPORTED`). Do not use a COM port. |
   | `CreatePipe`, `PeekNamedPipe` | Returns `FALSE`. The app cannot start dmodemd. |
   | `GetEnvironmentStrings`, `GetUserName`, `Beep` | Uses `environ`, `$USER` and `MessageBeep`. |
   | `ListView_*`, `TabCtrl_*` (`commctrl.h`), `winsock.h` | Macros and an include of `winsock2.h`. |

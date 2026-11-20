@@ -163,6 +163,7 @@ void app_state()
 void app_opened()
 {
 	app_state();
+	call_opened();
 	settings_load();
 	stats_refresh();
 }
@@ -242,6 +243,14 @@ static HWND view_now()
 		return NULL;
 	XferLine *l = line_now();
 	return l->view ? *l->view : NULL;
+}
+
+/* a call's ATD answered: its result when it failed (NO CARRIER, BUSY) */
+static void call_done(const dmc_event *ev, void *data)
+{
+	(void)data;
+	if (!ev->ok)
+		app_message(ev->result);
 }
 
 static void show_page(int i)
@@ -352,6 +361,36 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		case IDM_ASCII:
 			ascii_dialog(w);
 			return 0;
+		case IDM_CALL: {
+			char n[128];
+			if (dmc_state(app.s) != DMC_IDLE) {
+				app_message(link_running() ?
+					    "The modem is not idle: disconnect first" :
+					    "Start the modem first (Modem menu)");
+				return 0;
+			}
+			if (!call_dialog(w, n, sizeof(n)))
+				return 0;
+			char cmd[140];
+			_snprintf(cmd, sizeof(cmd), "ATD%s", n);
+			cmd[sizeof(cmd) - 1] = '\0';
+			link_command(cmd, 0, call_done, NULL);
+			/* (the call on the Terminal page, as HyperTerminal) */
+			TabCtrl_SetCurSel(app.tabs, PAGE_TERM);
+			show_page(PAGE_TERM);
+			return 0;
+		}
+		case IDM_WAITCALL:
+			call_wait(!call_waiting());
+			return 0;
+		case IDM_DISCONNECT:
+			if (line_now() == &remote_line) {
+				remote_stop();
+			} else {
+				dmc_hangup(app.s);
+				link_pump();
+			}
+			return 0;
 		case IDM_TERMSET:
 			termset_dialog(w, line_now() == &remote_line);
 			return 0;
@@ -428,6 +467,18 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		EnableMenuItem(m, IDM_SEND, MF_BYCOMMAND | (busy ? MF_GRAYED : MF_ENABLED));
 		EnableMenuItem(m, IDM_RECEIVE, MF_BYCOMMAND | (busy ? MF_GRAYED : MF_ENABLED));
 		EnableMenuItem(m, IDM_XCANCEL, MF_BYCOMMAND | (busy ? MF_ENABLED : MF_GRAYED));
+		{
+			int st = dmc_state(app.s);
+			bool remote = line_now() == &remote_line;
+			EnableMenuItem(m, IDM_CALL, MF_BYCOMMAND |
+				       (st == DMC_IDLE ? MF_ENABLED : MF_GRAYED));
+			CheckMenuItem(m, IDM_WAITCALL, MF_BYCOMMAND |
+				      (call_waiting() ? MF_CHECKED : MF_UNCHECKED));
+			EnableMenuItem(m, IDM_DISCONNECT, MF_BYCOMMAND |
+				       (remote || st == DMC_DIALING ||
+					st == DMC_ANSWERING || st == DMC_ONLINE ||
+					st == DMC_ONLINE_COMMAND ? MF_ENABLED : MF_GRAYED));
+		}
 		CheckMenuItem(m, IDM_AUTORECV, MF_BYCOMMAND |
 			      (xfer_auto() ? MF_CHECKED : MF_UNCHECKED));
 		HWND v = view_now();

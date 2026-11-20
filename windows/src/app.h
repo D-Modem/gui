@@ -79,6 +79,11 @@ struct Config {
 	char dmodemd[MAX_PATH];         /* dmodemd.exe, "" next to the app */
 	char tcp[256];                  /* host:port */
 	char com[32];                   /* COM1 */
+	/* the COM port's settings, as HyperTerminal's Configure: bits per
+	   second, data bits (5 to 8), parity (0 none, 1 odd, 2 even, 3 mark,
+	   4 space), stop bits (0 one, 1 one and a half, 2 two), flow control
+	   (0 none, 1 Xon/Xoff, 2 hardware) */
+	int com_bps, com_data, com_parity, com_stop, com_flow;
 	char init[256];                 /* commands when the modem opens */
 	/* the answering machine ([voice]): on, after how many RINGs, a
 	   message's longest (s) */
@@ -248,6 +253,14 @@ bool xfer_auto();
 void xfer_set_auto(bool on);
 /* the transfer's dialog's keys (IsDialogMessage) */
 bool xfer_dialog_key(MSG *m);
+
+/* calls.cpp: the Call dialog (the sessions in [sessions]): the number
+   chosen into number; Wait for a Call (ATS0=1), sent again when the
+   modem opens */
+bool call_dialog(HWND parent, char *number, int n);
+bool call_waiting();
+void call_wait(bool on);
+void call_opened();
 
 /* termset.cpp: Terminal Settings, for the modem's terminal or the
    Remote page's ([terminal], [remote_terminal] in dmodem.ini) */

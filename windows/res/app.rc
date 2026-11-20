@@ -21,11 +21,18 @@ BEGIN
         MENUITEM "&Line Settings...", IDM_LINE
         MENUITEM "&ASCII Setup...", IDM_ASCII
         MENUITEM "&Terminal Settings...", IDM_TERMSET
-        MENUITEM "Send &Break\tCtrl+Break", IDM_BREAK
         MENUITEM SEPARATOR
         MENUITEM "&Print...", IDM_FPRINT
         MENUITEM SEPARATOR
         MENUITEM "E&xit", IDM_EXIT
+    END
+    POPUP "&Call"
+    BEGIN
+        MENUITEM "&Call...", IDM_CALL
+        MENUITEM "&Wait for a Call", IDM_WAITCALL
+        MENUITEM "&Disconnect", IDM_DISCONNECT
+        MENUITEM SEPARATOR
+        MENUITEM "Send &Break\tCtrl+Break", IDM_BREAK
     END
     POPUP "&Edit"
     BEGIN
@@ -56,7 +63,7 @@ BEGIN
     END
 END
 
-IDD_LINE DIALOG 0, 0, 300, 286
+IDD_LINE DIALOG 0, 0, 300, 318
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Line Settings"
 FONT 8, "MS Shell Dlg"
@@ -88,10 +95,20 @@ BEGIN
     AUTORADIOBUTTON "A modem on a &serial port", IDC_L_COM, 8, 198, 284, 10, WS_TABSTOP
     LTEXT           "P&ort:", -1, 20, 214, 60, 8
     COMBOBOX        IDC_L_PORT, 84, 212, 80, 120, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Commands when the modem &opens:", -1, 8, 236, 140, 8
-    EDITTEXT        IDC_L_INIT, 8, 246, 284, 12, ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK", IDOK, 186, 266, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 242, 266, 50, 14
+    LTEXT           "Bits per s&econd:", -1, 172, 214, 58, 8
+    COMBOBOX        IDC_L_BPS, 232, 212, 60, 160, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Data b&its:", -1, 20, 230, 60, 8
+    COMBOBOX        IDC_L_DATA, 84, 228, 30, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Parit&y:", -1, 120, 230, 28, 8
+    COMBOBOX        IDC_L_PARITY, 150, 228, 50, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Stop bi&ts:", -1, 206, 230, 40, 8
+    COMBOBOX        IDC_L_STOP, 248, 228, 44, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Flow control:", -1, 20, 246, 60, 8
+    COMBOBOX        IDC_L_FLOW, 84, 244, 80, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Commands when the modem &opens:", -1, 8, 266, 140, 8
+    EDITTEXT        IDC_L_INIT, 8, 276, 284, 12, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 186, 298, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 242, 298, 50, 14
 END
 
 IDD_SETTING DIALOG 0, 0, 240, 110
@@ -192,6 +209,24 @@ BEGIN
     LTEXT           "", IDC_F_HINT, 8, 94, 264, 32
     DEFPUSHBUTTON   "&Receive", IDOK, 166, 130, 50, 14
     PUSHBUTTON      "Cancel", IDCANCEL, 222, 130, 50, 14
+END
+
+/* the Call menu's Call: a session (a name and a number) chosen, saved or
+   deleted, and the number called */
+IDD_CALL DIALOG 0, 0, 240, 90
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Call"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "&Session:", -1, 8, 10, 60, 8
+    COMBOBOX        IDC_C_NAME, 70, 8, 162, 140, CBS_DROPDOWN | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Phone number:", -1, 8, 28, 60, 8
+    EDITTEXT        IDC_C_NUMBER, 70, 26, 162, 12, ES_AUTOHSCROLL
+    LTEXT           "A number, or a SIP address (sip:user@host).", -1, 70, 42, 162, 8
+    PUSHBUTTON      "Sa&ve", IDC_C_SAVE, 8, 68, 50, 14
+    PUSHBUTTON      "&Delete", IDC_C_DELETE, 62, 68, 50, 14
+    DEFPUSHBUTTON   "&Call", IDOK, 128, 68, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 182, 68, 50, 14
 END
 
 /* the Modem menu's Terminal Settings, as HyperTerminal has them, for the
