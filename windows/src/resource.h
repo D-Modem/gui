@@ -30,6 +30,9 @@
 #define IDM_ASCII       217
 #define IDM_TERMSET     218
 #define IDM_BREAK       219
+#define IDM_CALL        220
+#define IDM_WAITCALL    221
+#define IDM_DISCONNECT  222
 
 #define IDC_STATUS      300
 #define IDC_TABS        301
@@ -139,6 +142,11 @@
 #define IDC_L_PORT      916
 #define IDC_L_INIT      917
 #define IDC_L_ANONYMOUS 918
+#define IDC_L_BPS       919
+#define IDC_L_DATA      920
+#define IDC_L_PARITY    921
+#define IDC_L_STOP      922
+#define IDC_L_FLOW      923
 
 /* the Change Setting dialog */
 #define IDD_SETTING     950
@@ -203,6 +211,13 @@
 #define IDC_A_ADDLF     1245
 #define IDC_A_7BIT      1246
 #define IDC_A_WRAP      1247
+
+/* the Call dialog */
+#define IDD_CALL        1270
+#define IDC_C_NAME      1271
+#define IDC_C_NUMBER    1272
+#define IDC_C_SAVE      1273
+#define IDC_C_DELETE    1274
 
 /* Terminal Settings */
 #define IDD_TERMSET     1250
