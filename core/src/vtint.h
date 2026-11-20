@@ -12,8 +12,8 @@
  * A C port of the D-Modem app's shared Kotlin emulator
  * (D-Modem/app: shared/src/commonMain/kotlin/org/dmodem/app/terminal),
  * kept close to it so that a change there can be carried here: the same
- * parts, the same names where C allows, the same behaviour.  C99 as
- * Open Watcom takes it (no designated initialisers, no VLAs).
+ * parts, the same names where C allows, the same behaviour.  C99 with
+ * no designated initialisers and no VLAs, for older compilers too.
  */
 #ifndef DMC_VTINT_H
 #define DMC_VTINT_H

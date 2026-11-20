@@ -14,13 +14,19 @@ set(_args
   -DCMAKE_INSTALL_PREFIX=${_prefix}
   -DCMAKE_INSTALL_LIBDIR=lib
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
   -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
   -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
   -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
   -DCMAKE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT})
+# (a toolchain file names the compiler itself)
 if(CMAKE_TOOLCHAIN_FILE)
   list(APPEND _args -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+else()
+  list(APPEND _args -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER})
+endif()
+# (cmake/clang-retro.cmake)
+if(CLANG_DOS)
+  list(APPEND _args -DCLANG_DOS=${CLANG_DOS} -DCLANG_RETRO_CONFIG=${CLANG_RETRO_CONFIG})
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   list(APPEND _args -DCMAKE_SYSTEM_NAME=iOS)
@@ -62,6 +68,11 @@ set(_ssh_args)
 if(ANDROID)
   list(APPEND _ssh_args -DCMAKE_C_FLAGS=-DS_IWRITE=S_IWUSR)
 endif()
+# (clang-retro's clang, newer than MinGW's GCC, makes an error of
+# src/threads/mbedtls.c's casts of libssh's mutex callbacks)
+if(CLANG_DOS)
+  list(APPEND _ssh_args -DCMAKE_C_FLAGS=-Wno-error=incompatible-function-pointer-types)
+endif()
 
 # (WITH_SERVER: libssh runs a client's callbacks for the channels the
 # server opens, the forwarded agent's, only when it's built with it)
@@ -88,8 +99,9 @@ target_compile_definitions(dmodem_libssh INTERFACE LIBSSH_STATIC=1)
 target_link_libraries(dmodem_libssh INTERFACE ${_prefix}/lib/${_ssh_lib} ${_mbed_paths})
 if(WIN32)
   target_link_libraries(dmodem_libssh INTERFACE ws2_32 iphlpapi bcrypt shell32 advapi32)
-  # (MinGW's libssh locks with winpthreads)
-  if(MINGW)
+  # (MinGW's libssh locks with winpthreads; clang-retro's sysroots have
+  # none, and there libssh locks with Win32's own)
+  if(MINGW AND NOT CLANG_DOS)
     target_link_libraries(dmodem_libssh INTERFACE pthread)
   endif()
 elseif(UNIX)

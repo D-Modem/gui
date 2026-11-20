@@ -197,8 +197,8 @@ same on all platforms, and you do not need to install anything:
 If the system has libssh 0.11 or later (Linux), libssh and mbedTLS come from
 the system. If not, the build makes them from their release tarballs, and
 checks them by hash (`ssh/cmake/BundledLibssh.cmake`). This always occurs on
-Windows and macOS. The Windows 95 build (Open Watcom) has no libssh. If it
-finds the `ssh.exe` of Windows (Windows 10 1809 and later), it runs it in a
+Windows and macOS. The Windows 95 build has no libssh, because mbedTLS and
+libssh need Windows Vista or later (`BCryptGenRandom`). If it finds the `ssh.exe` of Windows (Windows 10 1809 and later), it runs it in a
 pseudo console.
 
 | | Telnet and rlogin | SSH | Kept in |
@@ -262,9 +262,24 @@ Windows 95 to Windows 11:
   Winsock 1.1 (`wsock32`, `WSAAsyncSelect`) and the 4.0 `OPENFILENAME`.
 - No `SetHandleInformation` (NT only). The app uses `DuplicateHandle` to
   make the pipe from dmodemd non-inheritable.
-- Open Watcom 2.0 builds the app (`windows/build-watcom.sh`: `runtime
-  windows=4.0`, the static C library), as CI does. MinGW and MSVC build the
-  same code with CMake.
+- clang-retro builds the app (`cmake/clang-retro.cmake`, a CMake toolchain
+  file), as CI does. Its toolchain package comes from the
+  `clang-retro/dos-sdk/.github/actions/setup-toolchain` action, or from
+  `packaging/get-toolchain.sh` in that repository. `CLANG_DOS` is the
+  directory of the package. `CLANG_RETRO_CONFIG` is the `--config` file:
+  - `win32-picolibc` (the default): Windows 95, 98, ME, NT 4.0 and later.
+    picolibc is the C library, and it is linked into the app. Thus the app
+    needs no `msvcrt.dll`, which some installations of Windows 95 do not
+    have. This build has no libssh (`DMODEM_GUI_SSH` is OFF).
+  - `win7`: Windows 7 and later, with libssh (`-DDMODEM_GUI_SSH=ON`). This
+    is the minimum Windows version of dmodemd too.
+- CI examines the imports of the Windows 95 build with `check-imports.py`
+  of clang-retro, for Windows 9x and for NT 4.0. The build fails if the app
+  uses a function that these versions do not have. CI also runs the tests
+  of the two builds in Wine.
+- picolibc has no `_snprintf`, `_stricmp` or `_strnicmp`. `app.h` gives
+  these names to `snprintf`, `strcasecmp` and `strncasecmp`.
+- MinGW and MSVC also build the same code with CMake.
 
 dmodemd itself needs Windows 7 or later. On Windows 9x and NT 4, the app
 uses a COM port by default. It can also connect to a dmodemd on another

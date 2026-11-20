@@ -88,8 +88,8 @@ static const uint8_t cbm_cbm[8] = {
 };
 
 /* ------------------------------------------------------------------ */
-/* the profiles (in the struct's order: no designated initialisers for
-   Open Watcom) */
+/* the profiles (in the struct's order: no designated initialisers, for
+   older compilers) */
 
 /* a DEC terminal */
 #define DEC(id, label, term, telnet, level, features, da1, da2, home)     \
