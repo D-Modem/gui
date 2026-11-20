@@ -64,7 +64,10 @@ set(APP_RES_CPP "${CMAKE_CURRENT_BINARY_DIR}/app-res.cpp")
 add_custom_command(OUTPUT "${APP_RES_CPP}"
   COMMAND ${CMAKE_COMMAND} -E env RC=${DMODEM_LLVM_RC} CXX=${CMAKE_CXX_COMPILER}
           ${Python3_EXECUTABLE} "${CLANG_RETRO_MFC}/port/tools/res2cpp.py"
-          -I "${_win}/src" -I "${_win}/res" "${_win}/res/app.rc" -o "${APP_RES_CPP}"
+          -I "${_win}/src" -I "${_win}/res" app.rc -o "${APP_RES_CPP}"
+  # (app.rc by a relative path: llvm-rc takes an absolute macOS path,
+  # /Users/..., for an option)
+  WORKING_DIRECTORY "${_win}/res"
   DEPENDS "${_win}/res/app.rc" "${_win}/res/app.manifest" "${_win}/res/dmodem.ico"
           "${_win}/src/resource.h"
   COMMENT "Converting app.rc to C++"
