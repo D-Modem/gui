@@ -390,3 +390,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 	WSACleanup();
 	return (int)msg.wParam;
 }
+
+#ifdef __PICOLIBC__
+/* (picolibc's start-up code needs a main, also when the entry point is
+   WinMainCRTStartup, which calls WinMain: see windows/CMakeLists.txt) */
+int main(void)
+{
+	return WinMain(GetModuleHandleA(NULL), NULL, (LPSTR)"", SW_SHOWDEFAULT);
+}
+#endif

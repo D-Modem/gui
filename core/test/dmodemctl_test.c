@@ -140,6 +140,32 @@ static void test_command(void)
 	dmc_session_free(s);
 }
 
+/* a response in pages (ATI11 on an Agere modem, a MultiTech MT9234):
+   a space for each "Press any key", the prompt kept out of the response */
+static void test_pages(void)
+{
+	dmc_session *s = dmc_session_new();
+	dmc_event ev;
+	dmc_open(s, 0);
+	int tag = dmc_command(s, "ATI11", DMC_QUIET, 0);
+	CHECK_STR(out(s), "ATI11\r");
+	feed(s, "ATI11\r\r\nLast Connection    V.92\r\n"
+		"Press any key to continue; ESC to quit");
+	CHECK_STR(out(s), " ");
+	CHECK(!next_of(s, DMC_EV_RESPONSE, &ev));
+	feed(s, "\r\nNear Echo Level    NA\r\n\r\nOK\r\n");
+	CHECK_STR(out(s), "");
+	CHECK(next_of(s, DMC_EV_RESPONSE, &ev));
+	CHECK(ev.tag == tag && ev.ok);
+	CHECK_STR(ev.text, "Last Connection    V.92\n\nNear Echo Level    NA");
+	/* text typed in the terminal is the user's own: no key sent */
+	dmc_type(s, "ATI11\r", 6);
+	out(s);
+	feed(s, "ATI11\r\r\nPress any key to continue");
+	CHECK_STR(out(s), "");
+	dmc_session_free(s);
+}
+
 /* a call: dial, connect, online data, hang up through the escape */
 static void test_call(void)
 {
@@ -1236,6 +1262,7 @@ int main(int argc, char **argv)
 	const char *dir = argc > 1 ? argv[1] : ".";
 	CHECK(dmc_version() == DMC_VERSION);
 	test_command();
+	test_pages();
 	test_call();
 	test_unsolicited();
 	test_typed();

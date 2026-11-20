@@ -102,6 +102,25 @@ gboolean config_sip_ready(const Config *c);
 /* the line settings dialog */
 void prefs_show(App *a);
 
+/* usbmodem.c: a MultiTech MT9234MU (or MT9234ZBA-USB) on USB, from
+   sysfs */
+typedef struct UsbModem {
+	char *name;             /* "MultiTech MT9234MU" */
+	char *tty;              /* "/dev/ttyUSB0", or NULL if it has none */
+	gboolean no_firmware;   /* in the boot ROM: no firmware loaded */
+} UsbModem;
+/* the first one plugged in, or NULL */
+UsbModem *usbmodem_find(void);
+/* what it is and where, or what it needs, for the user */
+char *usbmodem_describe(const UsbModem *m);
+/* whether Linux has its firmware file (mts_mt9234mu.fw) */
+gboolean usbmodem_firmware_present(void);
+/* the copy of mts_mt9234mu.fw that comes with the app, or NULL */
+char *usbmodem_shipped_firmware(void);
+/* whether tty path is such a modem's */
+gboolean usbmodem_is(const char *path);
+void usbmodem_free(UsbModem *m);
+
 /* modem.c */
 void modem_start(App *a);
 void modem_stop(App *a);

@@ -57,36 +57,67 @@ jobs:
             DMODEM_SSH_TEST_PPK="$RUNNER_TEMP/key.ppk" DMODEM_SSH_TEST_AGENT="$RUNNER_TEMP/agent.sock" \
             build/ssh/dmodemssh_test
 
+  # Both Windows builds use clang-retro (https://clang-retro.github.io/),
+  # its toolchain package from its setup-toolchain action, on Linux
   windows-9x:
-    name: Windows 95 and later (Open Watcom)
+    name: Windows 95 and later (clang-retro, win32-picolibc)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: open-watcom/setup-watcom@v0
-        with:
-          version: "2.0"
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+        id: clang-dos
+      - name: Packages
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build wine wine32:i386
       - name: Build
-        run: sh windows/build-watcom.sh build/watcom
+        run: |
+          cmake -S . -B build/win9x -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake -DCLANG_RETRO_CONFIG=win32-picolibc \
+            -DCMAKE_CROSSCOMPILING_EMULATOR=wine
+          cmake --build build/win9x
+      - name: Test (Wine)
+        run: |
+          export WINEDEBUG=-all WINEPREFIX="$RUNNER_TEMP/wine"
+          wineboot -i >/dev/null 2>&1 || true
+          ctest --test-dir build/win9x --output-on-failure
+      - name: Imports (Windows 95, 98 and ME, and NT 4.0)
+        run: |
+          python3 "$CLANG_DOS/share/clang-dos/check-imports.py" build/win9x/windows/dmodem.exe
+          python3 "$CLANG_DOS/share/clang-dos/check-imports.py" --nt 4.0 build/win9x/windows/dmodem.exe
       - uses: actions/upload-artifact@v4
         with:
           name: dmodem-windows-9x
-          path: build/watcom/dmodem.exe
+          path: build/win9x/windows/dmodem.exe
 
   windows:
-    name: Windows (MSVC)
-    runs-on: windows-latest
+    name: Windows 7 and later (clang-retro, with SSH)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+        id: clang-dos
+      - name: Packages
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build wine wine32:i386
       - name: Build
         run: |
-          cmake -S . -B build -A Win32
-          cmake --build build --config Release
-      - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+          cmake -S . -B build/win7 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake -DCLANG_RETRO_CONFIG=win7 \
+            -DDMODEM_GUI_SSH=ON -DCMAKE_CROSSCOMPILING_EMULATOR=wine
+          cmake --build build/win7
+      - name: Test (Wine)
+        run: |
+          export WINEDEBUG=-all WINEPREFIX="$RUNNER_TEMP/wine"
+          wineboot -i >/dev/null 2>&1 || true
+          ctest --test-dir build/win7 --output-on-failure
       - uses: actions/upload-artifact@v4
         with:
           name: dmodem-windows
-          path: build/windows/Release/dmodem.exe
+          path: build/win7/windows/dmodem.exe
 
   macos:
     name: macOS (SwiftUI)

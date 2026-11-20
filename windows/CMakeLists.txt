@@ -1,5 +1,5 @@
-# The Windows app with MinGW or MSVC (the Windows 95 build is Open
-# Watcom's: build-watcom.sh).  ANSI, for the same code to build with both.
+# The Windows app with MinGW, MSVC or clang-retro (the Windows 95 build:
+# cmake/clang-retro.cmake).  ANSI, for the same code to build with all.
 enable_language(CXX)
 enable_language(RC)
 add_executable(dmodem WIN32
@@ -29,4 +29,8 @@ if(MSVC)
 else()
   target_compile_options(dmodem PRIVATE -Wall -Wextra -Wno-unused-parameter)
   target_link_options(dmodem PRIVATE -static)
+endif()
+# (picolibc starts main, unless the entry point is WinMain's)
+if(CLANG_RETRO_CONFIG MATCHES "picolibc")
+  target_link_options(dmodem PRIVATE -Wl,-e,WinMainCRTStartup)
 endif()

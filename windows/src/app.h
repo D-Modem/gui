@@ -4,8 +4,8 @@
  *
  * app.h - the Windows app: plain Win32 in C++98, ANSI, the common
  *         controls of Windows 95, so the one .exe runs on Windows 95,
- *         98 and ME and on NT 4 through Windows 11.  Built with Open
- *         Watcom (windows/build-watcom.sh), or MinGW or MSVC (CMake).
+ *         98 and ME and on NT 4 through Windows 11.  Built with
+ *         clang-retro (cmake/clang-retro.cmake), or MinGW or MSVC.
  *
  * The modem is reached one of three ways (Link):
  *   - dmodemd started by the app on this PC (Windows 7 and later, as
@@ -32,6 +32,17 @@
 #include <commctrl.h>
 
 #include "dmodemctl.h"
+
+/* (picolibc, the C library of the clang-retro build, has the C99 and
+   POSIX names and not the names of Microsoft's C library) */
+#include <stdio.h>
+#include <string.h>
+#ifdef __PICOLIBC__
+#include <strings.h>
+#define _snprintf snprintf
+#define _stricmp strcasecmp
+#define _strnicmp strncasecmp
+#endif
 
 /* (older headers, Open Watcom's among them, without the 64-bit names) */
 #ifndef GWLP_USERDATA

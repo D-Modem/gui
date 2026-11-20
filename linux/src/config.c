@@ -305,6 +305,37 @@ static AdwPreferencesGroup *group(AdwPreferencesPage *page, const char *title,
 	return ADW_PREFERENCES_GROUP(g);
 }
 
+static void use_found(GtkButton *b, gpointer data)
+{
+	Prefs *p = data;
+	gtk_editable_set_text(GTK_EDITABLE(p->device),
+			      g_object_get_data(G_OBJECT(b), "tty"));
+}
+
+/* a MultiTech MT9234MU plugged in: a row that says where it is (with a
+   button that puts it in Device), or what it needs */
+static void device_found(Prefs *p)
+{
+	UsbModem *m = usbmodem_find();
+	if (!m)
+		return;
+	char *d = usbmodem_describe(m);
+	GtkWidget *r = adw_action_row_new();
+	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(r), "Found");
+	adw_action_row_set_subtitle(ADW_ACTION_ROW(r), d);
+	if (m->tty) {
+		GtkWidget *b = gtk_button_new_with_label("Use");
+		gtk_widget_set_valign(b, GTK_ALIGN_CENTER);
+		g_object_set_data_full(G_OBJECT(b), "tty", g_strdup(m->tty),
+				       g_free);
+		g_signal_connect(b, "clicked", G_CALLBACK(use_found), p);
+		adw_action_row_add_suffix(ADW_ACTION_ROW(r), b);
+	}
+	adw_preferences_group_add(p->device_g, r);
+	g_free(d);
+	usbmodem_free(m);
+}
+
 static char *text_of(AdwEntryRow *r)
 {
 	return g_strstrip(g_strdup(gtk_editable_get_text(GTK_EDITABLE(r))));
@@ -388,8 +419,10 @@ void prefs_show(App *a)
 	p->alsa = entry(p->alsa_g, "ALSA device", c->alsa);
 	p->device_g = group(page, "A modem that already runs",
 			    "dmodemd started as a service, or any modem's "
-			    "serial port.");
+			    "serial port (a MultiTech MT9234MU is "
+			    "/dev/ttyUSB0).");
 	p->device = entry(p->device_g, "Device", c->device);
+	device_found(p);
 
 	AdwPreferencesGroup *adv = group(page, "Advanced", NULL);
 	p->init = entry(adv, "Commands when the modem opens", c->init);
