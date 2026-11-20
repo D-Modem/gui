@@ -28,6 +28,8 @@
 #define IDM_CAPPRINT    215
 #define IDM_PRNPAUSE    216
 #define IDM_ASCII       217
+#define IDM_TERMSET     218
+#define IDM_BREAK       219
 
 #define IDC_STATUS      300
 #define IDC_TABS        301
@@ -201,5 +203,22 @@
 #define IDC_A_ADDLF     1245
 #define IDC_A_7BIT      1246
 #define IDC_A_WRAP      1247
+
+/* Terminal Settings */
+#define IDD_TERMSET     1250
+#define IDC_T_BSH       1251
+#define IDC_T_BSDEL     1252
+#define IDC_T_BSHSH     1253
+#define IDC_T_TERMKEYS  1254
+#define IDC_T_WINKEYS   1255
+#define IDC_T_BACKSCROLL 1256
+#define IDC_T_FONT      1257
+#define IDC_T_FONTSIZE  1258
+#define IDC_T_BLOCK     1259
+#define IDC_T_UNDERLINE 1260
+#define IDC_T_BLINK     1261
+#define IDC_T_TELNETID  1262
+#define IDC_T_TELNETLABEL 1263
+#define IDC_T_EXIT      1264
 
 #endif

@@ -149,6 +149,35 @@ the two terminals:
   of each byte. `DMC_VT_ASCII_NO_WRAP` stops the wrap at the right margin:
   the terminal writes each new character in the last column.
 
+`termset.cpp` has the Terminal Settings dialog (Modem menu). It applies
+to the terminal of the page that shows: the Remote page's, else the
+modem's. `dmodem.ini` keeps the settings in `[terminal]` (the modem) and
+`[remote_terminal]` (Remote). `termview_set_options` applies them:
+
+- `backspace`: 0 sends Ctrl+H, 1 sends Del, 2 sends Ctrl+H, Space,
+  Ctrl+H. The default of the modem is 0 (the configurator of the modem
+  uses Ctrl+H). The default of Remote is 1.
+- `windows_keys`: Ctrl+C copies, Ctrl+V pastes, Ctrl+A selects all. The
+  arrow keys, Page Up and Page Down scroll the backscroll. The function
+  keys go to the window (F10 opens the menu). The terminal does not send
+  these keys.
+- `backscroll`: the lines that the terminal keeps
+  (`dmc_vt_set_scrollback`). When the number is smaller, the terminal
+  keeps the newest lines.
+- `font` and `font_size`: a fixed-pitch font. When the name is empty, the
+  terminal uses the font of the app.
+- `cursor` (0 block, 1 underline) and `cursor_blink`. A DECSCUSR from the
+  remote side has priority.
+- `telnet_id` (Remote only): the TERMINAL-TYPE that Telnet sends. When it
+  is empty, Telnet sends the name of the terminal type.
+- `exit_on_disconnect` (modem only): the app closes when a call ends.
+
+The status bar shows the connect timer during a call ("Online 0:01:05").
+Send Break (Modem menu, or Ctrl+Break in a terminal) sends a break. On a
+COM port, the app holds the line at space for 250 ms (`SetCommBreak`). On
+Telnet, the app sends IAC BRK (`dmc_net_break`). TCP to dmodemd, rlogin
+and SSH cannot send a break, and the status bar tells you.
+
 `capture.cpp` has the captures. Each capture is of one line (the modem or
 the Remote login). The capture does not get the bytes of a file transfer.
 

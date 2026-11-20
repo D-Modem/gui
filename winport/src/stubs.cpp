@@ -67,6 +67,16 @@ BOOL WINAPI SetCommTimeouts(HANDLE, LPCOMMTIMEOUTS)
 	SetLastError(ERROR_NOT_SUPPORTED);
 	return FALSE;
 }
+BOOL WINAPI SetCommBreak(HANDLE)
+{
+	SetLastError(ERROR_NOT_SUPPORTED);
+	return FALSE;
+}
+BOOL WINAPI ClearCommBreak(HANDLE)
+{
+	SetLastError(ERROR_NOT_SUPPORTED);
+	return FALSE;
+}
 
 /* anonymous pipes: none (no dmodemd started by the app) */
 BOOL WINAPI CreatePipe(PHANDLE, PHANDLE, LPSECURITY_ATTRIBUTES, DWORD)
