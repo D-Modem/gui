@@ -49,6 +49,42 @@ static bool bps;                        /* bits a second, else characters */
 static char where[MAX_PATH];
 static bool send_wanted;                /* the remote's rz noticed, not yet answered */
 
+/* the protocols as the dialogs list them (HyperTerminal's "Zmodem with
+   Crash Recovery" a ZMODEM with the resume option) */
+static const struct Choice {
+	int protocol;
+	int resume;
+} choices[] = {
+	{ DMC_XFER_ZMODEM, 0 },
+	{ DMC_XFER_ZMODEM, 1 },
+	{ DMC_XFER_YMODEM, 0 },
+	{ DMC_XFER_YMODEM_G, 0 },
+	{ DMC_XFER_XMODEM, 0 },
+	{ DMC_XFER_XMODEM_1K, 0 },
+	{ DMC_XFER_KERMIT, 0 },
+	{ DMC_XFER_INTEL_HEX, 0 },
+	{ DMC_XFER_SREC, 0 },
+	{ DMC_XFER_TEXT, 0 },
+};
+#define CHOICES ((int)(sizeof(choices) / sizeof(choices[0])))
+
+static int choice_of(int protocol, int resume)
+{
+	for (int i = 0; i < CHOICES; i++)
+		if (choices[i].protocol == protocol && choices[i].resume == (resume != 0))
+			return i;
+	return 0;
+}
+
+static void choice_label(int i, char *out, int n)
+{
+	int p = choices[i].protocol;
+	_snprintf(out, n, "%s%s%s", dmc_xfer_label(p),
+		  choices[i].resume ? " with Crash Recovery" : "",
+		  dmc_xfer_batch(p) ? "" : " (one file)");
+	out[n - 1] = '\0';
+}
+
 static void ini(char *out, int n)
 {
 	char dir[MAX_PATH];
@@ -62,6 +98,14 @@ static int ini_int(const char *key, int def)
 	char path[MAX_PATH];
 	ini(path, sizeof(path));
 	return (int)GetPrivateProfileInt("transfer", key, def, path);
+}
+
+/* ASCII Setup's ([ascii]: the text's line and character delays) */
+static int ascii_int(const char *key, int def)
+{
+	char path[MAX_PATH];
+	ini(path, sizeof(path));
+	return (int)GetPrivateProfileInt("ascii", key, def, path);
 }
 
 static void ini_set(const char *key, const char *v)
@@ -208,6 +252,12 @@ static INT_PTR CALLBACK xfer_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 		return TRUE;
 	case WM_COMMAND:
 		switch (LOWORD(wp)) {
+		case IDC_X_SKIP:
+			if (cur) {
+				dmc_xfer_skip(cur);
+				set_text(IDC_X_RESULT, "Skipping the file...");
+			}
+			return TRUE;
 		case IDCANCEL:
 			if (cur) {
 				dmc_xfer_cancel(cur);
@@ -239,21 +289,25 @@ bool xfer_dialog_key(MSG *m)
 	return dlg && IsDialogMessage(dlg, m);
 }
 
-static void open_dialog(int protocol, bool sending)
+static void open_dialog(int protocol, bool sending, bool resume)
 {
 	if (dlg)
 		DestroyWindow(dlg);
 	dlg = CreateDialog(app.inst, MAKEINTRESOURCE(IDD_XFER), app.main, xfer_proc);
 	if (!dlg)
 		return;
-	char a[MAX_PATH + 32];
-	_snprintf(a, sizeof(a), "%s File - %s", sending ? "Send" : "Receive",
-		  dmc_xfer_label(protocol));
+	char a[MAX_PATH + 32], label[80];
+	_snprintf(label, sizeof(label), "%s%s", dmc_xfer_label(protocol),
+		  resume ? " (crash recovery)" : "");
+	label[sizeof(label) - 1] = '\0';
+	_snprintf(a, sizeof(a), "%s File - %s", sending ? "Send" : "Receive", label);
 	a[sizeof(a) - 1] = '\0';
 	SetWindowText(dlg, a);
 	set_text(IDC_X_VERB, sending ? "Sending:" : "Receiving:");
 	set_text(IDC_X_WHERE, where);
-	set_text(IDC_X_PROTO, dmc_xfer_label(protocol));
+	set_text(IDC_X_PROTO, label);
+	/* (Skip file: a receive of the protocols that can tell the sender) */
+	EnableWindow(GetDlgItem(dlg, IDC_X_SKIP), !sending && dmc_xfer_can_skip(protocol));
 	HWND place = GetDlgItem(dlg, IDC_X_BAR);
 	RECT r;
 	GetWindowRect(place, &r);
@@ -278,7 +332,8 @@ static void notified(void *ctx)
 	PostMessage(app.main, WM_APP_XFER, 0, 0);
 }
 
-static bool start(XferLine *l, dmc_xfer *x, int protocol, bool sending, int files)
+static bool start(XferLine *l, dmc_xfer *x, int protocol, bool sending, int files,
+		  bool resume)
 {
 	if (!x) {
 		MessageBox(app.main, "The transfer could not start.", "File Transfer",
@@ -302,7 +357,7 @@ static bool start(XferLine *l, dmc_xfer *x, int protocol, bool sending, int file
 	done_bytes = 0;
 	last_files = 0;
 	total_files = files;
-	open_dialog(protocol, sending);
+	open_dialog(protocol, sending, resume);
 	dmc_xfer_set_notify(x, notified, NULL);
 	xfer_pump();
 	return true;
@@ -390,10 +445,14 @@ void xfer_cancel()
 
 static int receive_protocol();
 
-static bool start_receive(XferLine *l, int protocol, const char *name)
+static bool start_receive(XferLine *l, int protocol, const char *name, bool resume)
 {
 	folder(where, sizeof(where));
-	return start(l, dmc_xfer_receive(protocol, where, name), protocol, false, 0);
+	dmc_xfer_options o;
+	memset(&o, 0, sizeof(o));
+	o.resume = resume && protocol == DMC_XFER_ZMODEM;
+	return start(l, dmc_xfer_receive_opt(protocol, where, name, &o), protocol,
+		     false, 0, o.resume != 0);
 }
 
 bool xfer_take(XferLine *l, const char *data, int n)
@@ -411,7 +470,9 @@ bool xfer_take(XferLine *l, const char *data, int n)
 			DMC_XFER_ZMODEM;
 		if (at > 0 && *l->view)
 			termview_feed(*l->view, data, at);
-		if (start_receive(l, p, NULL))
+		/* (crash recovery as the Receive File dialog last had it) */
+		if (start_receive(l, p, NULL, p == receive_protocol() &&
+				  ini_int("receive_resume", 0)))
 			dmc_xfer_feed(cur, data + at, n - at);
 		else if (*l->view)
 			termview_feed(*l->view, data + at, n - at);
@@ -444,6 +505,7 @@ struct XferAsk {
 	XferLine *line;
 	bool sending;
 	int protocol;
+	bool resume;                    /* ZMODEM with Crash Recovery */
 	bool remote_ready;              /* its rz waits already: nothing to type */
 	char files[MAX_FILES][MAX_PATH];
 	int nfiles;
@@ -459,11 +521,9 @@ static int receive_protocol()
 static void protocols_fill(HWND combo, int sel)
 {
 	SendMessage(combo, CB_RESETCONTENT, 0, 0);
-	for (int i = 0; i < DMC_XFER_PROTOCOLS; i++) {
-		char a[64];
-		_snprintf(a, sizeof(a), "%s%s", dmc_xfer_label(i),
-			  dmc_xfer_batch(i) ? "" : " (one file)");
-		a[sizeof(a) - 1] = '\0';
+	for (int i = 0; i < CHOICES; i++) {
+		char a[80];
+		choice_label(i, a, sizeof(a));
 		SendMessage(combo, CB_ADDSTRING, 0, (LPARAM)a);
 	}
 	SendMessage(combo, CB_SETCURSEL, (WPARAM)sel, 0);
@@ -472,10 +532,12 @@ static void protocols_fill(HWND combo, int sel)
 /* the words under the protocol, and the command it types */
 static void protocol_changed(HWND d, XferAsk *a)
 {
-	int p = (int)SendDlgItemMessage(d, IDC_F_PROTO, CB_GETCURSEL, 0, 0);
-	if (p < 0)
-		p = 0;
+	int i = (int)SendDlgItemMessage(d, IDC_F_PROTO, CB_GETCURSEL, 0, 0);
+	if (i < 0 || i >= CHOICES)
+		i = 0;
+	int p = choices[i].protocol;
 	a->protocol = p;
+	a->resume = choices[i].resume != 0;
 	SetDlgItemText(d, IDC_F_COMMAND, a->remote_ready ? "" :
 		       dmc_xfer_command(p, !a->sending));
 	const char *hint;
@@ -493,6 +555,18 @@ static void protocol_changed(HWND d, XferAsk *a)
 			"or a boot loader." :
 			"The records that come (their checksums examined) are kept "
 			"as the binary image that they hold, gaps as 0xFF.";
+	else if (a->resume)
+		hint = a->sending ?
+			"The receiver is asked to continue a part of a file that it "
+			"has (rz -r does). Empty: the remote is already receiving." :
+			"A part of a file in the folder is continued from its end, and "
+			"a part received is kept if the transfer stops.";
+	else if (p == DMC_XFER_YMODEM_G)
+		hint = a->sending ?
+			"Blocks go with no wait for an ACK, for a line that corrects "
+			"its errors (V.42). A receiver that asks for plain YMODEM gets it." :
+			"Blocks come with no ACKs, for a line that corrects its errors "
+			"(V.42). An error stops the transfer.";
 	else if (a->sending)
 		hint = "Empty: the remote is already receiving.";
 	else
@@ -601,7 +675,7 @@ static INT_PTR CALLBACK ask_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 	case WM_INITDIALOG: {
 		a = (XferAsk *)lp;
 		SetWindowLongPtr(d, DWLP_USER, (LONG_PTR)a);
-		protocols_fill(GetDlgItem(d, IDC_F_PROTO), a->protocol);
+		protocols_fill(GetDlgItem(d, IDC_F_PROTO), choice_of(a->protocol, a->resume));
 		SendDlgItemMessage(d, IDC_F_COMMAND, EM_LIMITTEXT, sizeof(a->command) - 1, 0);
 		if (a->sending) {
 			char path[MAX_PATH], v[MAX_PATH];
@@ -645,6 +719,7 @@ static INT_PTR CALLBACK ask_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 					a->nfiles = 1;
 				ini_set("file", a->files[0]);
 				ini_set_int("send", a->protocol);
+				ini_set_int("send_resume", a->resume);
 			} else {
 				if (!text[0]) {
 					MessageBox(d, "Type the folder for the received files.",
@@ -654,6 +729,7 @@ static INT_PTR CALLBACK ask_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 				CreateDirectory(text, NULL);
 				ini_set("folder", text);
 				ini_set_int("receive", a->protocol);
+				ini_set_int("receive_resume", a->resume);
 				GetDlgItemText(d, IDC_F_NAME, a->name, sizeof(a->name));
 			}
 			EndDialog(d, IDOK);
@@ -699,6 +775,8 @@ void xfer_send_dialog(XferLine *l, int protocol)
 		ini_int("send", DMC_XFER_ZMODEM);
 	if (a.protocol < 0 || a.protocol >= DMC_XFER_PROTOCOLS)
 		a.protocol = DMC_XFER_ZMODEM;
+	a.resume = protocol == -1 && a.protocol == DMC_XFER_ZMODEM &&
+		ini_int("send_resume", 0);
 	if (DialogBoxParam(app.inst, MAKEINTRESOURCE(IDD_XSEND), app.main, ask_proc,
 			   (LPARAM)&a) != IDOK || !line_ready(l))
 		return;
@@ -717,8 +795,14 @@ void xfer_send_dialog(XferLine *l, int protocol)
 	char *slash = strrchr(where, DIR_SEP[0]);
 	if (slash)
 		*slash = '\0';
-	start(l, dmc_xfer_send(a.protocol, paths, a.nfiles), a.protocol, true,
-	      a.nfiles);
+	/* (plain text paced as ASCII Setup has it) */
+	dmc_xfer_options o;
+	memset(&o, 0, sizeof(o));
+	o.resume = a.resume;
+	o.line_delay_ms = ascii_int("line_delay", 0);
+	o.char_delay_ms = ascii_int("char_delay", 0);
+	start(l, dmc_xfer_send_opt(a.protocol, paths, a.nfiles, &o), a.protocol, true,
+	      a.nfiles, a.resume);
 }
 
 void xfer_receive_dialog(XferLine *l)
@@ -730,6 +814,7 @@ void xfer_receive_dialog(XferLine *l)
 	a.line = l;
 	a.sending = false;
 	a.protocol = receive_protocol();
+	a.resume = a.protocol == DMC_XFER_ZMODEM && ini_int("receive_resume", 0);
 	if (DialogBoxParam(app.inst, MAKEINTRESOURCE(IDD_XRECV), app.main, ask_proc,
 			   (LPARAM)&a) != IDOK || !line_ready(l))
 		return;
@@ -754,5 +839,5 @@ void xfer_receive_dialog(XferLine *l)
 		c[sizeof(c) - 1] = '\0';
 		l->write(c, (int)strlen(c));
 	}
-	start_receive(l, a.protocol, name[0] ? name : NULL);
+	start_receive(l, a.protocol, name[0] ? name : NULL, a.resume);
 }

@@ -74,6 +74,9 @@ struct dmc_xfer {
 	FILE *dst;                      /* the file being received */
 	char dst_path[XFER_PATH], dst_name[XFER_NAME + 16];
 	int keep_on_cancel;             /* plain text: what came is kept */
+	int keep_partial;               /* crash recovery: a part is kept */
+	dmc_xfer_options opt;
+	volatile int skip;              /* the user skipped the file now */
 	void *heap;                     /* freed at the end */
 	void *proto;                    /* the protocol's state (Kermit's) */
 	void (*proto_free)(void *);     /* how it's freed (NULL: free) */
@@ -122,6 +125,12 @@ long long xfer_size_now(dmc_xfer *x);
 /* a received file made in the folder (its name made safe and unique):
    x->dst open, x->dst_name the name it got */
 void xfer_create(dmc_xfer *x, const char *name);
+/* the same for crash recovery: a part of the file in the folder
+   continued (its length, appended to), or a new one (0); -2 when the
+   file is there whole (size known), and nothing opened */
+long long xfer_create_resume(dmc_xfer *x, const char *name, long long size);
+/* the user's skip of the file now, taken (once) */
+int xfer_skip_wanted(dmc_xfer *x);
 /* the received file written */
 void xfer_dst_write(dmc_xfer *x, const void *data, int n);
 /* the received file whole (its time set, if mtime > 0), or dropped */
@@ -141,9 +150,9 @@ unsigned long xfer_crc32_byte(unsigned long crc, int b);
 
 /* the protocols (xfer_xy.c, xfer_z.c, xfer_kermit.c, xfer_hex.c) */
 void xy_receive_x(dmc_xfer *x);
-void xy_receive_y(dmc_xfer *x);
+void xy_receive_y(dmc_xfer *x, int g);
 void xy_send_x(dmc_xfer *x, int one_k);
-void xy_send_y(dmc_xfer *x);
+void xy_send_y(dmc_xfer *x, int g);
 void z_receive(dmc_xfer *x);
 void z_send(dmc_xfer *x);
 void kermit_receive(dmc_xfer *x);

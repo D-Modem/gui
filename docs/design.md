@@ -163,15 +163,35 @@ protocols are:
 
 - ZMODEM: CRC-16 and CRC-32 headers, ZDLE escapes, streaming data (ZCRCG)
   with a ZCRCQ each 16 KB, and recovery from errors with ZRPOS.
+- ZMODEM crash recovery (`dmc_xfer_options.resume`, "ZMODEM with Crash
+  Recovery" in the dialogs). The receiver continues a part of a file that
+  is in the folder: it opens the file to add to it, and it sends ZRPOS with
+  the length of the part. The receiver also does this when the sender sets
+  ZF0 to ZCRECOV (`sz -r`). If the file is there whole, the receiver sends
+  ZSKIP. When a transfer stops, the receiver keeps the part that it
+  received. The sender with this option sets ZF0 to ZCRECOV.
 - YMODEM, XMODEM and XMODEM-1K.
+- YMODEM-G: the receiver asks with G. The sender sends the blocks and does
+  not wait for an ACK. Use it only on a line that corrects its errors (V.42).
+  An error stops the transfer, because a block cannot come again. The
+  sender does plain YMODEM when the receiver asks with C (lrzsz's `rb`).
+  lrzsz's `sb` sends no empty block 0 at the end in YMODEM-G, thus the
+  receiver ends the batch when no block 0 comes after a file.
 - Kermit: long packets, block checks 1 to 3, attribute packets,
   repeat counts and 8-bit prefixes.
 - Intel HEX and Motorola S-records: the app sends a file of records as it
   is, and it encodes other files as records. When it receives, it decodes
   the records to a binary image.
-- Plain text: the app sends the file with a pause between lines. When it
+- Plain text: the app sends the bytes of the file as they are. With
+  `line_delay_ms` and `char_delay_ms`, the app waits after each line end
+  and after each character (as the ASCII Setup of HyperTerminal). When it
   receives, it keeps the text until the line is quiet. A cancel keeps the
   text that came.
+
+`dmc_xfer_skip` skips the file that the app receives now. ZMODEM sends
+ZSKIP. Kermit puts X in the ACK of a data packet, and the sender ends the
+file with Z and D. The progress dialog has a Skip file button for these
+two protocols.
 
 Each transfer runs on its thread (CreateThread on Windows, pthreads on
 other systems). The thread and the app use two queues with a lock:

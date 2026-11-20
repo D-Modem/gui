@@ -7,6 +7,13 @@
  *             sized in block 0), both ways.  A bad block is asked for
  *             again (NAK) up to MAX_ERRORS times; CAN CAN from the other
  *             side ends it.
+ *
+ *             YMODEM-G: the receiver asks with G, and the sender sends
+ *             the blocks with no wait for an ACK (for a line that
+ *             corrects its errors, as a modem's V.42).  An error ends
+ *             the transfer, as no block can be sent again.  The EOT of
+ *             each file is still acknowledged.  A sender asked with C
+ *             does plain YMODEM.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +28,7 @@
 #define CAN 0x18
 #define SUB 0x1a
 #define C 'C'
+#define G 'G'
 #define MAX_ERRORS 10
 #define TIMEOUT 10000
 
@@ -36,7 +44,15 @@ struct rx {
 	int crc;                        /* CRC, else the checksum */
 	int eot;                        /* the sender's EOT came */
 	int bad;                        /* a damaged block came */
+	int g;                          /* YMODEM-G: no ACKs, no repeats */
 };
+
+/* YMODEM-G's end on an error: no block can come again */
+static void g_fail(dmc_xfer *x)
+{
+	xfer_write(x, "\x18\x18\x18\x18\x18", 5);
+	xfer_fail(x, "an error on the line (YMODEM-G cannot send a block again)");
+}
 
 static int sum8(const unsigned char *p, int n)
 {
@@ -102,16 +118,17 @@ static void read_block(dmc_xfer *x, struct rx *r, struct block *b, int use_crc,
 
 /* the first block, asked for with C (CRC) and, for XMODEM, NAK (a
    checksum) when C isn't answered */
-static void start_and_read(dmc_xfer *x, struct rx *r, struct block *b, int ymodem)
+static void start_and_read(dmc_xfer *x, struct rx *r, struct block *b, int ymodem,
+			   int tries)
 {
 	int crc = 1;
 	r->bad = 0;
-	for (int attempt = 0; attempt < 10; attempt++) {
+	for (int attempt = 0; attempt < tries; attempt++) {
 		if (attempt == 4 && !ymodem)
 			crc = 0;
 		/* (a damaged block 0 asked for again with NAK: a C could be
 		   taken for its ACK and a request for the data) */
-		xfer_put(x, crc && !(ymodem && r->bad) ? C : NAK);
+		xfer_put(x, r->g ? G : crc && !(ymodem && r->bad) ? C : NAK);
 		read_block(x, r, b, crc, 3000);
 		if (b->number >= 0) {
 			r->crc = crc;
@@ -132,7 +149,7 @@ static void receive_file(dmc_xfer *x, struct rx *r, long long size, int ymodem,
 	if (held)
 		*held_n = -1;
 	if (!ymodem) {
-		start_and_read(x, r, b, 0);
+		start_and_read(x, r, b, 0, 10);
 		have = b->number >= 0;
 	}
 	for (;;) {
@@ -141,15 +158,18 @@ static void receive_file(dmc_xfer *x, struct rx *r, long long size, int ymodem,
 			if (b->number < 0) {
 				if (r->eot) {
 					/* YMODEM: the first EOT answered NAK, the
-					   second ACK (to be sure it was one) */
+					   second ACK (to be sure it was one);
+					   YMODEM-G: ACK */
 					eots++;
-					if (ymodem && eots == 1) {
+					if (ymodem && eots == 1 && !r->g) {
 						xfer_put(x, NAK);
 						continue;
 					}
 					xfer_put(x, ACK);
 					break;
 				}
+				if (r->g)
+					g_fail(x);
 				if (++errors > MAX_ERRORS)
 					xfer_fail(x, "too many errors on the line");
 				xfer_error(x);
@@ -173,7 +193,8 @@ static void receive_file(dmc_xfer *x, struct rx *r, long long size, int ymodem,
 			written += len;
 			expect++;
 			errors = 0;
-			xfer_put(x, ACK);
+			if (!r->g)
+				xfer_put(x, ACK);
 			xfer_bytes(x, written);
 		} else if (b->number == ((expect - 1) & 0xff)) {
 			/* a repeat of one already had (our ACK lost) */
@@ -187,7 +208,7 @@ static void receive_file(dmc_xfer *x, struct rx *r, long long size, int ymodem,
 
 void xy_receive_x(dmc_xfer *x)
 {
-	struct rx r = { 1, 0, 0 };
+	struct rx r = { 1, 0, 0, 0 };
 	unsigned char held[1024];
 	int held_n = -1;
 	xfer_create(x, x->xname);
@@ -203,13 +224,17 @@ void xy_receive_x(dmc_xfer *x)
 	xfer_file_done(x);
 }
 
-void xy_receive_y(dmc_xfer *x)
+void xy_receive_y(dmc_xfer *x, int g)
 {
-	struct rx r = { 1, 0, 0 };
+	struct rx r = { 1, 0, 0, g };
 	struct block bb0, *b0 = &bb0;
+	int got = 0;
 	for (;;) {
 		/* block 0: the file's name and size, or an empty one (the end) */
-		start_and_read(x, &r, b0, 1);
+		start_and_read(x, &r, b0, 1, g && got ? 2 : 10);
+		/* (lrzsz's sb in YMODEM-G ends with no empty block 0) */
+		if (b0->number < 0 && g && got)
+			return;
 		if (b0->number < 0)
 			xfer_fail(x, "the sender didn't start");
 		if (b0->number != 0)
@@ -234,25 +259,33 @@ void xy_receive_y(dmc_xfer *x)
 			size = v;
 		if (*end == ' ')
 			mtime = strtoll(end + 1, NULL, 8);
-		xfer_put(x, ACK);
+		/* (YMODEM-G: block 0 not acknowledged, G asks for the data) */
+		if (!g)
+			xfer_put(x, ACK);
 		xfer_create(x, name);
 		xfer_file_start(x, x->dst_name, size);
-		xfer_put(x, C);
+		xfer_put(x, g ? G : C);
 		receive_file(x, &r, size, 1, NULL, NULL);
 		xfer_done(x, mtime);
 		xfer_file_done(x);
+		got++;
 	}
 }
 
 /* ------------------------------------------------------------------ */
 /* sending */
 
-/* C (CRC: 1) or NAK (a checksum: 0) from the receiver; -1 for neither */
-static int wait_for_start(dmc_xfer *x)
+/* C (CRC: 1) or NAK (a checksum: 0) from the receiver, G (2) when g;
+   -1 for none */
+static int wait_for_start(dmc_xfer *x, int g)
 {
 	long long end = xfer_now() + 60000;
 	while (xfer_now() < end) {
 		switch (xfer_read(x, TIMEOUT)) {
+		case G:
+			if (g)
+				return 2;
+			break;
 		case C: return 1;
 		case NAK: return 0;
 		case CAN:
@@ -327,9 +360,20 @@ static void send_block(dmc_xfer *x, int n, const unsigned char *data, int size,
 	}
 }
 
+/* YMODEM-G: the receiver's CAN CAN, if it sent them (no wait) */
+static void g_check(dmc_xfer *x)
+{
+	while (xfer_available(x)) {
+		int c = xfer_read(x, 0);
+		if (c == CAN && xfer_read(x, 1000) == CAN)
+			xfer_cancelled(x, "cancelled by the receiver");
+	}
+}
+
 /* the open file's data in blocks of block_size (a short last one in 128,
-   padded with SUB), then EOT until acknowledged */
-static void send_data(dmc_xfer *x, int block_size, int use_crc)
+   padded with SUB), then EOT until acknowledged; g: the blocks with no
+   wait for an ACK (YMODEM-G) */
+static void send_data(dmc_xfer *x, int block_size, int use_crc, int g)
 {
 	unsigned char buf[1024];
 	int n = 1;
@@ -346,7 +390,13 @@ static void send_data(dmc_xfer *x, int block_size, int use_crc)
 			break;
 		int size = len <= 128 ? 128 : block_size;
 		memset(buf + len, SUB, (size_t)(size - len));
-		send_block(x, n, buf, size, use_crc);
+		if (g) {
+			unsigned char bytes[1024 + 5];
+			xfer_write(x, bytes, block_bytes(bytes, n, buf, size, 1));
+			g_check(x);
+		} else {
+			send_block(x, n, buf, size, use_crc);
+		}
 		sent += len;
 		n++;
 		xfer_bytes(x, sent);
@@ -366,23 +416,26 @@ static void send_data(dmc_xfer *x, int block_size, int use_crc)
 void xy_send_x(dmc_xfer *x, int one_k)
 {
 	const struct xfer_file *f = &x->files[0];
-	int use_crc = wait_for_start(x);
+	int use_crc = wait_for_start(x, 0);
 	if (use_crc < 0)
 		xfer_fail(x, "the receiver didn't start");
 	xfer_file_start(x, f->name, f->size);
 	xfer_open(x, f);
-	send_data(x, one_k ? 1024 : 128, use_crc);
+	send_data(x, one_k ? 1024 : 128, use_crc, 0);
 	xfer_close(x);
 	xfer_file_done(x);
 }
 
-void xy_send_y(dmc_xfer *x)
+void xy_send_y(dmc_xfer *x, int g)
 {
 	unsigned char block0[1024];
 	for (int i = 0; i < x->nfiles; i++) {
 		const struct xfer_file *f = &x->files[i];
-		if (wait_for_start(x) != 1)
+		/* (asked with C: plain YMODEM, also for YMODEM-G) */
+		int start = wait_for_start(x, g);
+		if (start < 1)
 			xfer_fail(x, "the receiver didn't start");
+		int streaming = start == 2;
 		memset(block0, 0, sizeof(block0));
 		int nl = (int)strlen(f->name);
 		if (nl > 900)
@@ -393,17 +446,23 @@ void xy_send_y(dmc_xfer *x)
 				  f->size >= 0 ? f->size : 0LL,
 				  (unsigned long long)(f->mtime > 0 ? f->mtime : 0));
 		memcpy(block0 + nl + 1, meta, (size_t)ml);
-		send_block(x, 0, block0, nl + 1 + ml > 128 ? 1024 : 128, 1);
+		int size0 = nl + 1 + ml > 128 ? 1024 : 128;
+		if (streaming) {
+			unsigned char bytes[1024 + 5];
+			xfer_write(x, bytes, block_bytes(bytes, 0, block0, size0, 1));
+		} else {
+			send_block(x, 0, block0, size0, 1);
+		}
 		xfer_file_start(x, f->name, f->size);
-		if (wait_for_start(x) != 1)
+		if (wait_for_start(x, g) != (streaming ? 2 : 1))
 			xfer_fail(x, "the receiver didn't ask for the data");
 		xfer_open(x, f);
-		send_data(x, 1024, 1);
+		send_data(x, 1024, 1, streaming);
 		xfer_close(x);
 		xfer_file_done(x);
 	}
 	/* the batch over: an empty block 0 */
-	if (wait_for_start(x) != 1)
+	if (wait_for_start(x, g) < 1)
 		xfer_fail(x, "the receiver didn't ask for the end");
 	/* (rb exits as it takes it: its ACK can be lost with it) */
 	unsigned char empty[128], bytes[133];

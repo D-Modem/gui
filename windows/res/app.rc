@@ -216,6 +216,7 @@ BEGIN
     LTEXT           "", IDC_X_BAR, 8, 74, 244, 12
     LTEXT           "", IDC_X_BYTES, 8, 90, 244, 8
     LTEXT           "", IDC_X_RESULT, 8, 104, 244, 16, SS_NOPREFIX
+    PUSHBUTTON      "&Skip file", IDC_X_SKIP, 90, 126, 50, 14
     PUSHBUTTON      "c&ps/bps", IDC_X_UNITS, 146, 126, 50, 14
     PUSHBUTTON      "Cancel", IDCANCEL, 202, 126, 50, 14
 END

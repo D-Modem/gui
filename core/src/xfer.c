@@ -350,6 +350,46 @@ void xfer_create(dmc_xfer *x, const char *name)
 	snprintf(x->dst_name, sizeof(x->dst_name), "%s", try_name);
 }
 
+long long xfer_create_resume(dmc_xfer *x, const char *name, long long size)
+{
+	if (x->dst)
+		xfer_abandon(x);
+	char safe[XFER_NAME];
+	safe_name(name, safe, sizeof(safe));
+	join(x->dst_path, sizeof(x->dst_path), x->folder, safe);
+	FILE *f = fopen(x->dst_path, "rb");
+	if (!f) {
+		xfer_create(x, name);
+		x->keep_partial = 1;
+		return 0;
+	}
+	fseek(f, 0, SEEK_END);
+	long long have = (long long)ftell(f);
+	fclose(f);
+	if (size >= 0 && have > size) {
+		/* (longer: not a part of this file) */
+		xfer_create(x, name);
+		x->keep_partial = 1;
+		return 0;
+	}
+	snprintf(x->dst_name, sizeof(x->dst_name), "%s", safe);
+	if (size >= 0 && have == size)
+		return -2;
+	x->dst = fopen(x->dst_path, "ab");
+	if (!x->dst)
+		xfer_fail(x, "can't write %s", safe);
+	x->keep_partial = 1;
+	return have;
+}
+
+int xfer_skip_wanted(dmc_xfer *x)
+{
+	if (!x->skip)
+		return 0;
+	x->skip = 0;
+	return 1;
+}
+
 void xfer_dst_write(dmc_xfer *x, const void *data, int n)
 {
 	if (n > 0 && fwrite(data, 1, (size_t)n, x->dst) != (size_t)n)
@@ -398,6 +438,7 @@ void xfer_done(dmc_xfer *x, long long mtime)
 		return;
 	int bad = fclose(x->dst) != 0;
 	x->dst = NULL;
+	x->keep_partial = 0;
 	if (bad) {
 		remove(x->dst_path);
 		xfer_fail(x, "can't write %s", x->dst_name);
@@ -419,7 +460,10 @@ void xfer_abandon(dmc_xfer *x)
 		return;
 	fclose(x->dst);
 	x->dst = NULL;
-	remove(x->dst_path);
+	/* (crash recovery: the part kept, to continue it the next time) */
+	if (!x->keep_partial)
+		remove(x->dst_path);
+	x->keep_partial = 0;
 }
 
 void xfer_open(dmc_xfer *x, const struct xfer_file *f)
@@ -487,6 +531,7 @@ void text_send(dmc_xfer *x)
 	const struct xfer_file *f = &x->files[0];
 	unsigned char buf[1024];
 	long long sent = 0;
+	int line_ms = x->opt.line_delay_ms, char_ms = x->opt.char_delay_ms;
 	xfer_file_start(x, f->name, f->size);
 	xfer_open(x, f);
 	for (;;) {
@@ -495,8 +540,30 @@ void text_send(dmc_xfer *x)
 		int n = xfer_src_read(x, buf, (int)sizeof(buf));
 		if (n <= 0)
 			break;
-		xfer_write(x, buf, n);
-		sent += n;
+		if (line_ms <= 0 && char_ms <= 0) {
+			xfer_write(x, buf, n);
+			sent += n;
+			xfer_bytes(x, sent);
+			continue;
+		}
+		/* paced, as HyperTerminal's ASCII Setup does it: a wait after
+		   each character, and after each line end (CR, LF, or the LF
+		   of CR LF) */
+		for (int i = 0; i < n; i++) {
+			int c = buf[i];
+			xfer_put(x, c);
+			sent++;
+			/* (the LF of a CR LF ends the line, not the CR) */
+			int line_end = c == '\n' ||
+				(c == '\r' && (i + 1 >= n || buf[i + 1] != '\n'));
+			int ms = char_ms + (line_end ? line_ms : 0);
+			if (ms > 0) {
+				xfer_bytes(x, sent);
+				xfer_sleep(ms);
+				if (x->cancelled)
+					xfer_cancelled(x, "cancelled");
+			}
+		}
 		xfer_bytes(x, sent);
 	}
 	xfer_close(x);
@@ -538,7 +605,8 @@ void text_receive(dmc_xfer *x)
 /* the protocols, by number */
 
 static const char *const labels[DMC_XFER_PROTOCOLS] = {
-	"ZMODEM", "YMODEM", "XMODEM", "XMODEM-1K", "Kermit", "Intel HEX",
+	"ZMODEM", "YMODEM", "YMODEM-G", "XMODEM", "XMODEM-1K", "Kermit",
+	"Intel HEX",
 	"Motorola S-records", "Plain text",
 };
 
@@ -549,7 +617,8 @@ const char *dmc_xfer_label(int p)
 
 int dmc_xfer_batch(int p)
 {
-	return p == DMC_XFER_ZMODEM || p == DMC_XFER_YMODEM || p == DMC_XFER_KERMIT;
+	return p == DMC_XFER_ZMODEM || p == DMC_XFER_YMODEM ||
+		p == DMC_XFER_YMODEM_G || p == DMC_XFER_KERMIT;
 }
 
 const char *dmc_xfer_command(int p, int remote_sends)
@@ -557,6 +626,9 @@ const char *dmc_xfer_command(int p, int remote_sends)
 	switch (p) {
 	case DMC_XFER_ZMODEM: return remote_sends ? "sz -b " : "rz -b";
 	case DMC_XFER_YMODEM: return remote_sends ? "sb " : "rb";
+	/* (sb sends YMODEM-G when asked with G; lrzsz's rb asks with C, and
+	   the transfer is then plain YMODEM) */
+	case DMC_XFER_YMODEM_G: return remote_sends ? "sb " : "rb";
 	case DMC_XFER_XMODEM: return remote_sends ? "sx " : "rx -c ";
 	case DMC_XFER_XMODEM_1K: return remote_sends ? "sx -k " : "rx -c ";
 	case DMC_XFER_KERMIT: return remote_sends ? "kermit -i -s " : "kermit -i -r";
@@ -575,7 +647,8 @@ static void run(dmc_xfer *x)
 		if (x->sending) {
 			switch (p) {
 			case DMC_XFER_ZMODEM: z_send(x); break;
-			case DMC_XFER_YMODEM: xy_send_y(x); break;
+			case DMC_XFER_YMODEM: xy_send_y(x, 0); break;
+			case DMC_XFER_YMODEM_G: xy_send_y(x, 1); break;
 			case DMC_XFER_XMODEM: xy_send_x(x, 0); break;
 			case DMC_XFER_XMODEM_1K: xy_send_x(x, 1); break;
 			case DMC_XFER_KERMIT: kermit_send(x); break;
@@ -586,7 +659,8 @@ static void run(dmc_xfer *x)
 		} else {
 			switch (p) {
 			case DMC_XFER_ZMODEM: z_receive(x); break;
-			case DMC_XFER_YMODEM: xy_receive_y(x); break;
+			case DMC_XFER_YMODEM: xy_receive_y(x, 0); break;
+			case DMC_XFER_YMODEM_G: xy_receive_y(x, 1); break;
 			case DMC_XFER_XMODEM:
 			case DMC_XFER_XMODEM_1K: xy_receive_x(x); break;
 			case DMC_XFER_KERMIT: kermit_receive(x); break;
@@ -687,22 +761,53 @@ static dmc_xfer *start(dmc_xfer *x)
 
 dmc_xfer *dmc_xfer_receive(int protocol, const char *folder, const char *name)
 {
+	return dmc_xfer_receive_opt(protocol, folder, name, NULL);
+}
+
+dmc_xfer *dmc_xfer_send(int protocol, const char *const *paths, int n)
+{
+	return dmc_xfer_send_opt(protocol, paths, n, NULL);
+}
+
+void dmc_xfer_skip(dmc_xfer *x)
+{
+	if (!x || !dmc_xfer_can_skip(x->protocol) || x->sending)
+		return;
+	lock(x);
+	x->skip = 1;
+	wake(x, 1);
+	unlock(x);
+}
+
+int dmc_xfer_can_skip(int protocol)
+{
+	return protocol == DMC_XFER_ZMODEM || protocol == DMC_XFER_KERMIT;
+}
+
+dmc_xfer *dmc_xfer_receive_opt(int protocol, const char *folder,
+			       const char *name, const dmc_xfer_options *o)
+{
 	dmc_xfer *x = make(protocol, 0);
 	if (!x)
 		return NULL;
+	if (o)
+		x->opt = *o;
 	snprintf(x->folder, sizeof(x->folder), "%s", folder ? folder : "");
 	snprintf(x->xname, sizeof(x->xname), "%s",
 		 name && *name ? name : "received.bin");
 	return start(x);
 }
 
-dmc_xfer *dmc_xfer_send(int protocol, const char *const *paths, int n)
+dmc_xfer *dmc_xfer_send_opt(int protocol, const char *const *paths, int n,
+			    const dmc_xfer_options *o)
 {
 	if (n <= 0 || !paths)
 		return NULL;
 	dmc_xfer *x = make(protocol, 1);
 	if (!x)
 		return NULL;
+	if (o)
+		x->opt = *o;
 	if (!dmc_xfer_batch(protocol))
 		n = 1;
 	x->files = (struct xfer_file *)calloc((size_t)n, sizeof(*x->files));
