@@ -172,13 +172,16 @@ XferLine remote_line = { "the remote server", &view, raw_write, line_room,
 
 static void show(const char *s, int n)
 {
-	if (!xfer_take(&remote_line, s, n))
+	if (!xfer_take(&remote_line, s, n)) {
+		capture_feed(&remote_line, s, n);
 		termview_feed(view, s, n);
+	}
 }
 
+/* the app's own words on the screen (not captured) */
 static void show_line(const char *s)
 {
-	show(s, (int)strlen(s));
+	termview_feed(view, s, (int)strlen(s));
 }
 
 static void ended(const char *why)
@@ -1399,6 +1402,7 @@ HWND remote_page_new(HWND parent)
 	login_btn = make_child("BUTTON", "&Login...", WS_TABSTOP, page, IDC_R_LOGIN);
 #endif
 	view = termview_new(page, IDC_R_TERM, typed, NULL);
+	termview_set_printer(view, capture_printed, &remote_line);
 	status_txt = make_child("STATIC", "Not connected", SS_LEFTNOWORDWRAP,
 				page, IDC_R_STATUS);
 	make_child("STATIC", "&Terminal:", SS_RIGHT, page, IDC_R_TYPELABEL);

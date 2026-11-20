@@ -183,6 +183,17 @@ void termview_reset(HWND w);
 void termview_size(HWND w, int *cols, int *rows);
 /* what Backspace sends (DEL unless set) */
 void termview_set_backspace(HWND w, char b);
+/* the selection (drag with the left button, double-click a word): to
+   the clipboard; the clipboard's text typed; all the lines selected */
+bool termview_has_selection(HWND w);
+bool termview_copy(HWND w);
+void termview_paste(HWND w);
+void termview_select_all(HWND w);
+/* the selection's text, or the screen's (UTF-8, malloc'ed) */
+char *termview_text(HWND w, bool selection);
+/* what the remote sends to its printer (UTF-8) goes to fn */
+typedef void (*TermPrintedFn)(const char *data, int n, void *ctx);
+void termview_set_printer(HWND w, TermPrintedFn fn, void *ctx);
 /* the kind of terminal it is (dmc_vt_set_profile()'s id) */
 void termview_set_profile(HWND w, const char *id);
 const char *termview_profile(HWND w);
@@ -218,6 +229,25 @@ bool xfer_auto();
 void xfer_set_auto(bool on);
 /* the transfer's dialog's keys (IsDialogMessage) */
 bool xfer_dialog_key(MSG *m);
+
+/* capture.cpp: Capture Text, Capture to Printer and Print, for a line */
+enum { CAPTURE_OFF, CAPTURE_ON, CAPTURE_PAUSED };
+/* what came on the line for its terminal (not a transfer's bytes) */
+void capture_feed(XferLine *l, const char *data, int n);
+/* the remote's printing (a TermPrintedFn; ctx its XferLine) */
+void capture_printed(const char *data, int n, void *ctx);
+/* the remote's printing printed once it stops (the main window's timer) */
+void capture_tick();
+void capture_text_start(XferLine *l);
+void capture_text_stop(XferLine *l);
+void capture_text_pause(XferLine *l, bool pause);
+int capture_text_state(XferLine *l);
+void capture_printer(XferLine *l, bool on);
+void capture_printer_pause(XferLine *l, bool pause);
+int capture_printer_state(XferLine *l);
+/* the screen or the selection to a printer (the print dialog) */
+void capture_print(XferLine *l);
+void capture_close_all();
 
 /* remote.cpp: the Remote page, a login by SSH, Telnet or rlogin */
 HWND remote_page_new(HWND parent);

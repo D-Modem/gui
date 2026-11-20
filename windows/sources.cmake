@@ -12,5 +12,6 @@ set(DMODEM_WIN_SOURCES
   audio.cpp
   termview.cpp
   remote.cpp
-  xfer.cpp)
+  xfer.cpp
+  capture.cpp)
 list(TRANSFORM DMODEM_WIN_SOURCES PREPEND "${CMAKE_CURRENT_LIST_DIR}/src/")

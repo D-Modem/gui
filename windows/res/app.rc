@@ -20,7 +20,16 @@ BEGIN
         MENUITEM "&Start or Stop", IDM_START
         MENUITEM "&Line Settings...", IDM_LINE
         MENUITEM SEPARATOR
+        MENUITEM "&Print...", IDM_FPRINT
+        MENUITEM SEPARATOR
         MENUITEM "E&xit", IDM_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Copy\tCtrl+Insert", IDM_EDCOPY
+        MENUITEM "&Paste to Host\tShift+Insert", IDM_EDPASTE
+        MENUITEM SEPARATOR
+        MENUITEM "Select &All", IDM_SELALL
     END
     POPUP "&Transfer"
     BEGIN
@@ -30,6 +39,13 @@ BEGIN
         MENUITEM "&Automatic Receive (ZMODEM, Kermit)", IDM_AUTORECV
         MENUITEM SEPARATOR
         MENUITEM "&Cancel Transfer", IDM_XCANCEL
+        MENUITEM SEPARATOR
+        MENUITEM "Capture &Text...", IDM_CAPTURE
+        MENUITEM "Capture Text: Pa&use", IDM_CAPPAUSE
+        MENUITEM "Capture Text: St&op", IDM_CAPSTOP
+        MENUITEM SEPARATOR
+        MENUITEM "Capture to &Printer", IDM_CAPPRINT
+        MENUITEM "Capture to Printer: Pau&se", IDM_PRNPAUSE
     END
     POPUP "&Help"
     BEGIN

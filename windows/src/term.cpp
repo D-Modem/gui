@@ -49,8 +49,10 @@ static void typed(const char *data, int n, void *ctx)
 
 void term_feed(const char *data, int n)
 {
-	if (term && !xfer_take(&term_line, data, n))
+	if (term && !xfer_take(&term_line, data, n)) {
+		capture_feed(&term_line, data, n);
 		termview_feed(term, data, n);
+	}
 }
 
 void term_state()
@@ -121,6 +123,7 @@ HWND term_page_new(HWND parent)
 	make_child("BUTTON", "&Receive...", WS_TABSTOP, page, IDC_TERM_RECV);
 	make_child("BUTTON", "C&lear", WS_TABSTOP, page, IDC_CLEAR);
 	term = termview_new(page, IDC_TERM, typed, NULL);
+	termview_set_printer(term, capture_printed, &term_line);
 	/* the modem's configurator wants Backspace as BS */
 	termview_set_backspace(term, 0x08);
 	char path[MAX_PATH], v[64];
