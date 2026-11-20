@@ -21,6 +21,19 @@
 void app_data_dir(char *out, int n)
 {
 	char dir[MAX_PATH];
+#ifdef DMODEM_WINPORT
+	/* (Linux and macOS, winport/: ~/.config/D-Modem) */
+	const char *home = getenv("HOME");
+	if (home && strlen(home) < sizeof(dir) - 20) {
+		_snprintf(dir, sizeof(dir), "%s/.config", home);
+		CreateDirectory(dir, NULL);
+		strcat(dir, "/D-Modem");
+		CreateDirectory(dir, NULL);
+		_snprintf(out, n, "%s", dir);
+		out[n - 1] = '\0';
+		return;
+	}
+#endif
 	DWORD k = GetEnvironmentVariable("APPDATA", dir, sizeof(dir));
 	if (k > 0 && k < sizeof(dir) - 10) {
 		strcat(dir, "\\D-Modem");
@@ -78,7 +91,14 @@ void config_load(Config *c)
 	v.dwOSVersionInfoSize = sizeof(v);
 	GetVersionEx(&v);
 	bool old = v.dwPlatformId != VER_PLATFORM_WIN32_NT || v.dwMajorVersion < 6;
+#ifdef DMODEM_WINPORT
+	/* (Linux and macOS, winport/: no COM ports or dmodemd started by the
+	   app yet, so a dmodemd that runs, through TCP) */
+	(void)old;
+	c->line = get_i(ini, "line", LINE_TCP);
+#else
 	c->line = get_i(ini, "line", old ? LINE_COM : LINE_DMODEMD);
+#endif
 	get(ini, "sip-user", "", c->sip_user, sizeof(c->sip_user));
 	get(ini, "sip-password", "", c->sip_password, sizeof(c->sip_password));
 	get(ini, "sip-server", "", c->sip_server, sizeof(c->sip_server));

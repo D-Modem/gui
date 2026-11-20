@@ -2,6 +2,8 @@
 # Linux app (GTK 4 and libadwaita) when its libraries are there, or the
 # Windows app with clang-retro (cmake/clang-retro.cmake), MinGW or MSVC.
 # The macOS app (macos/) builds with Xcode and takes the core from here.
+# With DMODEM_GUI_WINPORT, the Windows app also builds for Linux and
+# macOS, over clang-retro MFC's portable Win32 layer (winport/).
 cmake_minimum_required(VERSION 3.16)
 project(dmodem-gui VERSION 1.0.0 LANGUAGES C)
 
@@ -10,6 +12,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(DMODEM_GUI_LINUX "Build the GTK 4 app (linux/)" ON)
 option(DMODEM_GUI_SSH "Build libdmodemssh (libssh) for the Remote page" ON)
+option(DMODEM_GUI_WINPORT "Build the Windows app for Linux or macOS (winport/)" OFF)
+set(CLANG_RETRO_MFC "" CACHE PATH "A clang-retro MFC checkout, for DMODEM_GUI_WINPORT")
 
 add_subdirectory(core)
 enable_testing()
@@ -20,6 +24,8 @@ endif()
 
 if(WIN32)
   add_subdirectory(windows)
+elseif(DMODEM_GUI_WINPORT)
+  add_subdirectory(winport)
 endif()
 
 if(DMODEM_GUI_LINUX AND UNIX AND NOT APPLE)

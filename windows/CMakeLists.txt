@@ -2,19 +2,8 @@
 # cmake/clang-retro.cmake).  ANSI, for the same code to build with all.
 enable_language(CXX)
 enable_language(RC)
-add_executable(dmodem WIN32
-  src/main.cpp
-  src/link.cpp
-  src/pages.cpp
-  src/term.cpp
-  src/settings.cpp
-  src/pathview.cpp
-  src/config.cpp
-  src/voice.cpp
-  src/audio.cpp
-  src/termview.cpp
-  src/remote.cpp
-  res/app.rc)
+include(sources.cmake)
+add_executable(dmodem WIN32 ${DMODEM_WIN_SOURCES} res/app.rc)
 target_include_directories(dmodem PRIVATE src)
 target_link_libraries(dmodem PRIVATE dmodemctl comctl32 wsock32 comdlg32 gdi32 winmm msacm32)
 # the Remote page's SSH: libdmodemssh (libssh, built in)

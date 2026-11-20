@@ -617,7 +617,8 @@ static void ssh_hostkey(const char *key, int known)
 		_snprintf(m, sizeof(m),
 			  "\r\n\x1b[1;31mThe server's host key has changed (it is now %.*s %s).\r\n"
 			  "Someone may be in the middle; or the server has a new key. If that is\r\n"
-			  "expected, remove its old line from .ssh\\known_hosts in your profile.\x1b[0m\r\n",
+			  "expected, remove its old line from .ssh" DIR_SEP "known_hosts in your "
+			  PROFILE_NAME ".\x1b[0m\r\n",
 			  tl, key, fp);
 		m[sizeof(m) - 1] = '\0';
 		show_line(m);
@@ -627,7 +628,7 @@ static void ssh_hostkey(const char *key, int known)
 	Ssh *c = ssh;
 	_snprintf(m, sizeof(m), "This server is not known yet. Its key's fingerprint is\n\n"
 		  "%.*s %s\n\nIf it's the one you expect, it will be added to "
-		  ".ssh\\known_hosts in your profile.\n\nConnect?", tl, key, fp);
+		  ".ssh" DIR_SEP "known_hosts in your " PROFILE_NAME ".\n\nConnect?", tl, key, fp);
 	m[sizeof(m) - 1] = '\0';
 	int r = MessageBox(app.main, m, "Connect to a new server?",
 			   MB_YESNO | MB_ICONQUESTION);
@@ -886,8 +887,14 @@ static bool start_ssh(const char *host, int port, const char *user)
 /* the profile's .ssh folder (made if it isn't there) into out */
 static void ssh_dir(char *out, int n)
 {
+#ifdef DMODEM_WINPORT
+	/* (Linux and macOS, winport/: OpenSSH's own ~/.ssh, as a POSIX path
+	   for libssh) */
+	const char *home = getenv("HOME");
+#else
 	const char *home = getenv("USERPROFILE");
-	_snprintf(out, n, "%s\\.ssh", home ? home : ".");
+#endif
+	_snprintf(out, n, "%s" DIR_SEP ".ssh", home ? home : ".");
 	out[n - 1] = '\0';
 	CreateDirectory(out, NULL);
 }
@@ -958,7 +965,7 @@ static bool import_ppk(HWND d, const char *ppk, char *out, int n)
 		/* (.ssh\<its name>, a name not yet taken) */
 		char dir[MAX_PATH], base[MAX_PATH], path[MAX_PATH], pubpath[MAX_PATH + 8];
 		ssh_dir(dir, sizeof(dir));
-		const char *slash = strrchr(ppk, '\\');
+		const char *slash = strrchr(ppk, DIR_SEP[0]);
 		lstrcpyn(base, slash ? slash + 1 : ppk, sizeof(base));
 		char *dot = strrchr(base, '.');
 		if (dot && !lstrcmpi(dot, ".ppk"))
@@ -967,9 +974,9 @@ static bool import_ppk(HWND d, const char *ppk, char *out, int n)
 			lstrcpy(base, "putty-key");
 		for (int i = 1; i < 100; i++) {
 			if (i == 1)
-				_snprintf(path, sizeof(path), "%s\\%s", dir, base);
+				_snprintf(path, sizeof(path), "%s" DIR_SEP "%s", dir, base);
 			else
-				_snprintf(path, sizeof(path), "%s\\%s-%d", dir, base, i);
+				_snprintf(path, sizeof(path), "%s" DIR_SEP "%s-%d", dir, base, i);
 			path[sizeof(path) - 1] = '\0';
 			_snprintf(pubpath, sizeof(pubpath), "%s.pub", path);
 			pubpath[sizeof(pubpath) - 1] = '\0';
