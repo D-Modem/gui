@@ -109,16 +109,51 @@ void app_log(const char *line)
 	log_append(line);
 }
 
-void app_state()
+/* when the call was connected (GetTickCount), 0 when not online; the
+   seconds the status bar shows */
+static DWORD online_at;
+static long online_shown = -1;
+
+/* the state in the status bar, with the connect timer when online, as
+   HyperTerminal has it: "Online 0:01:05" */
+static void show_state()
 {
 	char t[160];
 	int st = dmc_state(app.s);
-	if (link_running() && st == DMC_CLOSED)
+	if (link_running() && st == DMC_CLOSED) {
 		strcpy(t, "Starting");
-	else
+	} else if (online_at) {
+		long s = (long)((GetTickCount() - online_at) / 1000);
+		online_shown = s;
+		_snprintf(t, sizeof(t), "%s %ld:%02ld:%02ld", dmc_state_name(st),
+			  s / 3600, s / 60 % 60, s % 60);
+	} else {
 		_snprintf(t, sizeof(t), "%s", dmc_state_name(st));
+	}
 	t[sizeof(t) - 1] = '\0';
 	SendMessage(status_bar, SB_SETTEXT, 1, (LPARAM)t);
+}
+
+/* the connect timer moved on a second */
+static void state_tick()
+{
+	if (online_at && (long)((GetTickCount() - online_at) / 1000) != online_shown)
+		show_state();
+}
+
+void app_state()
+{
+	int st = dmc_state(app.s);
+	bool on = st == DMC_ONLINE || st == DMC_ONLINE_COMMAND;
+	bool was_online = online_at != 0;
+	if (on && !online_at)
+		online_at = GetTickCount() ? GetTickCount() : 1;
+	else if (!on)
+		online_at = 0;
+	show_state();
+	/* Terminal Settings: Exit program upon disconnecting */
+	if (was_online && !online_at && termset_exit_on_disconnect())
+		PostMessage(app.main, WM_CLOSE, 0, 0);
 	modem_page_state();
 	voice_state();
 	term_state();
@@ -317,6 +352,17 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		case IDM_ASCII:
 			ascii_dialog(w);
 			return 0;
+		case IDM_TERMSET:
+			termset_dialog(w, line_now() == &remote_line);
+			return 0;
+		case IDM_BREAK:
+			if (line_now() == &remote_line ? remote_break() : link_break())
+				app_message("Break sent");
+			else
+				app_message(line_now() == &remote_line ?
+					    "This connection cannot send a break (Telnet only)" :
+					    "This line cannot send a break (a COM port only)");
+			return 0;
 		case IDM_START:
 			if (link_running())
 				link_stop();
@@ -416,6 +462,7 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 			remote_tick();
 		xfer_pump();
 		capture_tick();
+		state_tick();
 		return 0;
 	case WM_APP_XFER:
 		xfer_message(wp, lp);

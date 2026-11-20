@@ -45,6 +45,16 @@ bool link_open()
 		com != INVALID_HANDLE_VALUE;
 }
 
+bool link_break()
+{
+	/* (a COM port's: the line held at space for 250 ms) */
+	if (com == INVALID_HANDLE_VALUE || !SetCommBreak(com))
+		return false;
+	Sleep(250);
+	ClearCommBreak(com);
+	return true;
+}
+
 bool link_running()
 {
 	return proc != NULL || sock != INVALID_SOCKET ||

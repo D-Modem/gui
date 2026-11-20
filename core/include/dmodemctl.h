@@ -497,6 +497,8 @@ DMC_API void dmc_vt_feed(dmc_vt *t, const char *data, int n);
 /* the screen's answers to the remote's questions (where the cursor is,
    what terminal it is), to write to it as if typed */
 DMC_API int dmc_vt_reply(dmc_vt *t, char *buf, int max);
+/* the scrollback's size: the newest lines kept, the oldest dropped */
+DMC_API void dmc_vt_set_scrollback(dmc_vt *t, int lines);
 /* how many lines of scrollback there are now */
 DMC_API int dmc_vt_history(const dmc_vt *t);
 /* a cell: row 0 the screen's top, -1 the newest scrollback line and so
@@ -664,6 +666,9 @@ DMC_API void dmc_net_type(dmc_net *n, const char *data, int len);
 DMC_API int dmc_net_output(dmc_net *n, char *buf, int max);
 /* the screen's new size, told to the server */
 DMC_API void dmc_net_resize(dmc_net *n, int cols, int rows);
+/* a break to the server (Telnet's IAC BRK): 1, or 0 when the protocol has
+   none (rlogin) */
+DMC_API int dmc_net_break(dmc_net *n);
 
 /* ------------------------------------------------------------------
  * File transfers on a terminal's line, as the Android app has them:

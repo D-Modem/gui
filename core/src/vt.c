@@ -1603,6 +1603,30 @@ void dmc_vt_feed(dmc_vt *t, const char *data, int n)
 	t->changed = 1;
 }
 
+void dmc_vt_set_scrollback(dmc_vt *t, int lines)
+{
+	struct vt_line **h;
+	int n, i, drop;
+	if (lines < 0)
+		lines = 0;
+	if (lines == t->hist_max)
+		return;
+	/* the newest lines kept, the oldest freed */
+	n = t->hist_n < lines ? t->hist_n : lines;
+	drop = t->hist_n - n;
+	for (i = 0; i < drop; i++)
+		line_free(hist_at(t, i));
+	h = xcalloc((size_t)(lines ? lines : 1), sizeof(*h));
+	for (i = 0; i < n; i++)
+		h[i] = hist_at(t, drop + i);
+	free(t->hist);
+	t->hist = h;
+	t->hist_max = lines;
+	t->hist_n = n;
+	t->hist_first = 0;
+	t->changed = 1;
+}
+
 void dmc_vt_set_ascii(dmc_vt *t, int flags)
 {
 	t->ascii = flags;

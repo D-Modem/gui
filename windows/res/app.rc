@@ -20,6 +20,8 @@ BEGIN
         MENUITEM "&Start or Stop", IDM_START
         MENUITEM "&Line Settings...", IDM_LINE
         MENUITEM "&ASCII Setup...", IDM_ASCII
+        MENUITEM "&Terminal Settings...", IDM_TERMSET
+        MENUITEM "Send &Break\tCtrl+Break", IDM_BREAK
         MENUITEM SEPARATOR
         MENUITEM "&Print...", IDM_FPRINT
         MENUITEM SEPARATOR
@@ -190,6 +192,40 @@ BEGIN
     LTEXT           "", IDC_F_HINT, 8, 94, 264, 32
     DEFPUSHBUTTON   "&Receive", IDOK, 166, 130, 50, 14
     PUSHBUTTON      "Cancel", IDCANCEL, 222, 130, 50, 14
+END
+
+/* the Modem menu's Terminal Settings, as HyperTerminal has them, for the
+   terminal of the page shown (the Remote page's, else the modem's) */
+IDD_TERMSET DIALOG 0, 0, 284, 232
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Terminal Settings"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "&Backspace key sends", -1, 8, 6, 118, 50
+    AUTORADIOBUTTON "Ctrl+&H", IDC_T_BSH, 16, 18, 100, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "&Del", IDC_T_BSDEL, 16, 30, 100, 10
+    AUTORADIOBUTTON "Ctrl+H, &Space, Ctrl+H", IDC_T_BSHSH, 16, 42, 104, 10
+    GROUPBOX        "Function, arrow, and ctrl keys act as", -1, 134, 6, 142, 50
+    AUTORADIOBUTTON "Te&rminal keys", IDC_T_TERMKEYS, 142, 18, 100, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "&Windows keys", IDC_T_WINKEYS, 142, 30, 100, 10
+    GROUPBOX        "Cursor", -1, 8, 62, 118, 50
+    AUTORADIOBUTTON "Bl&ock", IDC_T_BLOCK, 16, 74, 100, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "&Underline", IDC_T_UNDERLINE, 16, 86, 100, 10
+    AUTOCHECKBOX    "B&link", IDC_T_BLINK, 16, 98, 100, 10, WS_GROUP | WS_TABSTOP
+    GROUPBOX        "Font", -1, 134, 62, 142, 50
+    LTEXT           "&Name:", -1, 142, 76, 30, 8
+    EDITTEXT        IDC_T_FONT, 176, 74, 92, 12, ES_AUTOHSCROLL
+    LTEXT           "Si&ze:", -1, 142, 94, 30, 8
+    EDITTEXT        IDC_T_FONTSIZE, 176, 92, 24, 12, ES_NUMBER
+    LTEXT           "points", -1, 204, 94, 40, 8
+    LTEXT           "Ba&ckscroll buffer lines:", -1, 8, 122, 110, 8
+    EDITTEXT        IDC_T_BACKSCROLL, 120, 120, 44, 12, ES_NUMBER
+    LTEXT           "Telnet terminal &ID:", IDC_T_TELNETLABEL, 8, 140, 110, 8
+    EDITTEXT        IDC_T_TELNETID, 120, 138, 80, 12, ES_AUTOHSCROLL
+    AUTOCHECKBOX    "E&xit program upon disconnecting", IDC_T_EXIT, 8, 158, 240, 10
+    LTEXT           "An empty font name uses the font of the app. An empty Telnet terminal ID uses the terminal type.", -1, 8, 174, 268, 20
+    DEFPUSHBUTTON   "OK", IDOK, 168, 210, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 226, 210, 50, 14
 END
 
 /* the Modem menu's ASCII Setup, as HyperTerminal has it */

@@ -119,6 +119,8 @@ void link_start();
 void link_stop();
 bool link_running();
 bool link_open();                   /* the DTE is open */
+/* a break on the line (a COM port's only): false when none can be sent */
+bool link_break();
 /* the session's output written, input read, events handled */
 void link_pump();
 /* socket messages (WM_APP_SOCKET) */
@@ -183,6 +185,20 @@ void termview_reset(HWND w);
 void termview_size(HWND w, int *cols, int *rows);
 /* what Backspace sends (DEL unless set) */
 void termview_set_backspace(HWND w, char b);
+/* Terminal Settings: Backspace sends Ctrl+H (0), Del (1) or Ctrl+H,
+   Space, Ctrl+H (2) (-1: as it is); the function, arrow and Ctrl keys as
+   Windows keys; the backscroll's lines; the font (none: the app's) and
+   its size in points; the cursor (0 block, 1 underline) and its blink */
+struct TermOptions {
+	int backspace;
+	bool windows_keys;
+	int scrollback;
+	char font[32];
+	int font_size;
+	int cursor;
+	bool cursor_blink;
+};
+void termview_set_options(HWND w, const TermOptions *o);
 /* ASCII Setup: the received data's DMC_VT_ASCII_* flags, what Enter sends
    (0 CR, 1 CR LF), and the local echo */
 void termview_set_ascii(HWND w, int flags, int enter, bool echo);
@@ -233,6 +249,14 @@ void xfer_set_auto(bool on);
 /* the transfer's dialog's keys (IsDialogMessage) */
 bool xfer_dialog_key(MSG *m);
 
+/* termset.cpp: Terminal Settings, for the modem's terminal or the
+   Remote page's ([terminal], [remote_terminal] in dmodem.ini) */
+void termset_apply(HWND view, bool remote);
+void termset_dialog(HWND parent, bool remote);
+/* the Telnet terminal ID set (empty: the terminal type's) */
+void termset_telnet_id(char *out, int n);
+bool termset_exit_on_disconnect();
+
 /* ascii.cpp: ASCII Setup ([ascii] in dmodem.ini), for both terminals */
 struct AsciiSetup {
 	bool send_lf;           /* Enter sends CR LF */
@@ -278,6 +302,8 @@ void remote_ssh(LPARAM l);
 /* the focus to its first control */
 bool remote_focus();
 void remote_stop();
+/* a break to the server (Telnet's): false when none can be sent */
+bool remote_break();
 
 /* settings.cpp: the Settings page */
 HWND settings_page_new(HWND parent);
