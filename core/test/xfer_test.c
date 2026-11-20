@@ -12,8 +12,10 @@
  */
 #define _DEFAULT_SOURCE
 #define _XOPEN_SOURCE 700
+#define _DARWIN_C_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
