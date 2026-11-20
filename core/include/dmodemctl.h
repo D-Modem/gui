@@ -667,6 +667,7 @@ DMC_API void dmc_net_resize(dmc_net *n, int cols, int rows);
 enum {
 	DMC_XFER_ZMODEM,
 	DMC_XFER_YMODEM,
+	DMC_XFER_YMODEM_G,              /* YMODEM with no ACKs (an error-free line) */
 	DMC_XFER_XMODEM,
 	DMC_XFER_XMODEM_1K,
 	DMC_XFER_KERMIT,
@@ -685,6 +686,17 @@ DMC_API const char *dmc_xfer_command(int protocol, int remote_sends);
 
 typedef struct dmc_xfer dmc_xfer;
 
+/* how a transfer goes (all 0: as the protocol does by default) */
+typedef struct dmc_xfer_options {
+	/* ZMODEM crash recovery: a part of a file that is in the folder is
+	   continued, and a part received is kept when the transfer stops
+	   (receiving); the receiver is asked to continue (sending) */
+	int resume;
+	/* plain text sent: a wait after each line, and after each
+	   character, in ms */
+	int line_delay_ms, char_delay_ms;
+} dmc_xfer_options;
+
 /* files from the remote into folder (name: XMODEM's file, which it does
    not name; Intel HEX's, S-records' and plain text's too) */
 DMC_API dmc_xfer *dmc_xfer_receive(int protocol, const char *folder,
@@ -692,6 +704,17 @@ DMC_API dmc_xfer *dmc_xfer_receive(int protocol, const char *folder,
 /* files to the remote (XMODEM, the hex records and plain text: the first) */
 DMC_API dmc_xfer *dmc_xfer_send(int protocol, const char *const *paths,
 				int n);
+/* the same, with options (NULL: the defaults) */
+DMC_API dmc_xfer *dmc_xfer_receive_opt(int protocol, const char *folder,
+				       const char *name,
+				       const dmc_xfer_options *o);
+DMC_API dmc_xfer *dmc_xfer_send_opt(int protocol, const char *const *paths,
+				    int n, const dmc_xfer_options *o);
+/* the file being received skipped, and the transfer goes on to the next
+   (ZMODEM and Kermit; the others ignore it) */
+DMC_API void dmc_xfer_skip(dmc_xfer *x);
+/* whether the protocol can skip a file (receiving) */
+DMC_API int dmc_xfer_can_skip(int protocol);
 /* bytes from the remote */
 DMC_API void dmc_xfer_feed(dmc_xfer *x, const char *data, int n);
 /* bytes for the remote: how many */

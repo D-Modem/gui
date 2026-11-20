@@ -177,6 +177,245 @@ static void both_ways(int p, int noise)
 	dmc_xfer_free(r);
 }
 
+/* YMODEM-G: an error ends it on both sides (no block again); a sender
+   asked with C does plain YMODEM */
+static void ymodem_g(void)
+{
+	char src[600], dst[600], a[700], got[700];
+	snprintf(src, sizeof(src), "%s/src", tmp);
+	snprintf(dst, sizeof(dst), "%s/dst", tmp);
+	empty_dir(src);
+	empty_dir(dst);
+	snprintf(a, sizeof(a), "%s/data.bin", src);
+	write_file(a, big, sizeof(big));
+	const char *paths[1] = { a };
+	dmc_xfer *r = dmc_xfer_receive(DMC_XFER_YMODEM_G, dst, NULL);
+	dmc_xfer *s = dmc_xfer_send(DMC_XFER_YMODEM_G, paths, 1);
+	link2(s, r, 3001);
+	dmc_xfer_status ss, rs;
+	dmc_xfer_get_status(s, &ss);
+	dmc_xfer_get_status(r, &rs);
+	CHECK(strstr(rs.result, "YMODEM-G") != NULL, "YMODEM-G noisy: the receiver: '%s'",
+	      rs.result);
+	CHECK(ss.result[0], "YMODEM-G noisy: the sender went on");
+	snprintf(got, sizeof(got), "%s/data.bin", dst);
+	FILE *f = fopen(got, "rb");
+	CHECK(!f, "YMODEM-G noisy: the part of the file was kept");
+	if (f)
+		fclose(f);
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+
+	empty_dir(dst);
+	r = dmc_xfer_receive(DMC_XFER_YMODEM, dst, NULL);
+	s = dmc_xfer_send(DMC_XFER_YMODEM_G, paths, 1);
+	link2(s, r, 0);
+	dmc_xfer_get_status(s, &ss);
+	dmc_xfer_get_status(r, &rs);
+	CHECK(!ss.result[0] && !rs.result[0], "YMODEM-G to YMODEM: '%s' '%s'",
+	      ss.result, rs.result);
+	check_same(got, big, sizeof(big), 0, "YMODEM-G to YMODEM");
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+}
+
+/* link2 with the receiver's skip once it has some bytes of the first file */
+static void link2_skip(dmc_xfer *a, dmc_xfer *b)
+{
+	char buf[4096];
+	int skipped = 0;
+	long long end = xfer_now() + 120000;
+	for (;;) {
+		dmc_xfer_status sa, sb;
+		dmc_xfer_get_status(a, &sa);
+		dmc_xfer_get_status(b, &sb);
+		if (!sa.running && !sb.running)
+			break;
+		if (xfer_now() > end) {
+			CHECK(0, "the skip: it took too long");
+			dmc_xfer_cancel(a);
+			dmc_xfer_cancel(b);
+		}
+		if (!skipped && sb.bytes > 8000 && !strcmp(sb.file, "data.bin")) {
+			dmc_xfer_skip(b);
+			skipped = 1;
+		}
+		int moved = 0, n;
+		/* (a slow line: 4 KB a turn) */
+		if ((n = dmc_xfer_output(a, buf, sizeof(buf))) > 0) {
+			dmc_xfer_feed(b, buf, n);
+			moved = 1;
+		}
+		while ((n = dmc_xfer_output(b, buf, sizeof(buf))) > 0) {
+			dmc_xfer_feed(a, buf, n);
+			moved = 1;
+		}
+		xfer_sleep(moved ? 1 : 2);
+	}
+}
+
+/* Skip File: the first file dropped, the second received */
+static void skip_file(int p)
+{
+	char src[600], dst[600], a[700], b[700], got[700];
+	const char *what = dmc_xfer_label(p);
+	snprintf(src, sizeof(src), "%s/src", tmp);
+	snprintf(dst, sizeof(dst), "%s/dst", tmp);
+	empty_dir(src);
+	empty_dir(dst);
+	snprintf(a, sizeof(a), "%s/data.bin", src);
+	snprintf(b, sizeof(b), "%s/hello.txt", src);
+	write_file(a, big, sizeof(big));
+	write_file(b, small, sizeof(small) - 1);
+	const char *paths[2] = { a, b };
+	dmc_xfer *r = dmc_xfer_receive(p, dst, NULL);
+	dmc_xfer *s = dmc_xfer_send(p, paths, 2);
+	link2_skip(s, r);
+	dmc_xfer_status ss, rs;
+	dmc_xfer_get_status(s, &ss);
+	dmc_xfer_get_status(r, &rs);
+	CHECK(!ss.result[0] && !rs.result[0], "%s skip: '%s' '%s'", what, ss.result,
+	      rs.result);
+	snprintf(got, sizeof(got), "%s/data.bin", dst);
+	FILE *f = fopen(got, "rb");
+	CHECK(!f, "%s skip: the skipped file is there", what);
+	if (f)
+		fclose(f);
+	snprintf(got, sizeof(got), "%s/hello.txt", dst);
+	check_same(got, small, sizeof(small) - 1, 0, what);
+	CHECK(rs.files == 1, "%s skip: %d files", what, rs.files);
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+}
+
+/* ZMODEM crash recovery: a part kept when the transfer stops, and
+   continued the next time */
+static void resume(void)
+{
+	char src[600], dst[600], a[700], got[700];
+	snprintf(src, sizeof(src), "%s/src", tmp);
+	snprintf(dst, sizeof(dst), "%s/dst", tmp);
+	empty_dir(src);
+	empty_dir(dst);
+	snprintf(a, sizeof(a), "%s/data.bin", src);
+	write_file(a, big, sizeof(big));
+	snprintf(got, sizeof(got), "%s/data.bin", dst);
+	const char *paths[1] = { a };
+	dmc_xfer_options o;
+	memset(&o, 0, sizeof(o));
+	o.resume = 1;
+
+	/* a part there: the receiver's option continues it */
+	write_file(got, big, 15000);
+	dmc_xfer *r = dmc_xfer_receive_opt(DMC_XFER_ZMODEM, dst, NULL, &o);
+	dmc_xfer *s = dmc_xfer_send(DMC_XFER_ZMODEM, paths, 1);
+	long long t0 = xfer_now();
+	link2(s, r, 0);
+	(void)t0;
+	dmc_xfer_status ss, rs;
+	dmc_xfer_get_status(s, &ss);
+	dmc_xfer_get_status(r, &rs);
+	CHECK(!ss.result[0] && !rs.result[0], "resume: '%s' '%s'", ss.result, rs.result);
+	check_same(got, big, sizeof(big), 0, "resume (the receiver's option)");
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+
+	/* the same with the sender's ZCRECOV */
+	write_file(got, big, 20000);
+	r = dmc_xfer_receive(DMC_XFER_ZMODEM, dst, NULL);
+	s = dmc_xfer_send_opt(DMC_XFER_ZMODEM, paths, 1, &o);
+	link2(s, r, 0);
+	dmc_xfer_get_status(r, &rs);
+	CHECK(!rs.result[0], "resume (ZCRECOV): '%s'", rs.result);
+	check_same(got, big, sizeof(big), 0, "resume (the sender's ZCRECOV)");
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+
+	/* there whole: skipped, and not made again as "data (2).bin" */
+	r = dmc_xfer_receive_opt(DMC_XFER_ZMODEM, dst, NULL, &o);
+	s = dmc_xfer_send(DMC_XFER_ZMODEM, paths, 1);
+	link2(s, r, 0);
+	dmc_xfer_get_status(r, &rs);
+	CHECK(!rs.result[0], "resume (whole): '%s'", rs.result);
+	char two[700];
+	snprintf(two, sizeof(two), "%s/data (2).bin", dst);
+	FILE *f = fopen(two, "rb");
+	CHECK(!f, "resume (whole): a second copy was made");
+	if (f)
+		fclose(f);
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+
+	/* stopped in the middle: the part kept */
+	remove(got);
+	r = dmc_xfer_receive_opt(DMC_XFER_ZMODEM, dst, NULL, &o);
+	s = dmc_xfer_send(DMC_XFER_ZMODEM, paths, 1);
+	char buf[4096];
+	for (int turns = 0; turns < 20000; turns++) {
+		dmc_xfer_status st;
+		dmc_xfer_get_status(r, &st);
+		if (st.bytes > 10000)
+			break;
+		int n;
+		if ((n = dmc_xfer_output(s, buf, 1024)) > 0)
+			dmc_xfer_feed(r, buf, n);
+		while ((n = dmc_xfer_output(r, buf, sizeof(buf))) > 0)
+			dmc_xfer_feed(s, buf, n);
+		xfer_sleep(1);
+	}
+	dmc_xfer_cancel(r);
+	dmc_xfer_cancel(s);
+	link2(s, r, 0);
+	size_t n = 0;
+	unsigned char *part = read_file(got, &n);
+	CHECK(part && n > 0 && n < sizeof(big) && !memcmp(part, big, n),
+	      "resume: the part was not kept (%zu bytes)", n);
+	free(part);
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+}
+
+/* plain text with the waits of ASCII Setup */
+static void text_delays(void)
+{
+	char src[600], dst[600], a[700], got[700];
+	snprintf(src, sizeof(src), "%s/src", tmp);
+	snprintf(dst, sizeof(dst), "%s/dst", tmp);
+	empty_dir(src);
+	empty_dir(dst);
+	static const unsigned char text[] = "one\r\ntwo\r\nthree\rfour\n";
+	snprintf(a, sizeof(a), "%s/t.txt", src);
+	write_file(a, text, sizeof(text) - 1);
+	const char *paths[1] = { a };
+	dmc_xfer_options o;
+	memset(&o, 0, sizeof(o));
+	o.line_delay_ms = 100;
+	o.char_delay_ms = 5;
+	xfer_text_quiet_ms = 600;
+	dmc_xfer *r = dmc_xfer_receive(DMC_XFER_TEXT, dst, "t.txt");
+	long long t0 = xfer_now();
+	dmc_xfer *s = dmc_xfer_send_opt(DMC_XFER_TEXT, paths, 1, &o);
+	for (;;) {
+		dmc_xfer_status st;
+		dmc_xfer_get_status(s, &st);
+		char buf[256];
+		int n;
+		while ((n = dmc_xfer_output(s, buf, sizeof(buf))) > 0)
+			dmc_xfer_feed(r, buf, n);
+		if (!st.running)
+			break;
+		xfer_sleep(1);
+	}
+	long long took = xfer_now() - t0;
+	/* 4 line ends and 21 characters */
+	CHECK(took >= 4 * 100 + 21 * 5, "text delays: %lld ms", took);
+	link2(s, r, 0);
+	snprintf(got, sizeof(got), "%s/t.txt", dst);
+	check_same(got, text, sizeof(text) - 1, 0, "text delays");
+	dmc_xfer_free(s);
+	dmc_xfer_free(r);
+}
+
 static void hex_both_ways(int p)
 {
 	char src[600], dst[600], a[700], got[700];
@@ -430,6 +669,8 @@ static void interop(void)
 	if (have("sz") && have("rz")) {
 		interop_one(DMC_XFER_ZMODEM, "sz -b", "rz -b", 0);
 		interop_one(DMC_XFER_YMODEM, "sz --ymodem -b", "rz --ymodem -b", 0);
+		/* (sb streams when asked with G; rb asks with C: plain YMODEM) */
+		interop_one(DMC_XFER_YMODEM_G, "sz --ymodem -b", "rz --ymodem -b", 0);
 		interop_one(DMC_XFER_XMODEM, "sz --xmodem -b", "rz --xmodem -b data.bin", 1);
 		interop_one(DMC_XFER_XMODEM_1K, "sz --xmodem -k -b", "rz --xmodem -b data.bin", 1);
 		printf("interop: lrzsz\n");
@@ -457,6 +698,9 @@ int main(void)
 		big[i] = (unsigned char)rand();
 	int protocols[] = { DMC_XFER_ZMODEM, DMC_XFER_YMODEM, DMC_XFER_XMODEM,
 			    DMC_XFER_XMODEM_1K, DMC_XFER_KERMIT };
+	both_ways(DMC_XFER_YMODEM_G, 0);
+	ymodem_g();
+	printf("YMODEM-G\n");
 	for (size_t i = 0; i < sizeof(protocols) / sizeof(protocols[0]); i++) {
 		both_ways(protocols[i], 0);
 		printf("%s: clean line\n", dmc_xfer_label(protocols[i]));
@@ -468,7 +712,13 @@ int main(void)
 	hex_both_ways(DMC_XFER_SREC);
 	printf("hex records\n");
 	text_both_ways();
+	text_delays();
 	printf("plain text\n");
+	skip_file(DMC_XFER_ZMODEM);
+	skip_file(DMC_XFER_KERMIT);
+	printf("skip file\n");
+	resume();
+	printf("ZMODEM crash recovery\n");
 	cancel();
 	detect();
 	interop();

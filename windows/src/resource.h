@@ -189,5 +189,6 @@
 #define IDC_X_UNITS     1231
 #define IDC_X_BAR       1232
 #define IDC_X_RESULT    1233
+#define IDC_X_SKIP      1234
 
 #endif

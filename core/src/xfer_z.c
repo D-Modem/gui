@@ -38,6 +38,7 @@ enum {
 #define CANOVIO 0x02
 #define CANFC32 0x20
 #define ZCBIN 1
+#define ZCRECOV 3                       /* ZF0: continue a part of the file */
 
 #define BLOCK 1024
 /* bytes between the sender's ZCRCQs (its window) */
@@ -459,9 +460,9 @@ static void zrinit(struct z *z)
 	send_hex(z, hdr_flags(ZRINIT, CANFDX | CANOVIO | CANFC32));
 }
 
-/* a file's data after its ZFILE (its info, len bytes): 1 received, 0
-   skipped */
-static int receive_file(struct z *z, const unsigned char *info, int len)
+/* a file's data after its ZFILE (its info, len bytes; f0 its ZF0): 1
+   received, 0 skipped */
+static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
 {
 	dmc_xfer *x = z->x;
 	char name[XFER_NAME], meta[256];
@@ -482,9 +483,21 @@ static int receive_file(struct z *z, const unsigned char *info, int len)
 		size = v;
 	if (*e == ' ')
 		mtime = strtoll(e + 1, NULL, 8);
-	xfer_create(x, name);
-	xfer_file_start(x, x->dst_name, size);
 	long long pos = 0, rpos_at = 0;
+	/* crash recovery (ours, or the sender's ZCRECOV): from the end of a
+	   part that is in the folder */
+	if (x->opt.resume || f0 == ZCRECOV) {
+		pos = xfer_create_resume(x, name, size);
+		if (pos == -2) {
+			/* (there whole already) */
+			send_hex(z, hdr_pos(ZSKIP, 0));
+			return 0;
+		}
+	} else {
+		xfer_create(x, name);
+	}
+	xfer_file_start(x, x->dst_name, size);
+	xfer_bytes(x, pos);
 	int errors = 0, ok = 0;
 	struct header h;
 	/* (until the sender has had time to hear our ZRPOS, what still comes
@@ -494,6 +507,13 @@ static int receive_file(struct z *z, const unsigned char *info, int len)
 #define WAITING() (xfer_now() - rpos_at < RPOS_GRACE_MS)
 	RPOS();
 	for (;;) {
+		/* the user's skip: ZSKIP, and the file dropped (the sender
+		   goes on to its next) */
+		if (xfer_skip_wanted(x)) {
+			send_hex(z, hdr_pos(ZSKIP, 0));
+			xfer_purge(x);
+			break;
+		}
 		/* (8 KB of a stream with no header in it: ours lost; asked
 		   for again) */
 		int st = read_header(z, 8 * 1024, 1, &h);
@@ -535,6 +555,8 @@ static int receive_file(struct z *z, const unsigned char *info, int len)
 				if (end == ZCRCQ)
 					send_hex(z, hdr_pos(ZACK, pos));
 				else if (end == ZCRCE)
+					break;
+				if (x->skip)
 					break;
 			}
 		} else if (h.type == ZEOF) {
@@ -611,7 +633,7 @@ void z_receive(dmc_xfer *x)
 				break;
 			}
 			memcpy(info, z->data, (size_t)n);
-			if (receive_file(z, info, n)) {
+			if (receive_file(z, info, n, h.p[3])) {
 				xfer_file_done(x);
 				zrinit(z);
 			}
@@ -677,7 +699,8 @@ static struct header wait_for_zrinit(struct z *z)
 	}
 }
 
-/* a ZCRCQ's answer: -1 for its ACK, else the position a ZRPOS asks for */
+/* a ZCRCQ's answer: -1 for its ACK, -2 for a ZSKIP (the receiver
+   skipped the file), else the position a ZRPOS asks for */
 static long long wait_for_ack(struct z *z, long long pos)
 {
 	struct header h;
@@ -688,6 +711,8 @@ static long long wait_for_ack(struct z *z, long long pos)
 			return -1;
 		if (h.type == ZRPOS)
 			return hpos(&h);
+		if (h.type == ZSKIP)
+			return -2;
 		if (h.type == ZCAN || h.type == ZABORT)
 			xfer_cancelled(z->x, "cancelled by the receiver");
 	}
@@ -766,6 +791,8 @@ static void stream(struct z *z, long long start)
 			if (end == ZCRCQ) {
 				since_ack = 0;
 				long long to = wait_for_ack(z, pos);
+				if (to == -2)
+					return;
 				if (to >= 0) {
 					BACK(to);
 					restart = 1;
@@ -818,7 +845,7 @@ static int send_file(struct z *z, const struct xfer_file *f, int files_left,
 	int tries = 0;
 	struct header h;
 	while (start < 0) {
-		send_bin(z, hdr_flags(ZFILE, ZCBIN));
+		send_bin(z, hdr_flags(ZFILE, z->x->opt.resume ? ZCRECOV : ZCBIN));
 		send_data(z, info, n, ZCRCW);
 		for (;;) {
 			int got = header_or_null(z, &h);

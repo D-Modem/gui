@@ -781,6 +781,10 @@ void kermit_receive(dmc_xfer *x)
 				kfail(k, "data before a file's name");
 			got_bytes += decode(k, k->pkt, k->plen, NULL, 0);
 			xfer_bytes(x, got_bytes);
+			/* the user's skip: X in the ACK (the sender ends the
+			   file with Z D, and the file is dropped) */
+			if (xfer_skip_wanted(x))
+				reply[rn++] = 'X';
 			break;
 		case 'Z':
 			if (x->dst) {
