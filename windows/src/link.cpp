@@ -509,11 +509,16 @@ void link_pump()
 	dmc_poll(app.s, now_ms());
 	char buf[4096];
 	int n;
-	while ((n = dmc_output(app.s, buf, sizeof(buf))) > 0) {
-		if (port_out_n + n > (int)sizeof(port_out))
-			n = (int)sizeof(port_out) - port_out_n;
+	/* (what the DTE can't take yet waits in the session) */
+	for (;;) {
+		int room = (int)sizeof(port_out) - port_out_n;
+		if (room > (int)sizeof(buf))
+			room = (int)sizeof(buf);
+		if (room <= 0 || (n = dmc_output(app.s, buf, room)) <= 0)
+			break;
 		memcpy(port_out + port_out_n, buf, n);
 		port_out_n += n;
+		port_write();
 	}
 	port_write();
 	while ((n = dmc_terminal(app.s, buf, sizeof(buf))) > 0)
@@ -543,6 +548,22 @@ void link_type(const char *data, int n)
 		return;
 	dmc_type(app.s, data, n);
 	link_pump();
+}
+
+void link_send(const char *data, int n)
+{
+	if (!link_open())
+		return;
+	dmc_send(app.s, data, n);
+	link_pump();
+}
+
+int link_room()
+{
+	if (!link_open())
+		return 0;
+	int room = (int)sizeof(port_out) - port_out_n - dmc_output_waiting(app.s);
+	return room > 0 ? room : 0;
 }
 
 void link_wait(int tag, ResponseFn fn, void *data)

@@ -190,8 +190,18 @@ static BOOL CALLBACK lower_group_box(HWND c, LPARAM lp)
 }
 #endif
 
+static int page_now;
+
+/* the line of the page shown, for the Transfer menu: the Remote page's
+   login, else the modem */
+static XferLine *line_now()
+{
+	return page_now == PAGE_REMOTE ? &remote_line : &term_line;
+}
+
 static void show_page(int i)
 {
+	page_now = i;
 	for (int p = 0; p < PAGES; p++)
 		ShowWindow(app.pages[p], p == i ? SW_SHOW : SW_HIDE);
 	if (i == PAGE_TERM)
@@ -306,13 +316,39 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		case IDM_ABOUT:
 			about();
 			return 0;
+		case IDM_SEND:
+			xfer_send_dialog(line_now(), -1);
+			return 0;
+		case IDM_RECEIVE:
+			xfer_receive_dialog(line_now());
+			return 0;
+		case IDM_AUTORECV:
+			xfer_set_auto(!xfer_auto());
+			return 0;
+		case IDM_XCANCEL:
+			xfer_cancel();
+			return 0;
 		}
 		break;
+	case WM_INITMENUPOPUP: {
+		HMENU m = (HMENU)wp;
+		bool busy = xfer_running();
+		EnableMenuItem(m, IDM_SEND, MF_BYCOMMAND | (busy ? MF_GRAYED : MF_ENABLED));
+		EnableMenuItem(m, IDM_RECEIVE, MF_BYCOMMAND | (busy ? MF_GRAYED : MF_ENABLED));
+		EnableMenuItem(m, IDM_XCANCEL, MF_BYCOMMAND | (busy ? MF_ENABLED : MF_GRAYED));
+		CheckMenuItem(m, IDM_AUTORECV, MF_BYCOMMAND |
+			      (xfer_auto() ? MF_CHECKED : MF_UNCHECKED));
+		break;
+	}
 	case WM_TIMER:
 		if (wp == TIMER_PUMP || wp == TIMER_VOICE)
 			link_pump();
 		else if (wp == TIMER_REMOTE)
 			remote_tick();
+		xfer_pump();
+		return 0;
+	case WM_APP_XFER:
+		xfer_message(wp, lp);
 		return 0;
 	case WM_APP_SOCKET:
 		link_socket(wp, lp);
@@ -404,6 +440,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0) > 0) {
+		if (xfer_dialog_key(&msg))
+			continue;
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}

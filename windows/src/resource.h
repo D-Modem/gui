@@ -14,6 +14,10 @@
 #define IDM_START       201
 #define IDM_EXIT        202
 #define IDM_ABOUT       203
+#define IDM_SEND        204
+#define IDM_RECEIVE     205
+#define IDM_AUTORECV    206
+#define IDM_XCANCEL     207
 
 #define IDC_STATUS      300
 #define IDC_TABS        301
@@ -40,6 +44,8 @@
 #define IDC_CLEAR       503
 #define IDC_TERM_TYPELABEL 504
 #define IDC_TERM_TYPE   505
+#define IDC_TERM_SEND   506
+#define IDC_TERM_RECV   507
 
 /* the Remote page */
 #define IDC_R_PROTO     1100
@@ -147,5 +153,32 @@
 #define IDC_K_IMPORT    984
 #define IDC_K_AGENT     985
 #define IDC_K_STATE     986
+
+/* the Send File and Receive File dialogs */
+#define IDD_XSEND       1200
+#define IDD_XRECV       1201
+#define IDC_F_FILE      1202
+#define IDC_F_BROWSE    1203
+#define IDC_F_PROTO     1204
+#define IDC_F_COMMAND   1205
+#define IDC_F_HINT      1206
+#define IDC_F_NAME      1207
+#define IDC_F_NAMELABEL 1208
+
+/* the dialog of a transfer as it goes */
+#define IDD_XFER        1220
+#define IDC_X_VERB      1221
+#define IDC_X_FILE      1222
+#define IDC_X_WHERE     1223
+#define IDC_X_PROTO     1224
+#define IDC_X_FILES     1225
+#define IDC_X_ERRORS    1226
+#define IDC_X_ELAPSED   1227
+#define IDC_X_LEFT      1228
+#define IDC_X_RATE      1229
+#define IDC_X_BYTES     1230
+#define IDC_X_UNITS     1231
+#define IDC_X_BAR       1232
+#define IDC_X_RESULT    1233
 
 #endif
