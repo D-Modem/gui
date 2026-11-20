@@ -44,6 +44,17 @@
 #define _strnicmp strncasecmp
 #endif
 
+/* the separator of paths that libssh and the C library see: Windows', or
+   POSIX on Linux and macOS (winport/); and the name of the folder that
+   holds .ssh */
+#ifdef DMODEM_WINPORT
+#define DIR_SEP "/"
+#define PROFILE_NAME "home folder"
+#else
+#define DIR_SEP "\\"
+#define PROFILE_NAME "profile"
+#endif
+
 /* (older headers, Open Watcom's among them, without the 64-bit names) */
 #ifndef GWLP_USERDATA
 #define GWLP_USERDATA GWL_USERDATA

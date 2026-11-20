@@ -1,4 +1,5 @@
-# Builds and tests the three apps and the library they share
+# Builds and tests the three apps and the library they share, and the
+# Windows app for Linux and macOS (winport/)
 name: Build
 
 on:
@@ -118,6 +119,57 @@ jobs:
         with:
           name: dmodem-windows
           path: build/win7/windows/dmodem.exe
+
+  # The Windows app for Linux and macOS (winport/), over the portable
+  # Win32 layer of clang-retro MFC. First pass: TCP and SSH only.
+  winport-linux:
+    name: Windows app on Linux (clang-retro MFC's Win32 layer)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: clang-retro/mfc
+          path: mfc
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang llvm libx11-dev xvfb xauth
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DDMODEM_GUI_LINUX=OFF -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          cmake --build build --target dmodem-win32
+      - name: Smoke test (Xvfb)
+        run: xvfb-run -a winport/test/smoke.sh build/winport/dmodem-win32
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-win32-linux
+          path: build/winport/dmodem-win32
+
+  winport-macos:
+    name: Windows app on macOS (clang-retro MFC's Win32 layer)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: clang-retro/mfc
+          path: mfc
+      - name: Packages
+        run: brew install llvm
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          cmake --build build --target dmodem-win32 -j"$(sysctl -n hw.ncpu)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-win32-macos
+          path: build/winport/dmodem-win32
 
   macos:
     name: macOS (SwiftUI)

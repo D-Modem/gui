@@ -173,6 +173,23 @@ void app_event(const dmc_event *ev)
 	}
 }
 
+#ifdef DMODEM_WINPORT
+/* (Linux and macOS, winport/: the layer's hit test stops at a group box,
+   which answers HTTRANSPARENT, and does not try the controls under it.
+   Windows tries them. Until the layer does too, put the group boxes
+   under the other controls.) */
+static BOOL CALLBACK lower_group_box(HWND c, LPARAM lp)
+{
+	char cls[16];
+	(void)lp;
+	if (GetClassName(c, cls, sizeof(cls)) && !lstrcmpi(cls, "BUTTON") &&
+	    (GetWindowLong(c, GWL_STYLE) & BS_TYPEMASK) == BS_GROUPBOX)
+		SetWindowPos(c, HWND_BOTTOM, 0, 0, 0, 0,
+			     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	return TRUE;
+}
+#endif
+
 static void show_page(int i)
 {
 	for (int p = 0; p < PAGES; p++)
@@ -245,6 +262,10 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		for (int p = 0; p < PAGES; p++)
 			SetWindowPos(app.pages[p], HWND_TOP, 0, 0, 0, 0,
 				     SWP_NOMOVE | SWP_NOSIZE);
+#ifdef DMODEM_WINPORT
+		for (int p = 0; p < PAGES; p++)
+			EnumChildWindows(app.pages[p], lower_group_box, 0);
+#endif
 		show_page(PAGE_MODEM);
 		SetTimer(w, TIMER_PUMP, 50, NULL);
 		app_state();

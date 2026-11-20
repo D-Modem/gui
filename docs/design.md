@@ -328,3 +328,46 @@ Windows 95 to Windows 11:
 dmodemd itself needs Windows 7 or later. On Windows 9x and NT 4, the app
 uses a COM port by default. It can also connect to a dmodemd on another
 machine through TCP.
+
+## The Windows app on Linux and macOS
+
+The Windows app also builds for Linux and macOS. This is a first pass.
+clang-retro MFC has a portable Win32 layer (`port/`, `libwinport.a`). The
+layer supplies the Win32 API on X11, Wayland and Cocoa. The app links
+with this layer and not with Windows. Its source code is the same as on
+Windows.
+
+- Use `-DDMODEM_GUI_WINPORT=ON` and set `CLANG_RETRO_MFC` to a checkout of
+  clang-retro MFC. Use clang. `winport/CMakeLists.txt` builds
+  `libwinport.a` with the Makefile of MFC. It converts `app.rc` to C++
+  with `port/tools/res2cpp.py` (this needs `llvm-rc`). The app is
+  `winport/dmodem-win32` in the build directory.
+- `DMODEM_WINPORT` is defined for this build. The app uses it in these
+  locations only:
+  - The settings file is `~/.config/D-Modem/dmodem.ini`.
+  - The line is TCP by default (`127.0.0.1:2323`, a dmodemd that runs).
+    The app does not start dmodemd on these systems yet.
+  - SSH uses `~/.ssh` and `/` in paths.
+  - The path view on the Settings page draws its pictures from Unicode
+    (DejaVu Sans), because these systems do not have Wingdings.
+  - The group boxes go under the other controls. The hit test of the
+    layer stops at a window that answers `HTTRANSPARENT`, and does not
+    try the windows under it. Windows tries them. Thus without this
+    change, a click on a control in a group box goes to the page.
+- The layer does not have these functions yet. `winport/include` and
+  `winport/src/stubs.cpp` supply stand-ins for them:
+
+  | Function | The stand-in |
+  | --- | --- |
+  | `waveOut*`, `waveIn*` (`mmsystem.h`), `acm*` (`msacm.h`) | Returns `MMSYSERR_NODRIVER`. The Phone page cannot play or record. |
+  | `GetCommState`, `SetCommState`, `SetCommTimeouts` (COM ports) | Returns `FALSE` (`ERROR_NOT_SUPPORTED`). Do not use a COM port. |
+  | `CreatePipe`, `PeekNamedPipe` | Returns `FALSE`. The app cannot start dmodemd. |
+  | `GetEnvironmentStrings`, `GetUserName`, `Beep` | Uses `environ`, `$USER` and `MessageBeep`. |
+  | `ListView_*`, `TabCtrl_*` (`commctrl.h`), `winsock.h` | Macros and an include of `winsock2.h`. |
+
+  When the layer gets these functions, remove the stand-ins (and the
+  group box change). Each stand-in is in `winport/` only, or in a
+  `DMODEM_WINPORT` block.
+- CI builds the app on Linux and macOS. On Linux, it starts the app in
+  Xvfb with `winport/test/smoke.sh`. The test makes sure that the app
+  stays up and sends AT commands to a test modem through TCP.
