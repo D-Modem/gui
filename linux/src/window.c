@@ -84,6 +84,7 @@ void window_state(App *a)
 	gtk_widget_set_sensitive(a->copy_btn, a->fd >= 0);
 	gtk_widget_set_sensitive(a->term_buttons, st == DMC_IDLE);
 	settings_sensitive(a, st == DMC_IDLE);
+	pathview_update(a);
 	voice_state(a);
 }
 

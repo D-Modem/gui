@@ -164,6 +164,10 @@ struct SettingsPage: View {
 
     var body: some View {
         Form {
+            // (how a call is made, step by step: as set up when idle, as it is in a call)
+            Section {
+                PathView()
+            }
             Section {
                 LabeledContent("Init string") {
                     HStack {

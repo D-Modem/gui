@@ -161,6 +161,7 @@ void settings_state()
 {
 	if (!page)
 		return;
+	pathview_update();
 	bool idle = dmc_state(app.s) == DMC_IDLE && model;
 	EnableWindow(GetDlgItem(page, IDC_CHANGE), idle);
 	EnableWindow(GetDlgItem(page, IDC_DEFAULTS), idle);
@@ -374,6 +375,9 @@ static LRESULT CALLBACK list_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 HWND settings_page_new(HWND parent)
 {
 	page = page_new(parent, settings_command);
+	/* how a call is made, step by step: as set up when idle, as it is
+	   in a call */
+	pathview_new(page);
 	make_child("LISTBOX", "", WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY |
 		   LBS_NOINTEGRALHEIGHT, page, IDC_GROUPS, WS_EX_CLIENTEDGE);
 	HWND lv = make_child(WC_LISTVIEW, "", WS_TABSTOP | LVS_REPORT |
@@ -410,11 +414,15 @@ HWND settings_page_new(HWND parent)
 void settings_page_layout(HWND p, int w, int h)
 {
 	int m = 8, bh = 24, gw = 130, bw = 90;
-	int listh = h - 4 * m - 2 * bh - 36;
-	MoveWindow(GetDlgItem(p, IDC_GROUPS), m, m, gw, listh, TRUE);
-	MoveWindow(GetDlgItem(p, IDC_SETTINGS), 2 * m + gw, m, w - 3 * m - gw,
+	int ph = pathview_height();
+	MoveWindow(FindWindowEx(p, NULL, "DModemPath", NULL), m, m,
+		   w - 2 * m, ph, TRUE);
+	int top = m + ph + m;
+	int listh = h - top - 3 * m - 2 * bh - 36;
+	MoveWindow(GetDlgItem(p, IDC_GROUPS), m, top, gw, listh, TRUE);
+	MoveWindow(GetDlgItem(p, IDC_SETTINGS), 2 * m + gw, top, w - 3 * m - gw,
 		   listh, TRUE);
-	int y = m + listh + m;
+	int y = top + listh + m;
 	MoveWindow(GetDlgItem(p, IDC_SETTING_HELP), m, y, w - 2 * m, 32, TRUE);
 	y += 36;
 	MoveWindow(GetDlgItem(p, IDC_CHANGE), m, y, bw, bh, TRUE);
