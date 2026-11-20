@@ -92,7 +92,7 @@ jobs:
           path: build/win9x/windows/dmodem.exe
 
   windows:
-    name: Windows 7 and later (clang-retro, with SSH)
+    name: Windows 7 and later (clang-retro)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -107,7 +107,7 @@ jobs:
         run: |
           cmake -S . -B build/win7 -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake -DCLANG_RETRO_CONFIG=win7 \
-            -DDMODEM_GUI_SSH=ON -DCMAKE_CROSSCOMPILING_EMULATOR=wine
+            -DCMAKE_CROSSCOMPILING_EMULATOR=wine
           cmake --build build/win7
       - name: Test (Wine)
         run: |

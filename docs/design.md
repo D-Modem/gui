@@ -197,9 +197,27 @@ same on all platforms, and you do not need to install anything:
 If the system has libssh 0.11 or later (Linux), libssh and mbedTLS come from
 the system. If not, the build makes them from their release tarballs, and
 checks them by hash (`ssh/cmake/BundledLibssh.cmake`). This always occurs on
-Windows and macOS. The Windows 95 build has no libssh, because mbedTLS and
-libssh need Windows Vista or later (`BCryptGenRandom`). If it finds the `ssh.exe` of Windows (Windows 10 1809 and later), it runs it in a
-pseudo console.
+Windows and macOS. A build with no libssh (`-DDMODEM_GUI_SSH=OFF`) runs the
+`ssh.exe` of Windows (Windows 10 1809 and later) in a pseudo console, if it
+finds it.
+
+The Windows 95 build also has libssh. libssh and mbedTLS use some functions
+that Windows 95 does not have. Thus the build changes them as follows
+(`ssh/cmake/PatchMbedtls.cmake` and `PatchLibssh.cmake`, only for targets
+before Windows Vista):
+
+| Function | Windows that have it | In the Windows 95 build |
+| --- | --- | --- |
+| `BCryptGenRandom` (mbedTLS, the random numbers) | Vista and later | `CryptGenRandom` of CryptoAPI, found at run time. CryptoAPI is in Windows 95 OSR2, 98, NT 4.0 and later, and Internet Explorer 3 and later installs it. If CryptoAPI is not there, SSH cannot connect. The other pages operate |
+| `SHGetSpecialFolderPathA` (libssh, the home folder) | 98, 2000, and 95 and NT 4.0 with the shell of Internet Explorer 4 | found at run time, else `USERPROFILE` |
+| `if_nametoindex` (libssh, IPv6 link-local addresses) | Vista and later | found at run time, else no interface names |
+| `WSAStringToAddressA` (libssh, the address check) | 98, and 95 with Winsock 2 | found at run time, else IPv4 with `inet_addr` of Winsock 1.1 |
+| `gai_strerrorA` of mingw-w64 (it calls `FormatMessageW`) | NT | `ssh/src/gai_strerror.c`, with `FormatMessageA` |
+
+Thus the app imports only DLLs that each Windows 95 has, as before. libssh
+uses Winsock 1.1 (`wsock32`) for its sockets. `getaddrinfo` is the
+`WspiapiGetAddrInfo` of mingw-w64, which uses `gethostbyname` if Winsock 2
+is not there.
 
 | | Telnet and rlogin | SSH | Kept in |
 | --- | --- | --- | --- |
@@ -270,9 +288,9 @@ Windows 95 to Windows 11:
   - `win32-picolibc` (the default): Windows 95, 98, ME, NT 4.0 and later.
     picolibc is the C library, and it is linked into the app. Thus the app
     needs no `msvcrt.dll`, which some installations of Windows 95 do not
-    have. This build has no libssh (`DMODEM_GUI_SSH` is OFF).
-  - `win7`: Windows 7 and later, with libssh (`-DDMODEM_GUI_SSH=ON`). This
-    is the minimum Windows version of dmodemd too.
+    have. This build has libssh too (see "Remote logins", above).
+  - `win7`: Windows 7 and later. This is the minimum Windows version of
+    dmodemd too.
 - CI examines the imports of the Windows 95 build with `check-imports.py`
   of clang-retro, for Windows 9x and for NT 4.0. The build fails if the app
   uses a function that these versions do not have. CI also runs the tests
