@@ -1257,6 +1257,44 @@ static void test_path(void)
 	dmc_path_free(p);
 }
 
+/* ASCII Setup's receive items: an LF after a CR, 7 bits, no wrap */
+static void test_vt_ascii(void)
+{
+	dmc_vt *t = dmc_vt_new(10, 5, 100);
+	const char *s;
+	dmc_vt_set_ascii(t, DMC_VT_ASCII_ADD_LF);
+	CHECK(dmc_vt_get_ascii(t) == DMC_VT_ASCII_ADD_LF);
+	/* a CR alone gets its LF; a CR LF (its LF in the next chunk too)
+	   gets no second one */
+	s = "one\rtwo\r";
+	dmc_vt_feed(t, s, (int)strlen(s));
+	s = "\nthree";
+	dmc_vt_feed(t, s, (int)strlen(s));
+	CHECK_STR(dmc_vt_text(t, 0), "one");
+	CHECK_STR(dmc_vt_text(t, 1), "two");
+	CHECK_STR(dmc_vt_text(t, 2), "three");
+	CHECK(dmc_vt_cursor_row(t) == 2);
+	/* 7 bits: 0xC1 is 'A' */
+	dmc_vt_reset(t);
+	dmc_vt_set_ascii(t, DMC_VT_ASCII_7BIT);
+	s = "\xc1\xe2";
+	dmc_vt_feed(t, s, (int)strlen(s));
+	CHECK_STR(dmc_vt_text(t, 0), "Ab");
+	/* no wrap: the last column written again */
+	dmc_vt_reset(t);
+	dmc_vt_set_ascii(t, DMC_VT_ASCII_NO_WRAP);
+	s = "0123456789XY";
+	dmc_vt_feed(t, s, (int)strlen(s));
+	CHECK_STR(dmc_vt_text(t, 0), "012345678Y");
+	CHECK_STR(dmc_vt_text(t, 1), "");
+	/* and with wrap, as before */
+	dmc_vt_reset(t);
+	dmc_vt_set_ascii(t, 0);
+	dmc_vt_feed(t, s, (int)strlen(s));
+	CHECK_STR(dmc_vt_text(t, 1), "XY");
+	dmc_vt_free(t);
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : ".";
@@ -1271,6 +1309,7 @@ int main(int argc, char **argv)
 	test_vt();
 	test_vt_profiles();
 	test_vt_noise();
+	test_vt_ascii();
 	test_daemon();
 	test_voice();
 	test_voicemail();

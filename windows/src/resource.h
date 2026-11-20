@@ -27,6 +27,7 @@
 #define IDM_CAPSTOP     214
 #define IDM_CAPPRINT    215
 #define IDM_PRNPAUSE    216
+#define IDM_ASCII       217
 
 #define IDC_STATUS      300
 #define IDC_TABS        301
@@ -190,5 +191,15 @@
 #define IDC_X_BAR       1232
 #define IDC_X_RESULT    1233
 #define IDC_X_SKIP      1234
+
+/* ASCII Setup */
+#define IDD_ASCII       1240
+#define IDC_A_SENDLF    1241
+#define IDC_A_ECHO      1242
+#define IDC_A_LINEDELAY 1243
+#define IDC_A_CHARDELAY 1244
+#define IDC_A_ADDLF     1245
+#define IDC_A_7BIT      1246
+#define IDC_A_WRAP      1247
 
 #endif

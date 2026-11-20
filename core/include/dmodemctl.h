@@ -543,6 +543,14 @@ DMC_API int dmc_vt_char_bytes(dmc_vt *t, uint32_t cp, int mods, char *buf,
 /* what Enter sends (0 CR, 1 CR LF, 2 LF) and Backspace (0x08 or 0x7f) */
 DMC_API void dmc_vt_set_enter(dmc_vt *t, int mode);
 DMC_API void dmc_vt_set_backspace(dmc_vt *t, int code);
+/* HyperTerminal's ASCII Setup, for the received data: an LF added after
+   each CR (the LF of a CR LF is not doubled), each byte set to 7 bits,
+   and no wrap at the right margin (the last column is written again) */
+#define DMC_VT_ASCII_ADD_LF 1
+#define DMC_VT_ASCII_7BIT 2
+#define DMC_VT_ASCII_NO_WRAP 4
+DMC_API void dmc_vt_set_ascii(dmc_vt *t, int flags);
+DMC_API int dmc_vt_get_ascii(const dmc_vt *t);
 /* a mouse event, when the remote asked for them: button 0-2, 64 and 65
    the wheel; the bytes to send (0: none) */
 DMC_API int dmc_vt_mouse_wanted(const dmc_vt *t);

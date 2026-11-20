@@ -134,6 +134,21 @@ text into the scrollback.
   The clipboard gets Unicode text and the text of the ANSI code page.
 - Paste to Host (Shift+Insert) types the clipboard text.
 
+`ascii.cpp` has the ASCII Setup dialog (Modem menu). `dmodem.ini` keeps
+the settings in the `[ascii]` section: `send_lf`, `echo`, `line_delay`,
+`char_delay`, `add_lf`, `seven_bit` and `wrap`. The app applies them to
+the two terminals:
+
+- `send_lf` sets Enter to CR LF (`dmc_vt_set_enter`).
+- `echo` shows the characters that you type on the terminal. The app does
+  not show the escape sequences of the keys (for example, the arrow keys).
+- `add_lf`, `seven_bit` and `wrap` go to `dmc_vt_set_ascii`. With
+  `DMC_VT_ASCII_ADD_LF`, the terminal adds an LF after each CR that it
+  receives. When an LF follows the CR, the terminal does not use that LF,
+  thus a CR LF does not give two lines. `DMC_VT_ASCII_7BIT` removes bit 8
+  of each byte. `DMC_VT_ASCII_NO_WRAP` stops the wrap at the right margin:
+  the terminal writes each new character in the last column.
+
 `capture.cpp` has the captures. Each capture is of one line (the modem or
 the Remote login). The capture does not get the bytes of a file transfer.
 
