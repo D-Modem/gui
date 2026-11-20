@@ -18,6 +18,15 @@
 #define IDM_RECEIVE     205
 #define IDM_AUTORECV    206
 #define IDM_XCANCEL     207
+#define IDM_EDCOPY        208
+#define IDM_EDPASTE       209
+#define IDM_SELALL      210
+#define IDM_FPRINT       211
+#define IDM_CAPTURE     212
+#define IDM_CAPPAUSE    213
+#define IDM_CAPSTOP     214
+#define IDM_CAPPRINT    215
+#define IDM_PRNPAUSE    216
 
 #define IDC_STATUS      300
 #define IDC_TABS        301

@@ -22,6 +22,7 @@ libdmodemctl. Thus they operate in the same way.
   graphics, and the font of each machine (the SyncTERM copies of their ROMs,
   LGPL-2.0-or-later: `core/licenses/syncterm-fonts-LGPL-2.0.txt`)
 - **File transfers** (Windows app): send and receive files on the modem line or on a Telnet, rlogin or SSH login. The protocols are the same as the D-Modem app: ZMODEM (with Automatic Receive when the remote side starts sz, rz or kermit -s), YMODEM, XMODEM, XMODEM-1K, Kermit, Intel HEX, Motorola S-records and plain text. Use the Transfer menu, or the Send and Receive buttons of the Terminal page
+- **Copy and capture** (Windows app): select text with the mouse (Shift and the mouse when the remote side uses the mouse), then copy it. Paste to Host, Select All, Capture Text (to a file), Capture to Printer, and Print (the screen or the selection). Text that the remote side sends to its printer port goes to the printer. Use the Edit and Transfer menus, or click the right mouse button on the terminal
 - **Settings**: each modem setting as a native control, from AT!M
 - **Call Stats**: the rate, modulation, error control and line figures of the last call (AT#UD, ATI11)
 - **Line settings**: a SIP account, a USB modem, or a modem that already runs (dmodemd, or a hardware modem such as the MultiTech MT9234MU)

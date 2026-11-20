@@ -119,6 +119,41 @@ to fill the window, by whole pixels where they fit.
 | Linux | `termview.c`: a GtkDrawingArea drawn with Cairo and Pango (the app does not use VTE now) |
 | macOS | `TerminalView.swift`: an NSView drawn with Core Graphics |
 
+### Copy, capture and print (Windows app)
+
+The Windows terminal control (`termview.cpp`) keeps a selection. The
+selection uses the rows of `dmc_vt_cell` (a row below 0 is in the
+scrollback). The selection moves up with its text when new lines push the
+text into the scrollback.
+
+- Drag with the left mouse button to select. Double-click to select a word.
+  When the remote side uses the mouse, hold Shift.
+- Copy (Ctrl+Insert, or the Edit menu, or the menu of the right mouse
+  button) puts the text on the clipboard. The text comes from
+  `dmc_vt_text_range`. The app removes the blanks at the end of each line.
+  The clipboard gets Unicode text and the text of the ANSI code page.
+- Paste to Host (Shift+Insert) types the clipboard text.
+
+`capture.cpp` has the captures. Each capture is of one line (the modem or
+the Remote login). The capture does not get the bytes of a file transfer.
+
+- Capture Text writes the bytes from the line to a file, as they come
+  (with the escape sequences). The app adds the bytes to the end of a file
+  that exists, as HyperTerminal does. `dmodem.ini` keeps the folder in the
+  `[capture]` section.
+- Capture to Printer keeps the text from the line. The app removes the
+  escape sequences and the control characters (but not tabs, line ends and
+  form feeds). When you stop the capture, the app prints the text on the
+  default printer.
+- Print (Modem menu) prints the screen or the selection, with the print
+  dialog.
+- When the remote side prints (`CSI 5 i`, `dmc_vt_printed`), the app prints
+  the text on the default printer after the remote side stops for 3
+  seconds. During Capture to Printer, this text goes into the capture.
+
+The app prints with GDI: Courier New at 10 points, with margins of half an
+inch. The app wraps long lines, and a form feed starts a new page.
+
 ## File transfers
 
 The file transfer protocols are in libdmodemctl (`core/src/xfer*.c`). They

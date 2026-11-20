@@ -199,6 +199,16 @@ static XferLine *line_now()
 	return page_now == PAGE_REMOTE ? &remote_line : &term_line;
 }
 
+/* the terminal of the page shown, for the Edit menu: NULL on a page
+   with none */
+static HWND view_now()
+{
+	if (page_now != PAGE_TERM && page_now != PAGE_REMOTE)
+		return NULL;
+	XferLine *l = line_now();
+	return l->view ? *l->view : NULL;
+}
+
 static void show_page(int i)
 {
 	page_now = i;
@@ -328,6 +338,39 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		case IDM_XCANCEL:
 			xfer_cancel();
 			return 0;
+		case IDM_EDCOPY:
+			if (view_now())
+				termview_copy(view_now());
+			return 0;
+		case IDM_EDPASTE:
+			if (view_now())
+				termview_paste(view_now());
+			return 0;
+		case IDM_SELALL:
+			if (view_now())
+				termview_select_all(view_now());
+			return 0;
+		case IDM_FPRINT:
+			capture_print(line_now());
+			return 0;
+		case IDM_CAPTURE:
+			capture_text_start(line_now());
+			return 0;
+		case IDM_CAPPAUSE:
+			capture_text_pause(line_now(),
+					   capture_text_state(line_now()) == CAPTURE_ON);
+			return 0;
+		case IDM_CAPSTOP:
+			capture_text_stop(line_now());
+			return 0;
+		case IDM_CAPPRINT:
+			capture_printer(line_now(),
+					capture_printer_state(line_now()) == CAPTURE_OFF);
+			return 0;
+		case IDM_PRNPAUSE:
+			capture_printer_pause(line_now(),
+					      capture_printer_state(line_now()) == CAPTURE_ON);
+			return 0;
 		}
 		break;
 	case WM_INITMENUPOPUP: {
@@ -338,6 +381,29 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		EnableMenuItem(m, IDM_XCANCEL, MF_BYCOMMAND | (busy ? MF_ENABLED : MF_GRAYED));
 		CheckMenuItem(m, IDM_AUTORECV, MF_BYCOMMAND |
 			      (xfer_auto() ? MF_CHECKED : MF_UNCHECKED));
+		HWND v = view_now();
+		UINT has_view = v ? MF_ENABLED : MF_GRAYED;
+		EnableMenuItem(m, IDM_EDCOPY, MF_BYCOMMAND |
+			       (v && termview_has_selection(v) ? MF_ENABLED : MF_GRAYED));
+		EnableMenuItem(m, IDM_EDPASTE, MF_BYCOMMAND | has_view);
+		EnableMenuItem(m, IDM_SELALL, MF_BYCOMMAND | has_view);
+		EnableMenuItem(m, IDM_FPRINT, MF_BYCOMMAND | has_view);
+		XferLine *l = line_now();
+		int ct = capture_text_state(l), cp = capture_printer_state(l);
+		EnableMenuItem(m, IDM_CAPTURE, MF_BYCOMMAND |
+			       (ct == CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		EnableMenuItem(m, IDM_CAPPAUSE, MF_BYCOMMAND |
+			       (ct != CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		CheckMenuItem(m, IDM_CAPPAUSE, MF_BYCOMMAND |
+			      (ct == CAPTURE_PAUSED ? MF_CHECKED : MF_UNCHECKED));
+		EnableMenuItem(m, IDM_CAPSTOP, MF_BYCOMMAND |
+			       (ct != CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		CheckMenuItem(m, IDM_CAPPRINT, MF_BYCOMMAND |
+			      (cp != CAPTURE_OFF ? MF_CHECKED : MF_UNCHECKED));
+		EnableMenuItem(m, IDM_PRNPAUSE, MF_BYCOMMAND |
+			       (cp != CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		CheckMenuItem(m, IDM_PRNPAUSE, MF_BYCOMMAND |
+			      (cp == CAPTURE_PAUSED ? MF_CHECKED : MF_UNCHECKED));
 		break;
 	}
 	case WM_TIMER:
@@ -346,6 +412,7 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		else if (wp == TIMER_REMOTE)
 			remote_tick();
 		xfer_pump();
+		capture_tick();
 		return 0;
 	case WM_APP_XFER:
 		xfer_message(wp, lp);
@@ -364,6 +431,7 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		KillTimer(w, TIMER_VOICE);
 		audio_stop();
 		remote_stop();
+		capture_close_all();
 		if (link_running())
 			link_stop();
 		PostQuitMessage(0);
