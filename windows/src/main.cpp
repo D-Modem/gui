@@ -314,6 +314,9 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 				app_state();
 			}
 			return 0;
+		case IDM_ASCII:
+			ascii_dialog(w);
+			return 0;
 		case IDM_START:
 			if (link_running())
 				link_stop();

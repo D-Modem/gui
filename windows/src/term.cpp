@@ -126,6 +126,7 @@ HWND term_page_new(HWND parent)
 	termview_set_printer(term, capture_printed, &term_line);
 	/* the modem's configurator wants Backspace as BS */
 	termview_set_backspace(term, 0x08);
+	ascii_apply(term);
 	char path[MAX_PATH], v[64];
 	ini(path, sizeof(path));
 	GetPrivateProfileString("terminal", "type", "xterm", v, sizeof(v), path);

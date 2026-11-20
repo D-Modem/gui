@@ -52,6 +52,7 @@ struct TermView {
 	int ar, ac, er, ec;
 	TermPrintedFn pfn;      /* what the remote prints goes to it */
 	void *pctx;
+	bool echo;              /* ASCII Setup: what is typed also shown */
 	HFONT fonts[4];         /* regular, bold, italic, bold italic */
 	/* a row being drawn */
 	HDC row_dc;
@@ -885,12 +886,21 @@ static int mods_now()
 	return m;
 }
 
+/* what is typed, on the screen too when the echo is on (not a key's
+   escape sequence: an arrow key does not move the cursor here) */
+static void echo_typed(TermView *t, const char *b, int n)
+{
+	if (t->echo && n > 0 && b[0] != 0x1b)
+		termview_feed(t->w, b, n);
+}
+
 static void send_key(TermView *t, int key, int mods)
 {
 	char b[64];
 	int n = dmc_vt_key_mods(t->vt, key, mods, b, sizeof(b));
 	to_bottom(t);
 	send_text(t, b, n);
+	echo_typed(t, b, n);
 }
 
 /* a character typed, as the terminal sends it */
@@ -899,6 +909,7 @@ static void send_cp(TermView *t, unsigned long cp, int mods)
 	char b[64];
 	int n = dmc_vt_char_bytes(t->vt, (uint32_t)cp, mods, b, sizeof(b));
 	send_text(t, b, n);
+	echo_typed(t, b, n);
 }
 
 /* a character in the ANSI code page as Unicode */
@@ -1346,6 +1357,16 @@ void termview_set_backspace(HWND w, char b)
 	TermView *t = of(w);
 	if (t)
 		dmc_vt_set_backspace(t->vt, (unsigned char)b);
+}
+
+void termview_set_ascii(HWND w, int flags, int enter, bool echo)
+{
+	TermView *t = of(w);
+	if (!t)
+		return;
+	dmc_vt_set_ascii(t->vt, flags);
+	dmc_vt_set_enter(t->vt, enter);
+	t->echo = echo;
 }
 
 void termview_set_profile(HWND w, const char *id)

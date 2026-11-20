@@ -183,6 +183,9 @@ void termview_reset(HWND w);
 void termview_size(HWND w, int *cols, int *rows);
 /* what Backspace sends (DEL unless set) */
 void termview_set_backspace(HWND w, char b);
+/* ASCII Setup: the received data's DMC_VT_ASCII_* flags, what Enter sends
+   (0 CR, 1 CR LF), and the local echo */
+void termview_set_ascii(HWND w, int flags, int enter, bool echo);
 /* the selection (drag with the left button, double-click a word): to
    the clipboard; the clipboard's text typed; all the lines selected */
 bool termview_has_selection(HWND w);
@@ -229,6 +232,21 @@ bool xfer_auto();
 void xfer_set_auto(bool on);
 /* the transfer's dialog's keys (IsDialogMessage) */
 bool xfer_dialog_key(MSG *m);
+
+/* ascii.cpp: ASCII Setup ([ascii] in dmodem.ini), for both terminals */
+struct AsciiSetup {
+	bool send_lf;           /* Enter sends CR LF */
+	bool echo;              /* what is typed shown here too */
+	int line_delay;         /* a text file sent: ms after each line */
+	int char_delay;         /* and after each character */
+	bool add_lf;            /* an LF added after each CR received */
+	bool seven_bit;         /* the data received as 7-bit ASCII */
+	bool wrap;              /* lines wrap at the right margin */
+};
+void ascii_load(AsciiSetup *a);
+/* the settings to a terminal control */
+void ascii_apply(HWND view);
+void ascii_dialog(HWND parent);
 
 /* capture.cpp: Capture Text, Capture to Printer and Print, for a line */
 enum { CAPTURE_OFF, CAPTURE_ON, CAPTURE_PAUSED };

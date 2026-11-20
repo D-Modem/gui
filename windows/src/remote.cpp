@@ -1403,6 +1403,7 @@ HWND remote_page_new(HWND parent)
 #endif
 	view = termview_new(page, IDC_R_TERM, typed, NULL);
 	termview_set_printer(view, capture_printed, &remote_line);
+	ascii_apply(view);
 	status_txt = make_child("STATIC", "Not connected", SS_LEFTNOWORDWRAP,
 				page, IDC_R_STATUS);
 	make_child("STATIC", "&Terminal:", SS_RIGHT, page, IDC_R_TYPELABEL);
