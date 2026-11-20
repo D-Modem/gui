@@ -36,6 +36,12 @@
 
 #ifdef _WIN32
 
+/* (picolibc, the C library of the Windows 95 build, has no _stricmp) */
+#ifdef __PICOLIBC__
+#include <strings.h>
+#define _stricmp strcasecmp
+#endif
+
 /* Pageant's: its window, the WM_COPYDATA it answers, its longest message */
 #define PAGEANT_ID 0x804e50baUL
 #define AGENT_MAX 262144

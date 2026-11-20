@@ -13,7 +13,7 @@
  * and asks Pageant (or else OpenSSH's own agent) for its keys; or logs
  * in by the agent alone, or by a key file: OpenSSH's, PEM or PuTTY's
  * .ppk, which can also be imported into .ssh in OpenSSH's form.
- * The Windows 95 build (clang-retro, win32-picolibc: no libssh) runs Windows' own
+ * A build with no libssh (-DDMODEM_GUI_SSH=OFF) runs Windows' own
  * ssh.exe in a pseudo console (ConPTY) instead, when it finds one
  * (Windows 10 1809 and later): the ConPTY calls are looked up at run
  * time and its output read from a timer.

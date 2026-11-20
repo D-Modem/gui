@@ -9,14 +9,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(DMODEM_GUI_LINUX "Build the GTK 4 app (linux/)" ON)
-# (clang-retro, cmake/clang-retro.cmake: the Windows 95 build, which has
-# no libssh, as mbedTLS and libssh need Windows Vista)
-if(CLANG_DOS)
-  set(_ssh_default OFF)
-else()
-  set(_ssh_default ON)
-endif()
-option(DMODEM_GUI_SSH "Build libdmodemssh (libssh) for the Remote page" ${_ssh_default})
+option(DMODEM_GUI_SSH "Build libdmodemssh (libssh) for the Remote page" ON)
 
 add_subdirectory(core)
 enable_testing()

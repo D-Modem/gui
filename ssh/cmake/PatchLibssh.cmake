@@ -47,3 +47,106 @@ dmodem_patch(src/channels.c
     /* D-Modem: bound port, as the success packet had it */
     *bound_port = session->dmodem_bound_port;
   }")
+
+# Windows before Vista (the Windows 95 build of clang-retro): misc.c's
+# SHGetSpecialFolderPathA (95 and NT 4.0 have it only with the shell of
+# Internet Explorer 4), if_nametoindex (Vista) and WSAStringToAddressA
+# (Winsock 2, which the first Windows 95 does not have) found at run
+# time, so that the app also starts where they are not there.
+dmodem_patch(src/misc.c
+  "#include <netioapi.h>
+"
+  "#include <netioapi.h>
+
+/* D-Modem: functions found at run time before Vista */
+#if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0600
+static FARPROC dmodem_proc(const char *dll, const char *name)
+{
+    HMODULE lib = GetModuleHandleA(dll);
+
+    if (lib == NULL) {
+        lib = LoadLibraryA(dll);
+    }
+    return lib != NULL ? GetProcAddress(lib, name) : NULL;
+}
+
+/* (no SHGetSpecialFolderPathA: USERPROFILE, which NT 4.0 has) */
+static BOOL dmodem_profile_dir(char *dir)
+{
+    typedef BOOL (WINAPI *fn_t)(HWND, LPSTR, int, BOOL);
+    fn_t fn = (fn_t) (void (*)(void))
+        dmodem_proc(\"shell32.dll\", \"SHGetSpecialFolderPathA\");
+    const char *env;
+
+    if (fn != NULL && fn(NULL, dir, CSIDL_PROFILE, TRUE)) {
+        return TRUE;
+    }
+    env = getenv(\"USERPROFILE\");
+    if (env != NULL && *env != '\\0' && strlen(env) < PATH_MAX) {
+        strcpy(dir, env);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* (no if_nametoindex: no interface names) */
+static ULONG dmodem_if_nametoindex(const char *name)
+{
+    typedef ULONG (WINAPI *fn_t)(PCSTR);
+    fn_t fn = (fn_t) (void (*)(void))
+        dmodem_proc(\"iphlpapi.dll\", \"if_nametoindex\");
+
+    return fn != NULL ? fn(name) : 0;
+}
+
+/* (no Winsock 2: IPv4 alone, by inet_addr of Winsock 1.1) */
+static INT dmodem_WSAStringToAddressA(LPSTR str, INT family,
+                                      LPWSAPROTOCOL_INFOA info,
+                                      LPSOCKADDR addr, LPINT len)
+{
+    typedef INT (WSAAPI *fn_t)(LPSTR, INT, LPWSAPROTOCOL_INFOA, LPSOCKADDR,
+                               LPINT);
+    fn_t fn = (fn_t) (void (*)(void))
+        dmodem_proc(\"ws2_32.dll\", \"WSAStringToAddressA\");
+    struct sockaddr_in *sin = (struct sockaddr_in *) addr;
+    unsigned long a;
+
+    if (fn != NULL) {
+        return fn(str, family, info, addr, len);
+    }
+    if (family != AF_INET || *len < (INT) sizeof(*sin)) {
+        return SOCKET_ERROR;
+    }
+    a = inet_addr(str);
+    if (a == INADDR_NONE && strcmp(str, \"255.255.255.255\") != 0) {
+        return SOCKET_ERROR;
+    }
+    memset(sin, 0, sizeof(*sin));
+    sin->sin_family = AF_INET;
+    sin->sin_addr.s_addr = a;
+    *len = sizeof(*sin);
+    return 0;
+}
+#else
+#define dmodem_profile_dir(dir) SHGetSpecialFolderPathA(NULL, (dir), CSIDL_PROFILE, TRUE)
+#define dmodem_if_nametoindex if_nametoindex
+#define dmodem_WSAStringToAddressA WSAStringToAddressA
+#endif
+")
+dmodem_patch(src/misc.c
+  "  if (SHGetSpecialFolderPathA(NULL, tmp, CSIDL_PROFILE, TRUE)) {"
+  "  if (dmodem_profile_dir(tmp)) {")
+dmodem_patch(src/misc.c
+  "rc = if_nametoindex(network_interface + 1);"
+  "rc = dmodem_if_nametoindex(network_interface + 1);")
+dmodem_patch(src/misc.c
+  "rc = WSAStringToAddressA((LPSTR) "
+  "rc = dmodem_WSAStringToAddressA((LPSTR) ")
+# (the other ssh_is_ipaddr, for systems other than Windows, keeps its own)
+dmodem_patch(src/misc.c
+  "#else /* _WIN32 */
+"
+  "#else /* _WIN32 */
+
+#define dmodem_if_nametoindex if_nametoindex /* D-Modem */
+")

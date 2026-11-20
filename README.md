@@ -14,7 +14,7 @@ libdmodemctl. Thus they operate in the same way.
 - **Phone**: voice calls through the sound card (dial, answer, keypad), and an
   answering machine that takes messages on this computer when you enable it (disabled by default)
 - **Terminal**: the AT console, and the setup screens of the modem (AT!CF, AT!CT)
-- **Remote**: log in to a server by SSH, Telnet or rlogin, in a separate terminal. SSH is built in, on libssh: it uses the keys, agent, config and known hosts of OpenSSH. It can use or import the `.ppk` keys of PuTTY. It uses Pageant on Windows, and an ssh-agent on Linux and macOS
+- **Remote**: log in to a server by SSH, Telnet or rlogin, in a separate terminal. SSH is built in, on libssh: it uses the keys, agent, config and known hosts of OpenSSH. It can use or import the `.ppk` keys of PuTTY. It uses Pageant on Windows, and an ssh-agent on Linux and macOS. On Windows 95, SSH needs CryptoAPI (Windows 95 OSR2, or Internet Explorer 3 or later)
 - **Terminal types**: the two terminals use the emulator of the D-Modem app, ported to C:
   xterm, the VT52 to VT525 of DEC, ANSI-BBS (with Avatar, RIPscrip and Amiga ANSI),
   the PETSCII of the Commodores, the ATASCII of the Atari 8-bit and the ST, Viewdata,
@@ -48,15 +48,15 @@ package (`clang-dos-linux-x86_64.tar.xz` or `clang-dos-windows-x86_64.zip`,
 from the [nightly release](https://github.com/clang-retro/dos-sdk/releases/tag/nightly)).
 Then set `CLANG_DOS` to the directory of the package:
 
-    # Windows 95, 98, ME, NT 4.0 and later (no SSH, no C runtime DLL)
+    # Windows 95, 98, ME, NT 4.0 and later (no C runtime DLL)
     cmake -S . -B build/win9x -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake
     cmake --build build/win9x
 
-    # Windows 7 and later, with SSH
+    # Windows 7 and later
     cmake -S . -B build/win7 -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake \
-        -DCLANG_RETRO_CONFIG=win7 -DDMODEM_GUI_SSH=ON
+        -DCLANG_RETRO_CONFIG=win7
     cmake --build build/win7
 
 The app is in `windows/dmodem.exe` of the build directory. MSVC
@@ -66,7 +66,8 @@ macOS: first use `cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -
 (this builds libssh, for SSH). Then use `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
 
 The first CMake build downloads libssh and mbedTLS for SSH. This always
-occurs on Windows (when SSH is on) and macOS. On Linux, it occurs if the libssh of the system
+occurs on Windows and macOS. Use `-DDMODEM_GUI_SSH=OFF` for a build with
+no SSH. On Linux, it occurs if the libssh of the system
 is older than 0.11.
 
 The Settings page needs a dmodemd with AT!M (the main branch of D-Modem

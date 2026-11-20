@@ -68,10 +68,21 @@ set(_ssh_args)
 if(ANDROID)
   list(APPEND _ssh_args -DCMAKE_C_FLAGS=-DS_IWRITE=S_IWUSR)
 endif()
-# (clang-retro's clang, newer than MinGW's GCC, makes an error of
-# src/threads/mbedtls.c's casts of libssh's mutex callbacks)
+# clang-retro (cmake/clang-retro.cmake): its clang, newer than MinGW's
+# GCC, makes an error of src/threads/mbedtls.c's casts of libssh's mutex
+# callbacks.  With picolibc (the Windows 95 build): strdup and
+# explicit_bzero need _DEFAULT_SOURCE, and strerror_s needs
+# __STDC_WANT_LIB_EXT1__; it has no <direct.h> (picolibc/direct.h here);
+# its <io.h> and <termios.h> are not those that libssh expects on
+# Windows, and its <arpa/inet.h> conflicts with <winsock2.h>, so libssh
+# uses none of them.
 if(CLANG_DOS)
-  list(APPEND _ssh_args -DCMAKE_C_FLAGS=-Wno-error=incompatible-function-pointer-types)
+  set(_ssh_cflags -Wno-error=incompatible-function-pointer-types)
+  if(CLANG_RETRO_CONFIG MATCHES "picolibc")
+    string(APPEND _ssh_cflags " -D_DEFAULT_SOURCE -D__STDC_WANT_LIB_EXT1__=1 -I${CMAKE_CURRENT_LIST_DIR}/picolibc")
+    list(APPEND _ssh_args -DHAVE_ARPA_INET_H= -DHAVE_IO_H= -DHAVE_TERMIOS_H=)
+  endif()
+  list(APPEND _ssh_args "-DCMAKE_C_FLAGS=${_ssh_cflags}")
 endif()
 
 # (WITH_SERVER: libssh runs a client's callbacks for the channels the
