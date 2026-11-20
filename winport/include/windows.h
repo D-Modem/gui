@@ -21,6 +21,11 @@ extern "C" {
    calls it) */
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int);
 
+/* (newer layers have the serial ports, the pipes, the environment, the
+   user and Beep themselves: CBR_115200 is theirs then) */
+#ifdef CBR_115200
+#define DMODEM_WINPORT_LAYER_KERNEL 1
+#else
 /* serial ports */
 #define CBR_115200 115200
 #define NOPARITY 0
@@ -85,6 +90,7 @@ BOOL WINAPI GetUserNameA(LPSTR, LPDWORD);
 #define GetUserName GetUserNameA
 #endif
 BOOL WINAPI Beep(DWORD, DWORD);
+#endif
 
 #ifdef __cplusplus
 }

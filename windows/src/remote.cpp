@@ -162,9 +162,18 @@ static void controls()
 	}
 }
 
+static void raw_write(const char *data, int n);
+static int line_room();
+static bool line_open();
+
+/* the login's line, for the file transfers */
+XferLine remote_line = { "the remote server", &view, raw_write, line_room,
+			 line_open };
+
 static void show(const char *s, int n)
 {
-	termview_feed(view, s, n);
+	if (!xfer_take(&remote_line, s, n))
+		termview_feed(view, s, n);
 }
 
 static void show_line(const char *s)
@@ -263,6 +272,36 @@ static void pump()
 static void typed(const char *data, int n, void *ctx)
 {
 	(void)ctx;
+	/* (nothing typed gets into a transfer's packets) */
+	if (xfer_busy(&remote_line))
+		return;
+	raw_write(data, n);
+}
+
+static bool line_open()
+{
+	return running != 0;
+}
+
+/* (Telnet and rlogin: what waits for the socket; SSH: its own) */
+static int line_room()
+{
+	if (!running)
+		return 0;
+	int kept = pending_n;
+#ifdef DMODEM_HAVE_SSH
+	if (!net && ssh && shell > 0) {
+		kept = dmc_ssh_write(ssh_conn(), shell, NULL, 0);
+		if (kept < 0)
+			return 0;
+	}
+#endif
+	int room = 32 * 1024 - kept;
+	return room > 0 ? room : 0;
+}
+
+static void raw_write(const char *data, int n)
+{
 	if (!running)
 		return;
 	if (net && sock_open) {

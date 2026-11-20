@@ -23,7 +23,12 @@ set(DMODEMCTL_SOURCES
   src/daemon.c
   src/voice.c
   src/net.c
-  src/util.c)
+  src/util.c
+  src/xfer.c
+  src/xfer_hex.c
+  src/xfer_kermit.c
+  src/xfer_xy.c
+  src/xfer_z.c)
 
 if(DMODEMCTL_SHARED)
   add_library(dmodemctl SHARED ${DMODEMCTL_SOURCES})
@@ -39,5 +44,6 @@ else()
   target_compile_options(dmodemctl PRIVATE -Wall -Wextra -Wshadow)
 endif()
 if(UNIX)
-  target_link_libraries(dmodemctl PRIVATE m)
+  find_package(Threads REQUIRED)
+  target_link_libraries(dmodemctl PRIVATE m Threads::Threads)
 endif()

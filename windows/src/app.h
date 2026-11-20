@@ -124,6 +124,10 @@ void link_pump();
 /* socket messages (WM_APP_SOCKET) */
 void link_socket(WPARAM w, LPARAM l);
 void link_type(const char *data, int n);
+/* bytes to the far end as they are (a file transfer's) */
+void link_send(const char *data, int n);
+/* how many more bytes link_send can take now */
+int link_room();
 int link_command(const char *cmd, int flags, ResponseFn fn, void *data);
 /* fn gets the response of the session's command tag (dmc_voice_dial()'s
    and the like) */
@@ -136,6 +140,9 @@ void link_wait(int tag, ResponseFn fn, void *data);
 #define TIMER_REMOTE 3
 /* an event of the Remote page's SSH connection, from its thread */
 #define WM_APP_SSH (WM_APP + 3)
+/* a file transfer has bytes for its line, or ended (wParam 0); the
+   remote's rz waits for files (wParam 1, lParam its XferLine) */
+#define WM_APP_XFER (WM_APP + 4)
 
 /* main.cpp */
 void app_log(const char *line);
@@ -182,6 +189,35 @@ const char *termview_profile(HWND w);
 /* a combo box of the kinds of terminal, id chosen; the one chosen */
 void term_types_fill(HWND combo, const char *id);
 const char *term_types_chosen(HWND combo);
+
+/* xfer.cpp: file transfers on a terminal's line (the Terminal page's
+   modem, the Remote page's login) */
+struct XferLine {
+	const char *what;               /* "the modem", for messages */
+	HWND *view;                     /* its terminal control */
+	void (*write)(const char *data, int n);  /* to the far end, as they are */
+	int (*room)();                  /* how much write can take now */
+	bool (*open)();                 /* a far end to send to */
+};
+extern XferLine term_line, remote_line;
+/* what came on the line: a transfer's (true), else the terminal's; the
+   remote's own starts (its sz, kermit -s, rz) noticed */
+bool xfer_take(XferLine *l, const char *data, int n);
+/* the transfer's bytes to its line, its dialog brought up to date */
+void xfer_pump();
+/* WM_APP_XFER */
+void xfer_message(WPARAM w, LPARAM l);
+/* the Send File and Receive File dialogs (protocol -1: the last one) */
+void xfer_send_dialog(XferLine *l, int protocol);
+void xfer_receive_dialog(XferLine *l);
+void xfer_cancel();
+bool xfer_running();
+/* a transfer runs on l: what's typed doesn't go */
+bool xfer_busy(XferLine *l);
+bool xfer_auto();
+void xfer_set_auto(bool on);
+/* the transfer's dialog's keys (IsDialogMessage) */
+bool xfer_dialog_key(MSG *m);
 
 /* remote.cpp: the Remote page, a login by SSH, Telnet or rlogin */
 HWND remote_page_new(HWND parent);

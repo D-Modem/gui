@@ -948,9 +948,21 @@ int dmc_poll(dmc_session *s, int64_t now_ms)
 	return (int)next;
 }
 
+void dmc_send(dmc_session *s, const char *data, int n)
+{
+	if (s->state == DMC_CLOSED || s->voice || n <= 0)
+		return;
+	buf_add(&s->out, data, n);
+}
+
 int dmc_output(dmc_session *s, char *buf, int max)
 {
 	return buf_take(&s->out, buf, max);
+}
+
+int dmc_output_waiting(const dmc_session *s)
+{
+	return s->out.n;
 }
 
 int dmc_terminal(dmc_session *s, char *buf, int max)
