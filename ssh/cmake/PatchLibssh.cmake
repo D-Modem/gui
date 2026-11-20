@@ -142,3 +142,11 @@ dmodem_patch(src/misc.c
 dmodem_patch(src/misc.c
   "rc = WSAStringToAddressA((LPSTR) "
   "rc = dmodem_WSAStringToAddressA((LPSTR) ")
+# (the other ssh_is_ipaddr, for systems other than Windows, keeps its own)
+dmodem_patch(src/misc.c
+  "#else /* _WIN32 */
+"
+  "#else /* _WIN32 */
+
+#define dmodem_if_nametoindex if_nametoindex /* D-Modem */
+")
