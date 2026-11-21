@@ -28,7 +28,8 @@ set(DMODEMCTL_SOURCES
   src/xfer_hex.c
   src/xfer_kermit.c
   src/xfer_xy.c
-  src/xfer_z.c)
+  src/xfer_z.c
+  src/zstd_codec.c)
 
 if(DMODEMCTL_SHARED)
   add_library(dmodemctl SHARED ${DMODEMCTL_SOURCES})

@@ -8,11 +8,21 @@
  *            (ZCRCG) with the receiver's ZRPOS putting the sender back
  *            where the line went wrong, files offered by name, size and
  *            time, and ended with ZFIN and "OO".
+ *
+ *            With zstd (docs/zmodem-zstd.md of D-Modem): the receiver
+ *            tells it can decompress by CANZSTD in its ZRINIT's ZF1, and
+ *            the sender asks for it file by file with ZTZSTD in the
+ *            ZFILE's ZF2.  The file then goes as independent zstd frames,
+ *            one for each chunk of the file, and every position on the
+ *            line is still an offset in the file: a ZDATA starts a frame,
+ *            and the receiver writes (and acknowledges) only whole
+ *            frames, so ZRPOS and crash recovery work as without zstd.
  */
 #include <stdlib.h>
 #include <string.h>
 
 #include "xfer.h"
+#include "zstd_codec.h"
 
 #define ZPAD '*'
 #define ZDLE 0x18
@@ -39,6 +49,17 @@ enum {
 #define CANFC32 0x20
 #define ZCBIN 1
 #define ZCRECOV 3                       /* ZF0: continue a part of the file */
+#define CANZSTD 0x40                    /* ZRINIT ZF1: zstd frames taken */
+#define ZTZSTD 8                        /* ZFILE ZF2: the file in zstd frames */
+
+/* zstd: the file's bytes in each frame the sender makes (halved after a
+   ZRPOS, to ZSTD_MIN_CHUNK; doubled after an ACK), and the most a frame
+   may hold */
+#define ZSTD_CHUNK (64 * 1024)
+#define ZSTD_MIN_CHUNK 1024
+#define ZSTD_MAX (256 * 1024)
+/* the receiver's frames not complete yet, at the most */
+#define ZSTD_HELD (ZSTD_MAX + ZSTD_MAX / 8 + 8200 + 64)
 
 #define BLOCK 1024
 /* bytes between the sender's ZCRCQs (its window) */
@@ -73,6 +94,13 @@ struct z {
 	unsigned char data[8200];       /* a data subpacket that came */
 	unsigned char out[2 * 8200 + 32];
 	int on;
+	int zstd;                       /* zstd frames: we take them (receiving),
+					   the receiver takes them (sending) */
+	unsigned char *held;            /* the frame not complete yet */
+	int nheld;
+	unsigned char *frame;           /* the frame being sent */
+	unsigned char *chunk;           /* the file's bytes in it */
+	int chunk_size;                 /* how many of them, at the most */
 };
 
 static long long hpos(const struct header *h)
@@ -90,11 +118,14 @@ static struct header hdr_pos(int type, long long pos)
 	return h;
 }
 
-static struct header hdr_flags(int type, int f0)
+/* a header of flags: ZF0 (p[3]), ZF1 (p[2]) and ZF2 (p[1]) */
+static struct header hdr_flags(int type, int f0, int f1, int f2)
 {
 	struct header h;
 	h.type = type;
-	h.p[0] = h.p[1] = h.p[2] = 0;
+	h.p[0] = 0;
+	h.p[1] = (unsigned char)f2;
+	h.p[2] = (unsigned char)f1;
 	h.p[3] = (unsigned char)f0;
 	return h;
 }
@@ -442,6 +473,17 @@ static int read_data_or_fail(struct z *z, int max, int *end)
 	return n;
 }
 
+static void z_free(void *p)
+{
+	struct z *z = (struct z *)p;
+	if (z) {
+		free(z->held);
+		free(z->frame);
+		free(z->chunk);
+		free(z);
+	}
+}
+
 static struct z *z_new(dmc_xfer *x)
 {
 	struct z *z = (struct z *)calloc(1, sizeof(*z));
@@ -449,7 +491,104 @@ static struct z *z_new(dmc_xfer *x)
 		xfer_fail(x, "out of memory");
 	z->x = x;
 	x->proto = z;
+	x->proto_free = z_free;
 	return z;
+}
+
+/* ------------------------------------------------------------------ */
+/* zstd */
+
+/* the extensions of files that zstd does not make smaller: sent as they
+   are */
+static const char *const precompressed[] = {
+	"zip", "gz", "tgz", "bz2", "xz", "zst", "lz", "lzma", "7z", "rar",
+	"arj", "arc", "lzh", "lha", "zoo", "pak", "sqz", "cab", "z", "jpg",
+	"jpeg", "png", "gif", "webp", "mp3", "ogg", "opus", "flac", "mp4",
+	"mkv", "avi", "mov", "webm", "jar", "apk", "docx", "xlsx", "pptx",
+	"odt", "epub", "pdf"
+};
+
+static int worth_compressing(const char *name)
+{
+	const char *dot = NULL;
+	for (const char *p = name; *p; p++)
+		if (*p == '.')
+			dot = p + 1;
+		else if (*p == '/' || *p == '\\')
+			dot = NULL;
+	if (!dot)
+		return 1;
+	for (size_t i = 0; i < sizeof(precompressed) / sizeof(precompressed[0]); i++)
+		if (same_ci(dot, precompressed[i]))
+			return 0;
+	return 1;
+}
+
+/* whether the start of the open file gets at least 5% smaller with zstd
+   (and the file back at its start) */
+static int sample_compresses(struct z *z)
+{
+	dmc_xfer *x = z->x;
+	unsigned char *buf = (unsigned char *)malloc(ZSTD_CHUNK);
+	int n = 0, fn = 0, yes = 1;
+	if (!buf)
+		return 0;
+	while (n < ZSTD_CHUNK) {
+		int r = xfer_src_read(x, buf + n, ZSTD_CHUNK - n);
+		if (r <= 0)
+			break;
+		n += r;
+	}
+	if (fseek(x->src, 0, SEEK_SET) != 0) {
+		free(buf);
+		xfer_fail(x, "can't go back to the start of the file");
+	}
+	unsigned char *f = zc_encode(buf, n, &fn);
+	if (!f || n == 0 || (long long)fn * 100 > (long long)n * 95)
+		yes = 0;
+	free(f);
+	free(buf);
+	return yes;
+}
+
+/* the received data with the frames it completes decompressed and
+   written (*wrote the file's bytes): -1 when a frame is bad, the frames
+   held are too many, or a subpacket that ends a segment (ZCRCW, ZCRCE)
+   ends in the middle of a frame; else 0 */
+static int unpack(struct z *z, const unsigned char *data, int n, int end,
+		  long long *wrote)
+{
+	*wrote = 0;
+	if (!z->held) {
+		z->held = (unsigned char *)malloc(ZSTD_HELD);
+		if (!z->held)
+			xfer_fail(z->x, "out of memory");
+	}
+	if (z->nheld + n > ZSTD_HELD)
+		return -1;
+	memcpy(z->held + z->nheld, data, (size_t)n);
+	z->nheld += n;
+	int at = 0;
+	for (;;) {
+		int len = zc_frame_len(z->held + at, z->nheld - at, ZSTD_MAX);
+		if (len < 0)
+			return -1;
+		if (len == 0)
+			break;
+		int got;
+		unsigned char *c = zc_decode(z->held + at, len, ZSTD_MAX, &got, NULL);
+		if (!c)
+			return -1;
+		xfer_dst_write(z->x, c, got);
+		free(c);
+		*wrote += got;
+		at += len;
+	}
+	memmove(z->held, z->held + at, (size_t)(z->nheld - at));
+	z->nheld -= at;
+	if (z->nheld > 0 && (end == ZCRCW || end == ZCRCE))
+		return -1;
+	return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -457,12 +596,14 @@ static struct z *z_new(dmc_xfer *x)
 
 static void zrinit(struct z *z)
 {
-	send_hex(z, hdr_flags(ZRINIT, CANFDX | CANOVIO | CANFC32));
+	send_hex(z, hdr_flags(ZRINIT, CANFDX | CANOVIO | CANFC32,
+			      z->zstd ? CANZSTD : 0, 0));
 }
 
-/* a file's data after its ZFILE (its info, len bytes; f0 its ZF0): 1
-   received, 0 skipped */
-static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
+/* a file's data after its ZFILE (its info, len bytes; f0 and f2 its ZF0
+   and ZF2): 1 received, 0 skipped */
+static int receive_file(struct z *z, const unsigned char *info, int len, int f0,
+			int f2)
 {
 	dmc_xfer *x = z->x;
 	char name[XFER_NAME], meta[256];
@@ -484,6 +625,13 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
 	if (*e == ' ')
 		mtime = strtoll(e + 1, NULL, 8);
 	long long pos = 0, rpos_at = 0;
+	/* zstd frames: only if we said we take them */
+	int zstd = f2 == ZTZSTD;
+	if (zstd && !z->zstd) {
+		send_hex(z, hdr_pos(ZSKIP, 0));
+		return 0;
+	}
+	z->nheld = 0;
 	/* crash recovery (ours, or the sender's ZCRECOV): from the end of a
 	   part that is in the folder */
 	if (x->opt.resume || f0 == ZCRECOV) {
@@ -498,12 +646,14 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
 	}
 	xfer_file_start(x, x->dst_name, size);
 	xfer_bytes(x, pos);
-	int errors = 0, ok = 0;
+	xfer_zstd(x, zstd);
+	int errors = 0, ok = 0, quiet = 0;
 	struct header h;
 	/* (until the sender has had time to hear our ZRPOS, what still comes
 	   of its stream from before isn't an error, and isn't asked for
 	   again: each ZRPOS a restart of its own) */
-#define RPOS() (send_hex(z, hdr_pos(ZRPOS, pos)), rpos_at = xfer_now())
+#define RPOS() (z->nheld = 0, send_hex(z, hdr_pos(ZRPOS, pos)), \
+		rpos_at = xfer_now())
 #define WAITING() (xfer_now() - rpos_at < RPOS_GRACE_MS)
 	RPOS();
 	for (;;) {
@@ -517,7 +667,9 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
 		/* (8 KB of a stream with no header in it: ours lost; asked
 		   for again) */
 		int st = read_header(z, 8 * 1024, 1, &h);
-		if (st == H_QUIET)
+		/* (quiet: what the sender waits on lost, a ZDATA's end or a
+		   ZEOF; asked for again, as for an error, a few times) */
+		if (st == H_QUIET && ++quiet > 3)
 			xfer_fail(x, "the other side went quiet");
 		if (st != H_OK) {
 			if (WAITING())
@@ -527,15 +679,31 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
 			RPOS();
 			continue;
 		}
+		quiet = 0;
 		if (h.type == ZDATA) {
 			if (hpos(&h) != pos) {
 				/* not where we are: back to it (not an error) */
 				RPOS();
 				continue;
 			}
+			/* (a ZDATA starts a frame) */
+			z->nheld = 0;
 			for (;;) {
 				int end;
-				int n = read_data_or_fail(z, 8192, &end);
+				long long wrote = 0;
+				/* (the line quiet in the middle of a subpacket: its
+				   end damaged, and the sender waits for an ACK of
+				   it; an error, asked for again) */
+				int n = read_data(z, 8192, &end);
+				if (n == -2 && ++quiet > 3)
+					xfer_fail(x, "the other side went quiet");
+				if (n >= 0 && zstd) {
+					/* (the whole frames written, even when
+					   one after them is bad) */
+					if (unpack(z, z->data, n, end, &wrote) < 0)
+						n = -1;
+					pos += wrote;
+				}
 				if (n < 0) {
 					if (++errors > MAX_ERRORS)
 						xfer_fail(x, "too many errors on the line");
@@ -544,9 +712,12 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
 					RPOS();
 					break;
 				}
-				xfer_dst_write(x, z->data, n);
-				pos += n;
+				if (!zstd) {
+					xfer_dst_write(x, z->data, n);
+					pos += n;
+				}
 				errors = 0;
+				quiet = 0;
 				xfer_bytes(x, pos);
 				if (end == ZCRCW) {
 					send_hex(z, hdr_pos(ZACK, pos));
@@ -584,6 +755,7 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0)
 	}
 #undef RPOS
 #undef WAITING
+	xfer_zstd(x, 0);
 	if (!ok) {
 		xfer_abandon(x);
 		return 0;
@@ -597,6 +769,7 @@ void z_receive(dmc_xfer *x)
 	struct z *z = z_new(x);
 	unsigned char info[4100];
 	int errors = 0;
+	z->zstd = !x->opt.no_zstd;
 	zrinit(z);
 	long long last_header = xfer_now();
 	for (;;) {
@@ -633,7 +806,7 @@ void z_receive(dmc_xfer *x)
 				break;
 			}
 			memcpy(info, z->data, (size_t)n);
-			if (receive_file(z, info, n, h.p[3])) {
+			if (receive_file(z, info, n, h.p[3], h.p[1])) {
 				xfer_file_done(x);
 				zrinit(z);
 			}
@@ -727,17 +900,41 @@ static long long seek(struct z *z, long long to)
 	return to;
 }
 
+/* the receiver's word while we send, if any (what isn't a header's
+   start let go first: an XON, a CR LF): 1 with its header in *h */
+static int heard(struct z *z, struct header *h)
+{
+	dmc_xfer *x = z->x;
+	for (;;) {
+		int c = xfer_peek(x);
+		if (c < 0 || c == ZPAD || c == ZDLE)
+			break;
+		xfer_read(x, 0);
+	}
+	return xfer_available(x) && header_or_null(z, h);
+}
+
 /* the file's data from start in ZCRCG subpackets, a ZCRCQ every WINDOW
    bytes to hear how it goes, ZCRCE and ZEOF at the end; a ZRPOS from the
-   receiver puts it back there; done at the receiver's ZRINIT */
-static void stream(struct z *z, long long start)
+   receiver puts it back there; done at the receiver's ZRINIT.  With zstd
+   (zstd set) each chunk of the file goes as one frame, in as many
+   subpackets as it takes, and only a frame's end ends a ZCRCQ or ZCRCE */
+static void stream(struct z *z, long long start, int zstd)
 {
 	dmc_xfer *x = z->x;
 	unsigned char buf[BLOCK];
 	int errors = 0;
 	long long at = start, last_back = -1, pos;
 	struct header h;
-	/* (errors counted while no progress is made) */
+	if (zstd && !z->chunk) {
+		z->chunk = (unsigned char *)malloc(ZSTD_CHUNK);
+		if (!z->chunk)
+			xfer_fail(x, "out of memory");
+	}
+	if (z->chunk_size == 0)
+		z->chunk_size = ZSTD_CHUNK;
+	/* (errors counted while no progress is made; a line with errors
+	   gets smaller frames) */
 #define BACK(to) do { \
 		long long to_ = (to); \
 		if (to_ > last_back) \
@@ -747,6 +944,8 @@ static void stream(struct z *z, long long start)
 			xfer_fail(x, "too many errors on the line"); \
 		xfer_error(x); \
 		at = to_; \
+		if (z->chunk_size / 2 >= ZSTD_MIN_CHUNK) \
+			z->chunk_size /= 2; \
 		xfer_sleep(20); \
 		xfer_purge(x); \
 	} while (0)
@@ -755,15 +954,7 @@ static void stream(struct z *z, long long start)
 		send_bin(z, hdr_pos(ZDATA, pos));
 		int since_ack = 0, restart = 0;
 		for (;;) {
-			/* the receiver's word in between, if any (what isn't a
-			   header's start let go first: an XON, a CR LF) */
-			for (;;) {
-				int c = xfer_peek(x);
-				if (c < 0 || c == ZPAD || c == ZDLE)
-					break;
-				xfer_read(x, 0);
-			}
-			if (xfer_available(x) && header_or_null(z, &h)) {
+			if (heard(z, &h)) {
 				if (h.type == ZRPOS) {
 					BACK(hpos(&h));
 					restart = 1;
@@ -774,17 +965,59 @@ static void stream(struct z *z, long long start)
 				if (h.type == ZSKIP)
 					return;
 			}
-			int len = 0;
-			while (len < BLOCK) {
-				int r = xfer_src_read(x, buf + len, BLOCK - len);
-				if (r <= 0)
+			int len = 0, end;
+			if (!zstd) {
+				while (len < BLOCK) {
+					int r = xfer_src_read(x, buf + len, BLOCK - len);
+					if (r <= 0)
+						break;
+					len += r;
+				}
+				pos += len;
+				since_ack += len;
+				end = len < BLOCK ? ZCRCE : since_ack >= WINDOW ? ZCRCQ : ZCRCG;
+				send_data(z, buf, len, end);
+			} else {
+				/* a chunk of the file, as one frame */
+				int fn = 0;
+				while (len < z->chunk_size) {
+					int r = xfer_src_read(x, z->chunk + len, z->chunk_size - len);
+					if (r <= 0)
+						break;
+					len += r;
+				}
+				free(z->frame);
+				z->frame = NULL;
+				if (len > 0) {
+					z->frame = zc_encode(z->chunk, len, &fn);
+					if (!z->frame)
+						xfer_fail(x, "out of memory");
+				}
+				since_ack += fn;
+				end = len < z->chunk_size ? ZCRCE : since_ack >= WINDOW ? ZCRCQ : ZCRCG;
+				int o = 0;
+				do {
+					int k = fn - o < BLOCK ? fn - o : BLOCK;
+					send_data(z, z->frame + o, k, o + k < fn ? ZCRCG : end);
+					o += k;
+					/* (a ZRPOS in the middle of the frame: the
+					   rest of it not sent) */
+					if (o < fn && heard(z, &h)) {
+						if (h.type == ZRPOS) {
+							BACK(hpos(&h));
+							restart = 1;
+							break;
+						}
+						if (h.type == ZCAN || h.type == ZABORT)
+							xfer_cancelled(x, "cancelled by the receiver");
+						if (h.type == ZSKIP)
+							return;
+					}
+				} while (o < fn);
+				if (restart)
 					break;
-				len += r;
+				pos += len;
 			}
-			pos += len;
-			since_ack += len;
-			int end = len < BLOCK ? ZCRCE : since_ack >= WINDOW ? ZCRCQ : ZCRCG;
-			send_data(z, buf, len, end);
 			xfer_bytes(x, pos);
 			if (end == ZCRCE)
 				break;
@@ -798,6 +1031,8 @@ static void stream(struct z *z, long long start)
 					restart = 1;
 					break;
 				}
+				if (z->chunk_size * 2 <= ZSTD_CHUNK)
+					z->chunk_size *= 2;
 			}
 		}
 		if (restart)
@@ -844,8 +1079,13 @@ static int send_file(struct z *z, const struct xfer_file *f, int files_left,
 	long long start = -1;
 	int tries = 0;
 	struct header h;
+	/* zstd: where the receiver takes it, for a file that gets smaller */
+	xfer_open(z->x, f);
+	int zstd = z->zstd && f->size > 0 && worth_compressing(f->name) &&
+		sample_compresses(z);
 	while (start < 0) {
-		send_bin(z, hdr_flags(ZFILE, z->x->opt.resume ? ZCRECOV : ZCBIN));
+		send_bin(z, hdr_flags(ZFILE, z->x->opt.resume ? ZCRECOV : ZCBIN, 0,
+				      zstd ? ZTZSTD : 0));
 		send_data(z, info, n, ZCRCW);
 		for (;;) {
 			int got = header_or_null(z, &h);
@@ -853,8 +1093,10 @@ static int send_file(struct z *z, const struct xfer_file *f, int files_left,
 				start = hpos(&h);
 				break;
 			}
-			if (got && h.type == ZSKIP)
+			if (got && h.type == ZSKIP) {
+				xfer_close(z->x);
 				return 1;
+			}
 			if (got && h.type == ZCRC) {
 				send_hex(z, hdr_pos(ZCRC, 0));
 				continue;
@@ -872,8 +1114,9 @@ static int send_file(struct z *z, const struct xfer_file *f, int files_left,
 			break;
 		}
 	}
-	xfer_open(z->x, f);
-	stream(z, start);
+	xfer_zstd(z->x, zstd);
+	stream(z, start, zstd);
+	xfer_zstd(z->x, 0);
 	xfer_close(z->x);
 	return 0;
 }
@@ -883,6 +1126,7 @@ void z_send(dmc_xfer *x)
 	struct z *z = z_new(x);
 	struct header r = wait_for_zrinit(z);
 	z->crc32 = (r.p[3] & CANFC32) != 0;
+	z->zstd = !x->opt.no_zstd && (r.p[2] & CANZSTD) != 0;
 	long long left = 0;
 	for (int i = 0; i < x->nfiles; i++)
 		left += x->files[i].size > 0 ? x->files[i].size : 0;

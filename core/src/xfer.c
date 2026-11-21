@@ -784,6 +784,16 @@ int dmc_xfer_can_skip(int protocol)
 	return protocol == DMC_XFER_ZMODEM || protocol == DMC_XFER_KERMIT;
 }
 
+void xfer_zstd(dmc_xfer *x, int on)
+{
+	x->zstd = on;
+}
+
+int dmc_xfer_zstd(dmc_xfer *x)
+{
+	return x ? x->zstd : 0;
+}
+
 dmc_xfer *dmc_xfer_receive_opt(int protocol, const char *folder,
 			       const char *name, const dmc_xfer_options *o)
 {

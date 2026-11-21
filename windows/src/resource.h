@@ -33,6 +33,7 @@
 #define IDM_CALL        220
 #define IDM_WAITCALL    221
 #define IDM_DISCONNECT  222
+#define IDM_XZSTD       223
 
 #define IDC_STATUS      300
 #define IDC_TABS        301

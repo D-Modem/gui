@@ -141,6 +141,16 @@ void xfer_set_auto(bool on)
 	ini_set_int("auto", on ? 1 : 0);
 }
 
+bool xfer_zstd()
+{
+	return ini_int("zmodem_zstd", 1) != 0;
+}
+
+void xfer_set_zstd(bool on)
+{
+	ini_set_int("zmodem_zstd", on ? 1 : 0);
+}
+
 bool xfer_running()
 {
 	return cur != NULL;
@@ -190,6 +200,12 @@ static void show_status(const dmc_xfer_status *st, bool force)
 	char a[300], b[64], c[64];
 	to_ansi(st->file[0] ? st->file : "(waiting for the other side)", a,
 		sizeof(a));
+	/* (a file that goes compressed: ZMODEM with zstd) */
+	if (st->running && cur && dmc_xfer_zstd(cur)) {
+		size_t al = strlen(a);
+		_snprintf(a + al, sizeof(a) - al, " (zstd)");
+		a[sizeof(a) - 1] = '\0';
+	}
 	set_text(IDC_X_FILE, a);
 	if (st->files > last_files) {
 		done_bytes += st->size > 0 ? st->size : st->bytes;
@@ -443,6 +459,7 @@ static bool start_receive(XferLine *l, int protocol, const char *name, bool resu
 	dmc_xfer_options o;
 	memset(&o, 0, sizeof(o));
 	o.resume = resume && protocol == DMC_XFER_ZMODEM;
+	o.no_zstd = !xfer_zstd();
 	return start(l, dmc_xfer_receive_opt(protocol, where, name, &o), protocol,
 		     false, 0, o.resume != 0);
 }
@@ -791,6 +808,7 @@ void xfer_send_dialog(XferLine *l, int protocol)
 	dmc_xfer_options o;
 	memset(&o, 0, sizeof(o));
 	o.resume = a.resume;
+	o.no_zstd = !xfer_zstd();
 	AsciiSetup as;
 	ascii_load(&as);
 	o.line_delay_ms = as.line_delay;
