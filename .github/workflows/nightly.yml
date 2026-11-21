@@ -77,7 +77,7 @@ jobs:
             echo "| --- | --- |"
             echo "| \`dmodem-win9x.exe\` | The Windows app for Windows 95, 98, ME, NT 4.0 and later |"
             echo "| \`dmodem-win7.exe\` | The Windows app for Windows 7 and later |"
-            echo "| \`dmodem-gui-linux-x86_64.tar.gz\` | The Linux app (GTK 4), x86_64. It needs GTK 4, libadwaita, PulseAudio and libsndfile. Extract it into \`/\` or \`/usr/local\` |"
+            echo "| \`dmodem-gui-linux-x86_64.tar.gz\` | The Linux app (GTK 4), x86_64. It needs GTK 4, libadwaita, PulseAudio and libsndfile. Its files are in \`usr/\`: extract it into \`/\`, for example with \`sudo tar -xzf dmodem-gui-linux-x86_64.tar.gz -C /\` |"
             echo "| \`D-Modem-macos.zip\` | The macOS app (SwiftUI), arm64 and x86_64, macOS 13 and later. Not notarized: right-click the app and select Open |"
             echo "| \`dmodem-win32-linux-x86_64.tar.gz\` | The Windows app on Linux (X11), x86_64 |"
             echo "| \`dmodem-win32-macos-arm64.tar.gz\` | The Windows app on macOS, arm64 |"
