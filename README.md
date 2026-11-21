@@ -41,6 +41,18 @@ libdmodemctl. Thus they operate in the same way.
 
 <img src="docs/images/linux-phone.png" width="49%" alt="The Linux app's Phone page"> <img src="docs/images/windows-phone.png" width="49%" alt="The Windows app's Phone page taking a message">
 
+## Nightly builds
+
+The [nightly release](https://github.com/D-Modem/gui/releases/tag/nightly)
+has the apps from the newest build of `main`. It has the Windows app (for
+Windows 95 and later, and for Windows 7 and later), the Linux app, the
+macOS app, and the Windows app for Linux and macOS. A workflow
+(`.github/workflows/nightly.yml`) replaces the release one time each day.
+When `main` has no new commits, the release does not change.
+
+These builds are not stable releases. The files are not signed. Thus
+Windows and macOS can show a warning before the app starts.
+
 ## Quick start
 
 Linux:

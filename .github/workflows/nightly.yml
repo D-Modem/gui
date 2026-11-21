@@ -1,0 +1,94 @@
+# Nightly: the "nightly" pre-release of the apps, from the artifacts of
+# the newest complete run of build.yml on main. It does not build the
+# apps again. Each run replaces the release and moves its tag. When
+# main has no new commits, the run stops and the release does not
+# change. A manual run (Actions > Nightly > Run workflow) can publish
+# again with "force".
+#
+# The files are not signed: Windows SmartScreen and macOS Gatekeeper
+# show a warning for them.
+name: Nightly
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish again, also when main has no new commits
+        type: boolean
+        default: false
+
+# (one at a time: a second run waits for the first)
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  nightly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The newest build of main
+        id: pick
+        run: .github/scripts/nightly-pick.sh build.yml
+        env:
+          FORCE: ${{ inputs.force || 'false' }}
+
+      - uses: actions/download-artifact@v4
+        if: steps.pick.outputs.skip == 'false'
+        with:
+          run-id: ${{ steps.pick.outputs.run_build_yml }}
+          github-token: ${{ github.token }}
+          path: dl
+
+      - name: Files
+        if: steps.pick.outputs.skip == 'false'
+        env:
+          SHA: ${{ steps.pick.outputs.sha }}
+          RUN: ${{ steps.pick.outputs.run_build_yml }}
+        run: |
+          mkdir out
+          take() {  # take ARTIFACT FILE [NAME]: copy it if the build made it
+            if [ -f "dl/$1/$2" ]; then cp "dl/$1/$2" "out/${3:-$2}"; else echo "- $1" >> missing; fi
+          }
+          take dmodem-windows-9x dmodem.exe dmodem-win9x.exe
+          take dmodem-windows dmodem.exe dmodem-win7.exe
+          take dmodem-linux dmodem-gui-linux-x86_64.tar.gz
+          take dmodem-macos D-Modem-macos.zip
+          take dmodem-win32-linux dmodem-win32-linux-x86_64.tar.gz
+          take dmodem-win32-macos dmodem-win32-macos-arm64.tar.gz
+          (cd out && sha256sum * > SHA256SUMS)
+          ls -l out
+          {
+            echo "The newest build of \`main\`, from commit $SHA ([build run]($GITHUB_SERVER_URL/$GH_REPO/actions/runs/$RUN))."
+            echo "This is not a stable release. The files are not signed."
+            echo
+            echo "| File | What it is |"
+            echo "| --- | --- |"
+            echo "| \`dmodem-win9x.exe\` | The Windows app for Windows 95, 98, ME, NT 4.0 and later |"
+            echo "| \`dmodem-win7.exe\` | The Windows app for Windows 7 and later |"
+            echo "| \`dmodem-gui-linux-x86_64.tar.gz\` | The Linux app (GTK 4), x86_64. It needs GTK 4, libadwaita, PulseAudio and libsndfile. Extract it into \`/\` or \`/usr/local\` |"
+            echo "| \`D-Modem-macos.zip\` | The macOS app (SwiftUI), arm64 and x86_64, macOS 13 and later. Not notarized: right-click the app and select Open |"
+            echo "| \`dmodem-win32-linux-x86_64.tar.gz\` | The Windows app on Linux (X11), x86_64 |"
+            echo "| \`dmodem-win32-macos-arm64.tar.gz\` | The Windows app on macOS, arm64 |"
+            echo "| \`SHA256SUMS\` | The SHA-256 of each file |"
+            if [ -f missing ]; then
+              echo
+              echo "This build did not make these artifacts:"
+              cat missing
+            fi
+          } > notes.md
+
+      - name: Publish
+        if: steps.pick.outputs.skip == 'false'
+        run: .github/scripts/nightly-publish.sh "${{ steps.pick.outputs.sha }}" notes.md out
