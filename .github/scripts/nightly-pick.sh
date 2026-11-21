@@ -53,7 +53,8 @@ for w in "$@"; do
   echo "$w: run $id"
 done
 
-old=$(gh api "repos/$GH_REPO/git/ref/tags/nightly" --jq .object.sha 2>/dev/null || true)
+# (gh writes the error body of a 404 to stdout: no tag is no commit)
+old=$(gh api "repos/$GH_REPO/git/ref/tags/nightly" --jq .object.sha 2>/dev/null) || old=
 echo "Commit: $sha (the nightly release has: ${old:-none})"
 if [ "$sha" = "$old" ] && [ "${FORCE:-false}" != true ]; then
   echo "skip=true" >> "$out"

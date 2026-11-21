@@ -59,7 +59,7 @@ jobs:
         run: |
           mkdir out
           take() {  # take ARTIFACT FILE [NAME]: copy it if the build made it
-            if [ -f "dl/$1/$2" ]; then cp "dl/$1/$2" "out/${3:-$2}"; else echo "- $1" >> missing; fi
+            if [ -f "dl/$1/$2" ]; then cp "dl/$1/$2" "out/${3:-$2}"; else echo "- \`${3:-$2}\`" >> missing; fi
           }
           take dmodem-windows-9x dmodem.exe dmodem-win9x.exe
           take dmodem-windows dmodem.exe dmodem-win7.exe
@@ -84,7 +84,7 @@ jobs:
             echo "| \`SHA256SUMS\` | The SHA-256 of each file |"
             if [ -f missing ]; then
               echo
-              echo "This build did not make these artifacts:"
+              echo "This build did not make these files:"
               cat missing
             fi
           } > notes.md
