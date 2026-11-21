@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "resource.h"
 
 #ifndef WM_MOUSEWHEEL
 #define WM_MOUSEWHEEL 0x020A
@@ -52,6 +53,13 @@ struct TermView {
 	int ar, ac, er, ec;
 	TermPrintedFn pfn;      /* what the remote prints goes to it */
 	void *pctx;
+	bool echo;              /* ASCII Setup: what is typed also shown */
+	/* Terminal Settings: Backspace as Ctrl+H, Space, Ctrl+H; the
+	   function, arrow and Ctrl keys as Windows keys; the cursor's
+	   shape (0 block, 1 underline) and blink */
+	bool bs_three, win_keys, cur_blink;
+	int cur_shape;
+	bool eat_char;          /* a key done: its WM_CHAR not sent */
 	HFONT fonts[4];         /* regular, bold, italic, bold italic */
 	/* a row being drawn */
 	HDC row_dc;
@@ -137,11 +145,27 @@ static void play_music(dmc_vt *vt)
 /* ------------------------------------------------------------------ */
 /* the screen's size */
 
-static void make_fonts(TermView *t)
+/* the fonts made for the view freed (not the app's) */
+static void free_fonts(TermView *t)
+{
+	for (int i = 1; i < 4; i++)
+		if (t->fonts[i] && t->fonts[i] != t->fonts[0] &&
+		    t->fonts[i] != app.mono_font)
+			DeleteObject(t->fonts[i]);
+	if (t->fonts[0] && t->fonts[0] != app.mono_font)
+		DeleteObject(t->fonts[0]);
+	for (int i = 0; i < 4; i++)
+		t->fonts[i] = NULL;
+}
+
+/* the regular font [base] (the app's when NULL), and its bold and
+   italic */
+static void make_fonts(TermView *t, HFONT base = NULL)
 {
 	LOGFONT lf;
-	GetObject(app.mono_font, sizeof(lf), &lf);
-	t->fonts[0] = app.mono_font;
+	free_fonts(t);
+	t->fonts[0] = base ? base : app.mono_font;
+	GetObject(t->fonts[0], sizeof(lf), &lf);
 	lf.lfWeight = FW_BOLD;
 	t->fonts[1] = CreateFontIndirect(&lf);
 	lf.lfWeight = FW_NORMAL;
@@ -151,13 +175,13 @@ static void make_fonts(TermView *t)
 	t->fonts[3] = CreateFontIndirect(&lf);
 	for (int i = 1; i < 4; i++)
 		if (!t->fonts[i])
-			t->fonts[i] = app.mono_font;
+			t->fonts[i] = t->fonts[0];
 }
 
 static void measure(TermView *t)
 {
 	HDC dc = GetDC(t->w);
-	HGDIOBJ old = SelectObject(dc, app.mono_font);
+	HGDIOBJ old = SelectObject(dc, t->fonts[0]);
 	TEXTMETRIC tm;
 	GetTextMetrics(dc, &tm);
 	t->fcw = tm.tmAveCharWidth > 0 ? tm.tmAveCharWidth : 8;
@@ -519,7 +543,15 @@ static void draw_row(TermView *t, int vrow, int ncols, bool cursor_here)
 			int l = cx * cw, r = l + ((cells[cx].flags & DMC_CELL_WIDE) ? 2 * cw : cw);
 			int style = dmc_vt_cursor_style(vt);
 			int th = ch / 8 > 1 ? ch / 8 : 2;
-			if (!t->focused) {
+			/* (the remote's DECSCUSR, else the settings': 1 a
+			   blinking block, 2 a block, 3 and 4 an underline) */
+			if (style == 0)
+				style = (t->cur_shape == 1 ? 3 : 1) + (t->cur_blink ? 0 : 1);
+			if (t->focused && (style & 1))
+				t->has_blink = true;
+			if (t->focused && (style & 1) && t->blink_off) {
+				/* (blinking: off now) */
+			} else if (!t->focused) {
 				px_rect(t, l, 0, r, 1, cc);
 				px_rect(t, l, ch - 1, r, ch, cc);
 				px_rect(t, l, 0, l + 1, ch, cc);
@@ -803,7 +835,7 @@ static void paint(TermView *t, HDC dc, RECT *area)
 	int cw = t->cw, ch = t->ch, w = cols * cw;
 	t->has_blink = false;
 	if (row_buffer(t, dc, w, ch)) {
-		HGDIOBJ oldf = SelectObject(t->row_dc, app.mono_font);
+		HGDIOBJ oldf = SelectObject(t->row_dc, t->fonts[0]);
 		for (int y = 0; y < rows; y++) {
 			int vrow = y + t->scroll;
 			int size = dmc_vt_line_size(vt, vrow);
@@ -838,7 +870,7 @@ static void paint(TermView *t, HDC dc, RECT *area)
 			for (int i = 0; i < n; i++)
 				dx[i] = cw;
 			RECT sr = { 0, 0, w, ch };
-			SelectObject(t->row_dc, app.mono_font);
+			SelectObject(t->row_dc, t->fonts[0]);
 			SetTextColor(t->row_dc, cref(dmc_vt_background(vt)));
 			SetBkColor(t->row_dc, cref(dmc_vt_foreground(vt)));
 			ExtTextOutW(t->row_dc, 0, 0, ETO_OPAQUE | ETO_CLIPPED, &sr,
@@ -885,12 +917,26 @@ static int mods_now()
 	return m;
 }
 
+/* what is typed, on the screen too when the echo is on (not a key's
+   escape sequence: an arrow key does not move the cursor here) */
+static void echo_typed(TermView *t, const char *b, int n)
+{
+	if (t->echo && n > 0 && b[0] != 0x1b)
+		termview_feed(t->w, b, n);
+}
+
 static void send_key(TermView *t, int key, int mods)
 {
 	char b[64];
 	int n = dmc_vt_key_mods(t->vt, key, mods, b, sizeof(b));
+	/* Backspace as Ctrl+H, Space, Ctrl+H (the character erased) */
+	if (key == DMC_KEY_BACKSPACE && t->bs_three && !mods) {
+		memcpy(b, "\b \b", 3);
+		n = 3;
+	}
 	to_bottom(t);
 	send_text(t, b, n);
+	echo_typed(t, b, n);
 }
 
 /* a character typed, as the terminal sends it */
@@ -899,6 +945,7 @@ static void send_cp(TermView *t, unsigned long cp, int mods)
 	char b[64];
 	int n = dmc_vt_char_bytes(t->vt, (uint32_t)cp, mods, b, sizeof(b));
 	send_text(t, b, n);
+	echo_typed(t, b, n);
 }
 
 /* a character in the ANSI code page as Unicode */
@@ -1014,6 +1061,51 @@ static int vk_key(WPARAM wp, int mods, TermView *t, HWND w)
 	if (wp >= VK_F13 && wp <= VK_F20)
 		return DMC_KEY_F13 + (int)(wp - VK_F13);
 	return 0;
+}
+
+/* the function, arrow and Ctrl keys as Windows keys: Ctrl+C copies,
+   Ctrl+V pastes, Ctrl+A selects all, the arrows and Page Up and Down
+   scroll (the function keys go to the window: the caller's); true when
+   the key was one of these */
+static bool windows_key(TermView *t, WPARAM wp, int mods)
+{
+	if (mods == DMC_MOD_CTRL) {
+		switch (wp) {
+		case 'C':
+			copy_selection(t);
+			return true;
+		case 'V':
+			paste(t);
+			return true;
+		case 'A':
+			select_all(t);
+			return true;
+		}
+	}
+	if (mods & (DMC_MOD_CTRL | DMC_MOD_ALT))
+		return false;
+	switch (wp) {
+	case VK_UP:
+		SendMessage(t->w, WM_VSCROLL, SB_LINEUP, 0);
+		return true;
+	case VK_DOWN:
+		SendMessage(t->w, WM_VSCROLL, SB_LINEDOWN, 0);
+		return true;
+	case VK_PRIOR:
+		SendMessage(t->w, WM_VSCROLL, SB_PAGEUP, 0);
+		return true;
+	case VK_NEXT:
+		SendMessage(t->w, WM_VSCROLL, SB_PAGEDOWN, 0);
+		return true;
+	case VK_LEFT:
+	case VK_RIGHT:
+	case VK_HOME:
+	case VK_END:
+	case VK_INSERT:
+	case VK_DELETE:
+		return true;
+	}
+	return false;
 }
 
 static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
@@ -1179,6 +1271,20 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
 		int mods = mods_now();
+		t->eat_char = false;
+		/* Ctrl+Break: a break, to the page's line */
+		if (wp == VK_CANCEL) {
+			PostMessage(app.main, WM_COMMAND, IDM_BREAK, 0);
+			t->eat_char = true;
+			return 0;
+		}
+		if (t->win_keys && windows_key(t, wp, mods)) {
+			t->eat_char = true;
+			return 0;
+		}
+		/* (the function keys to the window: F10 the menu) */
+		if (t->win_keys && wp >= VK_F1 && wp <= VK_F24)
+			break;
 		int key = vk_key(wp, mods, t, w);
 		if (key < 0)
 			return 0;
@@ -1203,6 +1309,10 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		}
 		break;
 	case WM_CHAR: {
+		if (t->eat_char) {
+			t->eat_char = false;
+			return 0;
+		}
 		int mods = mods_now() & ~DMC_MOD_ALT;
 		to_bottom(t);
 		switch (wp) {
@@ -1242,9 +1352,7 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 			DeleteObject(t->row_bmp);
 			DeleteDC(t->row_dc);
 		}
-		for (int i = 1; i < 4; i++)
-			if (t->fonts[i] != app.mono_font)
-				DeleteObject(t->fonts[i]);
+		free_fonts(t);
 		dmc_vt_free(t->vt);
 		free(t);
 		return 0;
@@ -1346,6 +1454,48 @@ void termview_set_backspace(HWND w, char b)
 	TermView *t = of(w);
 	if (t)
 		dmc_vt_set_backspace(t->vt, (unsigned char)b);
+}
+
+void termview_set_options(HWND w, const TermOptions *o)
+{
+	TermView *t = of(w);
+	if (!t)
+		return;
+	if (o->backspace >= 0)
+		dmc_vt_set_backspace(t->vt, o->backspace == 1 ? 0x7f : 0x08);
+	t->bs_three = o->backspace == 2;
+	t->win_keys = o->windows_keys;
+	t->cur_shape = o->cursor;
+	t->cur_blink = o->cursor_blink;
+	dmc_vt_set_scrollback(t->vt, o->scrollback);
+	if (t->scroll < -dmc_vt_history(t->vt))
+		t->scroll = -dmc_vt_history(t->vt);
+	/* the font: the app's when none is named or it can't be made */
+	HFONT f = NULL;
+	if (o->font[0] && o->font_size > 0) {
+		HDC dc = GetDC(w);
+		int h = -MulDiv(o->font_size, GetDeviceCaps(dc, LOGPIXELSY), 72);
+		ReleaseDC(w, dc);
+		f = CreateFont(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+			       DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+			       CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+			       FIXED_PITCH | FF_MODERN, o->font);
+	}
+	make_fonts(t, f);
+	measure(t);
+	layout(t);
+	update_scrollbar(t);
+	InvalidateRect(w, NULL, TRUE);
+}
+
+void termview_set_ascii(HWND w, int flags, int enter, bool echo)
+{
+	TermView *t = of(w);
+	if (!t)
+		return;
+	dmc_vt_set_ascii(t->vt, flags);
+	dmc_vt_set_enter(t->vt, enter);
+	t->echo = echo;
 }
 
 void termview_set_profile(HWND w, const char *id)

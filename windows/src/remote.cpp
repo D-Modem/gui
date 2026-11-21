@@ -303,6 +303,14 @@ static int line_room()
 	return room > 0 ? room : 0;
 }
 
+bool remote_break()
+{
+	if (!running || !net || !sock_open || !dmc_net_break(net))
+		return false;
+	flush();
+	return true;
+}
+
 static void raw_write(const char *data, int n)
 {
 	if (!running)
@@ -1249,10 +1257,13 @@ static bool start_socket(int proto, const char *host, int port,
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == INVALID_SOCKET)
 		return false;
-	/* (Telnet's TERMINAL-TYPE, rlogin's TERM) */
+	/* (Telnet's TERMINAL-TYPE, rlogin's TERM; Terminal Settings' Telnet
+	   terminal ID first) */
 	const char *type = termview_profile(view);
+	char id[40];
+	termset_telnet_id(id, sizeof(id));
 	net = dmc_net_new(proto, user, proto == DMC_NET_TELNET ?
-			  dmc_vt_profile_telnet(type) :
+			  (id[0] ? id : dmc_vt_profile_telnet(type)) :
 			  dmc_vt_profile_term(type), cols, rows);
 	sock_open = false;
 	WSAAsyncSelect(sock, app.main, WM_APP_REMOTE,
@@ -1403,6 +1414,8 @@ HWND remote_page_new(HWND parent)
 #endif
 	view = termview_new(page, IDC_R_TERM, typed, NULL);
 	termview_set_printer(view, capture_printed, &remote_line);
+	termset_apply(view, true);
+	ascii_apply(view);
 	status_txt = make_child("STATIC", "Not connected", SS_LEFTNOWORDWRAP,
 				page, IDC_R_STATUS);
 	make_child("STATIC", "&Terminal:", SS_RIGHT, page, IDC_R_TYPELABEL);

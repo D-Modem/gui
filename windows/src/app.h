@@ -79,6 +79,11 @@ struct Config {
 	char dmodemd[MAX_PATH];         /* dmodemd.exe, "" next to the app */
 	char tcp[256];                  /* host:port */
 	char com[32];                   /* COM1 */
+	/* the COM port's settings, as HyperTerminal's Configure: bits per
+	   second, data bits (5 to 8), parity (0 none, 1 odd, 2 even, 3 mark,
+	   4 space), stop bits (0 one, 1 one and a half, 2 two), flow control
+	   (0 none, 1 Xon/Xoff, 2 hardware) */
+	int com_bps, com_data, com_parity, com_stop, com_flow;
 	char init[256];                 /* commands when the modem opens */
 	/* the answering machine ([voice]): on, after how many RINGs, a
 	   message's longest (s) */
@@ -119,6 +124,8 @@ void link_start();
 void link_stop();
 bool link_running();
 bool link_open();                   /* the DTE is open */
+/* a break on the line (a COM port's only): false when none can be sent */
+bool link_break();
 /* the session's output written, input read, events handled */
 void link_pump();
 /* socket messages (WM_APP_SOCKET) */
@@ -183,6 +190,23 @@ void termview_reset(HWND w);
 void termview_size(HWND w, int *cols, int *rows);
 /* what Backspace sends (DEL unless set) */
 void termview_set_backspace(HWND w, char b);
+/* Terminal Settings: Backspace sends Ctrl+H (0), Del (1) or Ctrl+H,
+   Space, Ctrl+H (2) (-1: as it is); the function, arrow and Ctrl keys as
+   Windows keys; the backscroll's lines; the font (none: the app's) and
+   its size in points; the cursor (0 block, 1 underline) and its blink */
+struct TermOptions {
+	int backspace;
+	bool windows_keys;
+	int scrollback;
+	char font[32];
+	int font_size;
+	int cursor;
+	bool cursor_blink;
+};
+void termview_set_options(HWND w, const TermOptions *o);
+/* ASCII Setup: the received data's DMC_VT_ASCII_* flags, what Enter sends
+   (0 CR, 1 CR LF), and the local echo */
+void termview_set_ascii(HWND w, int flags, int enter, bool echo);
 /* the selection (drag with the left button, double-click a word): to
    the clipboard; the clipboard's text typed; all the lines selected */
 bool termview_has_selection(HWND w);
@@ -234,6 +258,37 @@ void xfer_set_zstd(bool on);
 /* the transfer's dialog's keys (IsDialogMessage) */
 bool xfer_dialog_key(MSG *m);
 
+/* calls.cpp: the Call dialog (the sessions in [sessions]): the number
+   chosen into number; Wait for a Call (ATS0=1), sent again when the
+   modem opens */
+bool call_dialog(HWND parent, char *number, int n);
+bool call_waiting();
+void call_wait(bool on);
+void call_opened();
+
+/* termset.cpp: Terminal Settings, for the modem's terminal or the
+   Remote page's ([terminal], [remote_terminal] in dmodem.ini) */
+void termset_apply(HWND view, bool remote);
+void termset_dialog(HWND parent, bool remote);
+/* the Telnet terminal ID set (empty: the terminal type's) */
+void termset_telnet_id(char *out, int n);
+bool termset_exit_on_disconnect();
+
+/* ascii.cpp: ASCII Setup ([ascii] in dmodem.ini), for both terminals */
+struct AsciiSetup {
+	bool send_lf;           /* Enter sends CR LF */
+	bool echo;              /* what is typed shown here too */
+	int line_delay;         /* a text file sent: ms after each line */
+	int char_delay;         /* and after each character */
+	bool add_lf;            /* an LF added after each CR received */
+	bool seven_bit;         /* the data received as 7-bit ASCII */
+	bool wrap;              /* lines wrap at the right margin */
+};
+void ascii_load(AsciiSetup *a);
+/* the settings to a terminal control */
+void ascii_apply(HWND view);
+void ascii_dialog(HWND parent);
+
 /* capture.cpp: Capture Text, Capture to Printer and Print, for a line */
 enum { CAPTURE_OFF, CAPTURE_ON, CAPTURE_PAUSED };
 /* what came on the line for its terminal (not a transfer's bytes) */
@@ -264,6 +319,8 @@ void remote_ssh(LPARAM l);
 /* the focus to its first control */
 bool remote_focus();
 void remote_stop();
+/* a break to the server (Telnet's): false when none can be sent */
+bool remote_break();
 
 /* settings.cpp: the Settings page */
 HWND settings_page_new(HWND parent);

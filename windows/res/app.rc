@@ -19,10 +19,20 @@ BEGIN
     BEGIN
         MENUITEM "&Start or Stop", IDM_START
         MENUITEM "&Line Settings...", IDM_LINE
+        MENUITEM "&ASCII Setup...", IDM_ASCII
+        MENUITEM "&Terminal Settings...", IDM_TERMSET
         MENUITEM SEPARATOR
         MENUITEM "&Print...", IDM_FPRINT
         MENUITEM SEPARATOR
         MENUITEM "E&xit", IDM_EXIT
+    END
+    POPUP "&Call"
+    BEGIN
+        MENUITEM "&Call...", IDM_CALL
+        MENUITEM "&Wait for a Call", IDM_WAITCALL
+        MENUITEM "&Disconnect", IDM_DISCONNECT
+        MENUITEM SEPARATOR
+        MENUITEM "Send &Break\tCtrl+Break", IDM_BREAK
     END
     POPUP "&Edit"
     BEGIN
@@ -54,7 +64,7 @@ BEGIN
     END
 END
 
-IDD_LINE DIALOG 0, 0, 300, 286
+IDD_LINE DIALOG 0, 0, 300, 318
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Line Settings"
 FONT 8, "MS Shell Dlg"
@@ -86,10 +96,20 @@ BEGIN
     AUTORADIOBUTTON "A modem on a &serial port", IDC_L_COM, 8, 198, 284, 10, WS_TABSTOP
     LTEXT           "P&ort:", -1, 20, 214, 60, 8
     COMBOBOX        IDC_L_PORT, 84, 212, 80, 120, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Commands when the modem &opens:", -1, 8, 236, 140, 8
-    EDITTEXT        IDC_L_INIT, 8, 246, 284, 12, ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK", IDOK, 186, 266, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 242, 266, 50, 14
+    LTEXT           "Bits per s&econd:", -1, 172, 214, 58, 8
+    COMBOBOX        IDC_L_BPS, 232, 212, 60, 160, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Data b&its:", -1, 20, 230, 60, 8
+    COMBOBOX        IDC_L_DATA, 84, 228, 30, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Parit&y:", -1, 120, 230, 28, 8
+    COMBOBOX        IDC_L_PARITY, 150, 228, 50, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Stop bi&ts:", -1, 206, 230, 40, 8
+    COMBOBOX        IDC_L_STOP, 248, 228, 44, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Flow control:", -1, 20, 246, 60, 8
+    COMBOBOX        IDC_L_FLOW, 84, 244, 80, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Commands when the modem &opens:", -1, 8, 266, 140, 8
+    EDITTEXT        IDC_L_INIT, 8, 276, 284, 12, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 186, 298, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 242, 298, 50, 14
 END
 
 IDD_SETTING DIALOG 0, 0, 240, 110
@@ -190,6 +210,81 @@ BEGIN
     LTEXT           "", IDC_F_HINT, 8, 94, 264, 32
     DEFPUSHBUTTON   "&Receive", IDOK, 166, 130, 50, 14
     PUSHBUTTON      "Cancel", IDCANCEL, 222, 130, 50, 14
+END
+
+/* the Call menu's Call: a session (a name and a number) chosen, saved or
+   deleted, and the number called */
+IDD_CALL DIALOG 0, 0, 240, 90
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Call"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "&Session:", -1, 8, 10, 60, 8
+    COMBOBOX        IDC_C_NAME, 70, 8, 162, 140, CBS_DROPDOWN | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Phone number:", -1, 8, 28, 60, 8
+    EDITTEXT        IDC_C_NUMBER, 70, 26, 162, 12, ES_AUTOHSCROLL
+    LTEXT           "A number, or a SIP address (sip:user@host).", -1, 70, 42, 162, 8
+    PUSHBUTTON      "Sa&ve", IDC_C_SAVE, 8, 68, 50, 14
+    PUSHBUTTON      "&Delete", IDC_C_DELETE, 62, 68, 50, 14
+    DEFPUSHBUTTON   "&Call", IDOK, 128, 68, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 182, 68, 50, 14
+END
+
+/* the Modem menu's Terminal Settings, as HyperTerminal has them, for the
+   terminal of the page shown (the Remote page's, else the modem's) */
+IDD_TERMSET DIALOG 0, 0, 284, 232
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Terminal Settings"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "&Backspace key sends", -1, 8, 6, 118, 50
+    AUTORADIOBUTTON "Ctrl+&H", IDC_T_BSH, 16, 18, 100, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "&Del", IDC_T_BSDEL, 16, 30, 100, 10
+    AUTORADIOBUTTON "Ctrl+H, &Space, Ctrl+H", IDC_T_BSHSH, 16, 42, 104, 10
+    GROUPBOX        "Function, arrow, and ctrl keys act as", -1, 134, 6, 142, 50
+    AUTORADIOBUTTON "Te&rminal keys", IDC_T_TERMKEYS, 142, 18, 100, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "&Windows keys", IDC_T_WINKEYS, 142, 30, 100, 10
+    GROUPBOX        "Cursor", -1, 8, 62, 118, 50
+    AUTORADIOBUTTON "Bl&ock", IDC_T_BLOCK, 16, 74, 100, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "&Underline", IDC_T_UNDERLINE, 16, 86, 100, 10
+    AUTOCHECKBOX    "B&link", IDC_T_BLINK, 16, 98, 100, 10, WS_GROUP | WS_TABSTOP
+    GROUPBOX        "Font", -1, 134, 62, 142, 50
+    LTEXT           "&Name:", -1, 142, 76, 30, 8
+    EDITTEXT        IDC_T_FONT, 176, 74, 92, 12, ES_AUTOHSCROLL
+    LTEXT           "Si&ze:", -1, 142, 94, 30, 8
+    EDITTEXT        IDC_T_FONTSIZE, 176, 92, 24, 12, ES_NUMBER
+    LTEXT           "points", -1, 204, 94, 40, 8
+    LTEXT           "Ba&ckscroll buffer lines:", -1, 8, 122, 110, 8
+    EDITTEXT        IDC_T_BACKSCROLL, 120, 120, 44, 12, ES_NUMBER
+    LTEXT           "Telnet terminal &ID:", IDC_T_TELNETLABEL, 8, 140, 110, 8
+    EDITTEXT        IDC_T_TELNETID, 120, 138, 80, 12, ES_AUTOHSCROLL
+    AUTOCHECKBOX    "E&xit program upon disconnecting", IDC_T_EXIT, 8, 158, 240, 10
+    LTEXT           "An empty font name uses the font of the app. An empty Telnet terminal ID uses the terminal type.", -1, 8, 174, 268, 20
+    DEFPUSHBUTTON   "OK", IDOK, 168, 210, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 226, 210, 50, 14
+END
+
+/* the Modem menu's ASCII Setup, as HyperTerminal has it */
+IDD_ASCII DIALOG 0, 0, 220, 176
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "ASCII Setup"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX        "ASCII Sending", -1, 8, 6, 204, 74
+    AUTOCHECKBOX    "&Send line ends with line feeds", IDC_A_SENDLF, 16, 18, 188, 10
+    AUTOCHECKBOX    "&Echo typed characters locally", IDC_A_ECHO, 16, 32, 188, 10
+    LTEXT           "&Line delay:", -1, 16, 48, 70, 8
+    EDITTEXT        IDC_A_LINEDELAY, 90, 46, 36, 12, ES_NUMBER
+    LTEXT           "milliseconds.", -1, 130, 48, 70, 8
+    LTEXT           "&Character delay:", -1, 16, 64, 70, 8
+    EDITTEXT        IDC_A_CHARDELAY, 90, 62, 36, 12, ES_NUMBER
+    LTEXT           "milliseconds.", -1, 130, 64, 70, 8
+    GROUPBOX        "ASCII Receiving", -1, 8, 86, 204, 62
+    AUTOCHECKBOX    "&Append line feeds to incoming line ends", IDC_A_ADDLF, 16, 98, 188, 10
+    AUTOCHECKBOX    "&Force incoming data to 7-bit ASCII", IDC_A_7BIT, 16, 112, 188, 10
+    AUTOCHECKBOX    "&Wrap lines that exceed terminal width", IDC_A_WRAP, 16, 126, 188, 10
+    DEFPUSHBUTTON   "OK", IDOK, 104, 156, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 162, 156, 50, 14
 END
 
 /* a transfer as it goes (modeless) */

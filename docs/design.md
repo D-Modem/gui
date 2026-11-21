@@ -134,6 +134,71 @@ text into the scrollback.
   The clipboard gets Unicode text and the text of the ANSI code page.
 - Paste to Host (Shift+Insert) types the clipboard text.
 
+`ascii.cpp` has the ASCII Setup dialog (Modem menu). `dmodem.ini` keeps
+the settings in the `[ascii]` section: `send_lf`, `echo`, `line_delay`,
+`char_delay`, `add_lf`, `seven_bit` and `wrap`. The app applies them to
+the two terminals:
+
+- `send_lf` sets Enter to CR LF (`dmc_vt_set_enter`).
+- `echo` shows the characters that you type on the terminal. The app does
+  not show the escape sequences of the keys (for example, the arrow keys).
+- `add_lf`, `seven_bit` and `wrap` go to `dmc_vt_set_ascii`. With
+  `DMC_VT_ASCII_ADD_LF`, the terminal adds an LF after each CR that it
+  receives. When an LF follows the CR, the terminal does not use that LF,
+  thus a CR LF does not give two lines. `DMC_VT_ASCII_7BIT` removes bit 8
+  of each byte. `DMC_VT_ASCII_NO_WRAP` stops the wrap at the right margin:
+  the terminal writes each new character in the last column.
+
+`termset.cpp` has the Terminal Settings dialog (Modem menu). It applies
+to the terminal of the page that shows: the Remote page's, else the
+modem's. `dmodem.ini` keeps the settings in `[terminal]` (the modem) and
+`[remote_terminal]` (Remote). `termview_set_options` applies them:
+
+- `backspace`: 0 sends Ctrl+H, 1 sends Del, 2 sends Ctrl+H, Space,
+  Ctrl+H. The default of the modem is 0 (the configurator of the modem
+  uses Ctrl+H). The default of Remote is 1.
+- `windows_keys`: Ctrl+C copies, Ctrl+V pastes, Ctrl+A selects all. The
+  arrow keys, Page Up and Page Down scroll the backscroll. The function
+  keys go to the window (F10 opens the menu). The terminal does not send
+  these keys.
+- `backscroll`: the lines that the terminal keeps
+  (`dmc_vt_set_scrollback`). When the number is smaller, the terminal
+  keeps the newest lines.
+- `font` and `font_size`: a fixed-pitch font. When the name is empty, the
+  terminal uses the font of the app.
+- `cursor` (0 block, 1 underline) and `cursor_blink`. A DECSCUSR from the
+  remote side has priority.
+- `telnet_id` (Remote only): the TERMINAL-TYPE that Telnet sends. When it
+  is empty, Telnet sends the name of the terminal type.
+- `exit_on_disconnect` (modem only): the app closes when a call ends.
+
+The status bar shows the connect timer during a call ("Online 0:01:05").
+Send Break (Call menu, or Ctrl+Break in a terminal) sends a break. On a
+COM port, the app holds the line at space for 250 ms (`SetCommBreak`). On
+Telnet, the app sends IAC BRK (`dmc_net_break`). TCP to dmodemd, rlogin
+and SSH cannot send a break, and the status bar tells you.
+
+`calls.cpp` has the Call menu, as HyperTerminal has it:
+
+- Call opens the Call dialog. A session is a name and a number (or a SIP
+  address). `dmodem.ini` keeps the sessions in the `[sessions]` section
+  (`count`, `name1`, `number1` ...). Save adds or changes a session, and
+  Delete removes it. Call dials the number (ATD) and shows the Terminal
+  page.
+- Wait for a Call sends ATS0=1: the modem answers at the first ring. The
+  app sends ATS0=1 again each time the modem opens. When you clear the
+  check mark, the app sends ATS0=0.
+- Disconnect hangs up the call (`dmc_hangup`), or closes the Remote
+  connection when the Remote page shows.
+
+The Line Settings dialog has the settings of a COM port, as the Configure
+dialog of HyperTerminal: bits per second (110 to 921,600), data bits (5 to
+8), parity (none, odd, even, mark, space), stop bits (1, 1.5, 2) and flow
+control (none, Xon/Xoff, hardware). `dmodem.ini` keeps them as `com-bps`,
+`com-data-bits`, `com-parity`, `com-stop-bits` and `com-flow`. The default
+is 115,200 bps, 8 data bits, no parity, 1 stop bit and hardware flow
+control.
+
 `capture.cpp` has the captures. Each capture is of one line (the modem or
 the Remote login). The capture does not get the bytes of a file transfer.
 
@@ -495,7 +560,7 @@ Windows.
   | Function | The stand-in |
   | --- | --- |
   | `waveOut*`, `waveIn*` (`mmsystem.h`), `acm*` (`msacm.h`) | Returns `MMSYSERR_NODRIVER`. The Phone page cannot play or record. |
-  | `GetCommState`, `SetCommState`, `SetCommTimeouts` (COM ports) | Returns `FALSE` (`ERROR_NOT_SUPPORTED`). Do not use a COM port. |
+  | `GetCommState`, `SetCommState`, `SetCommTimeouts`, `SetCommBreak`, `ClearCommBreak` (COM ports) | Returns `FALSE` (`ERROR_NOT_SUPPORTED`). Do not use a COM port. |
   | `CreatePipe`, `PeekNamedPipe` | Returns `FALSE`. The app cannot start dmodemd. |
   | `GetEnvironmentStrings`, `GetUserName`, `Beep` | Uses `environ`, `$USER` and `MessageBeep`. |
   | `ListView_*`, `TabCtrl_*` (`commctrl.h`), `winsock.h` | Macros and an include of `winsock2.h`. |

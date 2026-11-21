@@ -100,14 +100,6 @@ static int ini_int(const char *key, int def)
 	return (int)GetPrivateProfileInt("transfer", key, def, path);
 }
 
-/* ASCII Setup's ([ascii]: the text's line and character delays) */
-static int ascii_int(const char *key, int def)
-{
-	char path[MAX_PATH];
-	ini(path, sizeof(path));
-	return (int)GetPrivateProfileInt("ascii", key, def, path);
-}
-
 static void ini_set(const char *key, const char *v)
 {
 	char path[MAX_PATH];
@@ -817,8 +809,10 @@ void xfer_send_dialog(XferLine *l, int protocol)
 	memset(&o, 0, sizeof(o));
 	o.resume = a.resume;
 	o.no_zstd = !xfer_zstd();
-	o.line_delay_ms = ascii_int("line_delay", 0);
-	o.char_delay_ms = ascii_int("char_delay", 0);
+	AsciiSetup as;
+	ascii_load(&as);
+	o.line_delay_ms = as.line_delay;
+	o.char_delay_ms = as.char_delay;
 	start(l, dmc_xfer_send_opt(a.protocol, paths, a.nfiles, &o), a.protocol, true,
 	      a.nfiles, a.resume);
 }

@@ -27,7 +27,13 @@
 #define IDM_CAPSTOP     214
 #define IDM_CAPPRINT    215
 #define IDM_PRNPAUSE    216
-#define IDM_XZSTD       217
+#define IDM_ASCII       217
+#define IDM_TERMSET     218
+#define IDM_BREAK       219
+#define IDM_CALL        220
+#define IDM_WAITCALL    221
+#define IDM_DISCONNECT  222
+#define IDM_XZSTD       223
 
 #define IDC_STATUS      300
 #define IDC_TABS        301
@@ -137,6 +143,11 @@
 #define IDC_L_PORT      916
 #define IDC_L_INIT      917
 #define IDC_L_ANONYMOUS 918
+#define IDC_L_BPS       919
+#define IDC_L_DATA      920
+#define IDC_L_PARITY    921
+#define IDC_L_STOP      922
+#define IDC_L_FLOW      923
 
 /* the Change Setting dialog */
 #define IDD_SETTING     950
@@ -191,5 +202,39 @@
 #define IDC_X_BAR       1232
 #define IDC_X_RESULT    1233
 #define IDC_X_SKIP      1234
+
+/* ASCII Setup */
+#define IDD_ASCII       1240
+#define IDC_A_SENDLF    1241
+#define IDC_A_ECHO      1242
+#define IDC_A_LINEDELAY 1243
+#define IDC_A_CHARDELAY 1244
+#define IDC_A_ADDLF     1245
+#define IDC_A_7BIT      1246
+#define IDC_A_WRAP      1247
+
+/* the Call dialog */
+#define IDD_CALL        1270
+#define IDC_C_NAME      1271
+#define IDC_C_NUMBER    1272
+#define IDC_C_SAVE      1273
+#define IDC_C_DELETE    1274
+
+/* Terminal Settings */
+#define IDD_TERMSET     1250
+#define IDC_T_BSH       1251
+#define IDC_T_BSDEL     1252
+#define IDC_T_BSHSH     1253
+#define IDC_T_TERMKEYS  1254
+#define IDC_T_WINKEYS   1255
+#define IDC_T_BACKSCROLL 1256
+#define IDC_T_FONT      1257
+#define IDC_T_FONTSIZE  1258
+#define IDC_T_BLOCK     1259
+#define IDC_T_UNDERLINE 1260
+#define IDC_T_BLINK     1261
+#define IDC_T_TELNETID  1262
+#define IDC_T_TELNETLABEL 1263
+#define IDC_T_EXIT      1264
 
 #endif

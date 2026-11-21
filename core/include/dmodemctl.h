@@ -497,6 +497,8 @@ DMC_API void dmc_vt_feed(dmc_vt *t, const char *data, int n);
 /* the screen's answers to the remote's questions (where the cursor is,
    what terminal it is), to write to it as if typed */
 DMC_API int dmc_vt_reply(dmc_vt *t, char *buf, int max);
+/* the scrollback's size: the newest lines kept, the oldest dropped */
+DMC_API void dmc_vt_set_scrollback(dmc_vt *t, int lines);
 /* how many lines of scrollback there are now */
 DMC_API int dmc_vt_history(const dmc_vt *t);
 /* a cell: row 0 the screen's top, -1 the newest scrollback line and so
@@ -543,6 +545,14 @@ DMC_API int dmc_vt_char_bytes(dmc_vt *t, uint32_t cp, int mods, char *buf,
 /* what Enter sends (0 CR, 1 CR LF, 2 LF) and Backspace (0x08 or 0x7f) */
 DMC_API void dmc_vt_set_enter(dmc_vt *t, int mode);
 DMC_API void dmc_vt_set_backspace(dmc_vt *t, int code);
+/* HyperTerminal's ASCII Setup, for the received data: an LF added after
+   each CR (the LF of a CR LF is not doubled), each byte set to 7 bits,
+   and no wrap at the right margin (the last column is written again) */
+#define DMC_VT_ASCII_ADD_LF 1
+#define DMC_VT_ASCII_7BIT 2
+#define DMC_VT_ASCII_NO_WRAP 4
+DMC_API void dmc_vt_set_ascii(dmc_vt *t, int flags);
+DMC_API int dmc_vt_get_ascii(const dmc_vt *t);
 /* a mouse event, when the remote asked for them: button 0-2, 64 and 65
    the wheel; the bytes to send (0: none) */
 DMC_API int dmc_vt_mouse_wanted(const dmc_vt *t);
@@ -656,6 +666,9 @@ DMC_API void dmc_net_type(dmc_net *n, const char *data, int len);
 DMC_API int dmc_net_output(dmc_net *n, char *buf, int max);
 /* the screen's new size, told to the server */
 DMC_API void dmc_net_resize(dmc_net *n, int cols, int rows);
+/* a break to the server (Telnet's IAC BRK): 1, or 0 when the protocol has
+   none (rlogin) */
+DMC_API int dmc_net_break(dmc_net *n);
 
 /* ------------------------------------------------------------------
  * File transfers on a terminal's line, as the Android app has them:

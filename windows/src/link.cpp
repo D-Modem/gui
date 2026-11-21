@@ -45,6 +45,16 @@ bool link_open()
 		com != INVALID_HANDLE_VALUE;
 }
 
+bool link_break()
+{
+	/* (a COM port's: the line held at space for 250 ms) */
+	if (com == INVALID_HANDLE_VALUE || !SetCommBreak(com))
+		return false;
+	Sleep(250);
+	ClearCommBreak(com);
+	return true;
+}
+
 bool link_running()
 {
 	return proc != NULL || sock != INVALID_SOCKET ||
@@ -156,14 +166,23 @@ static bool open_com(const char *name)
 	memset(&dcb, 0, sizeof(dcb));
 	dcb.DCBlength = sizeof(dcb);
 	GetCommState(com, &dcb);
-	dcb.BaudRate = CBR_115200;
-	dcb.ByteSize = 8;
-	dcb.Parity = NOPARITY;
-	dcb.StopBits = ONESTOPBIT;
+	/* Line Settings' bits per second, data bits, parity, stop bits and
+	   flow control (Xon/Xoff: DC1 and DC3, both ways; hardware: RTS and
+	   CTS) */
+	dcb.BaudRate = (DWORD)app.cfg.com_bps;
+	dcb.ByteSize = (BYTE)app.cfg.com_data;
+	dcb.Parity = (BYTE)app.cfg.com_parity;
+	dcb.fParity = app.cfg.com_parity != 0;
+	dcb.StopBits = (BYTE)app.cfg.com_stop;
 	dcb.fBinary = TRUE;
 	dcb.fDtrControl = DTR_CONTROL_ENABLE;
-	dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
-	dcb.fOutxCtsFlow = TRUE;
+	dcb.fRtsControl = app.cfg.com_flow == 2 ? RTS_CONTROL_HANDSHAKE : 0x01;
+	dcb.fOutxCtsFlow = app.cfg.com_flow == 2;
+	dcb.fOutX = dcb.fInX = app.cfg.com_flow == 1;
+	dcb.XonChar = 0x11;
+	dcb.XoffChar = 0x13;
+	dcb.XonLim = 256;
+	dcb.XoffLim = 256;
 	SetCommState(com, &dcb);
 	/* reads return at once with what there is */
 	COMMTIMEOUTS t;
