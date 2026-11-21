@@ -2,6 +2,9 @@
 # Windows app for Linux and macOS (winport/)
 name: Build
 
+# The nightly release (nightly.yml) takes its files from this
+# workflow's artifacts on main. Each artifact is a .tar.gz or a .zip,
+# because an artifact does not keep the executable bit of a file.
 on:
   push:
     branches: [main]
@@ -57,6 +60,14 @@ jobs:
           DMODEM_SSH_TEST=127.0.0.1:2222:dmtest:Sesame-42 DMODEM_SSH_TEST_KEY="$RUNNER_TEMP/key" \
             DMODEM_SSH_TEST_PPK="$RUNNER_TEMP/key.ppk" DMODEM_SSH_TEST_AGENT="$RUNNER_TEMP/agent.sock" \
             build/ssh/dmodemssh_test
+      - name: Package
+        run: |
+          DESTDIR="$PWD/pkg" cmake --install build --prefix /usr
+          tar -C pkg -czf dmodem-gui-linux-x86_64.tar.gz usr
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-linux
+          path: dmodem-gui-linux-x86_64.tar.gz
 
   # Both Windows builds use clang-retro (https://clang-retro.github.io/),
   # its toolchain package from its setup-toolchain action, on Linux
@@ -144,10 +155,12 @@ jobs:
           cmake --build build --target dmodem-win32
       - name: Smoke test (Xvfb)
         run: xvfb-run -a winport/test/smoke.sh build/winport/dmodem-win32
+      - name: Package
+        run: tar -C build/winport -czf dmodem-win32-linux-x86_64.tar.gz dmodem-win32
       - uses: actions/upload-artifact@v4
         with:
           name: dmodem-win32-linux
-          path: build/winport/dmodem-win32
+          path: dmodem-win32-linux-x86_64.tar.gz
 
   winport-macos:
     name: Windows app on macOS (clang-retro MFC's Win32 layer)
@@ -166,10 +179,12 @@ jobs:
             -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           cmake --build build --target dmodem-win32 -j"$(sysctl -n hw.ncpu)"
+      - name: Package
+        run: tar -C build/winport -czf dmodem-win32-macos-arm64.tar.gz dmodem-win32
       - uses: actions/upload-artifact@v4
         with:
           name: dmodem-win32-macos
-          path: build/winport/dmodem-win32
+          path: dmodem-win32-macos-arm64.tar.gz
 
   macos:
     name: macOS (SwiftUI)
@@ -192,7 +207,10 @@ jobs:
           xcodebuild -project DModem.xcodeproj -scheme DModem \
             -configuration Release -derivedDataPath ../build/xcode \
             CODE_SIGN_IDENTITY=- build
+      # (ditto keeps the bundle's symbolic links and executable bits)
+      - name: Package
+        run: ditto -c -k --keepParent build/xcode/Build/Products/Release/D-Modem.app D-Modem-macos.zip
       - uses: actions/upload-artifact@v4
         with:
           name: dmodem-macos
-          path: build/xcode/Build/Products/Release/D-Modem.app
+          path: D-Modem-macos.zip
