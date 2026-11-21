@@ -647,7 +647,7 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0,
 	xfer_file_start(x, x->dst_name, size);
 	xfer_bytes(x, pos);
 	xfer_zstd(x, zstd);
-	int errors = 0, ok = 0;
+	int errors = 0, ok = 0, quiet = 0;
 	struct header h;
 	/* (until the sender has had time to hear our ZRPOS, what still comes
 	   of its stream from before isn't an error, and isn't asked for
@@ -667,7 +667,9 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0,
 		/* (8 KB of a stream with no header in it: ours lost; asked
 		   for again) */
 		int st = read_header(z, 8 * 1024, 1, &h);
-		if (st == H_QUIET)
+		/* (quiet: what the sender waits on lost, a ZDATA's end or a
+		   ZEOF; asked for again, as for an error, a few times) */
+		if (st == H_QUIET && ++quiet > 3)
 			xfer_fail(x, "the other side went quiet");
 		if (st != H_OK) {
 			if (WAITING())
@@ -677,6 +679,7 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0,
 			RPOS();
 			continue;
 		}
+		quiet = 0;
 		if (h.type == ZDATA) {
 			if (hpos(&h) != pos) {
 				/* not where we are: back to it (not an error) */
@@ -688,7 +691,12 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0,
 			for (;;) {
 				int end;
 				long long wrote = 0;
-				int n = read_data_or_fail(z, 8192, &end);
+				/* (the line quiet in the middle of a subpacket: its
+				   end damaged, and the sender waits for an ACK of
+				   it; an error, asked for again) */
+				int n = read_data(z, 8192, &end);
+				if (n == -2 && ++quiet > 3)
+					xfer_fail(x, "the other side went quiet");
 				if (n >= 0 && zstd) {
 					/* (the whole frames written, even when
 					   one after them is bad) */
@@ -709,6 +717,7 @@ static int receive_file(struct z *z, const unsigned char *info, int len, int f0,
 					pos += n;
 				}
 				errors = 0;
+				quiet = 0;
 				xfer_bytes(x, pos);
 				if (end == ZCRCW) {
 					send_hex(z, hdr_pos(ZACK, pos));
