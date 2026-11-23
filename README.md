@@ -4,8 +4,8 @@
 
 Native apps for D-Modem on Windows, macOS and Linux.
 
-The Linux and Windows apps have the modem built in, so they need no dmodemd.
-The macOS app starts dmodemd (or connects to a dmodemd that already runs). It
+The apps (not the Windows 95 build) have the modem built in, so they need no dmodemd (refer to
+[The built-in modem](docs/embedded-modem.md)). Each app
 shows the modem as a desktop program. You can dial and answer from a window,
 change the settings without AT commands, and see the results of the last
 call. All three apps are thin native shells over one small C library,

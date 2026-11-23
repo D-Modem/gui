@@ -36,6 +36,8 @@ struct LineConfig {
     var usb = "auto"
     var device = "/dev/ttyDM0"
     var dmodemd = ""        // its path, "" to look for it
+    /// the modem built into the app (when the build has it), not dmodemd
+    var builtin = true
     var initString = ""     // commands sent when the modem opens
     var debug = 0
 
@@ -57,6 +59,7 @@ struct LineConfig {
         c.usb = d.string(forKey: "usb") ?? "auto"
         c.device = d.string(forKey: "device") ?? "/dev/ttyDM0"
         c.dmodemd = d.string(forKey: "dmodemd") ?? ""
+        c.builtin = d.object(forKey: "builtin") as? Bool ?? true
         c.initString = d.string(forKey: "init") ?? ""
         c.debug = d.integer(forKey: "debug")
         c.sipPassword = Keychain.password(for: c.sipUser, server: c.sipServer) ?? ""
@@ -78,6 +81,7 @@ struct LineConfig {
         d.set(usb, forKey: "usb")
         d.set(device, forKey: "device")
         d.set(dmodemd, forKey: "dmodemd")
+        d.set(builtin, forKey: "builtin")
         d.set(initString, forKey: "init")
         d.set(debug, forKey: "debug")
         Keychain.setPassword(sipPassword, for: sipUser, server: sipServer)

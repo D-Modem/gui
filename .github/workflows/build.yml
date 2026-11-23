@@ -218,11 +218,15 @@ jobs:
           name: dmodem-win32-macos
           path: dmodem-win32-macos-arm64.tar.gz
 
+  # The built-in modem (external/D-Modem) is built by CMake, which
+  # writes build/macos-embed.xcconfig for the Xcode project
   macos:
     name: macOS (SwiftUI)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Library tests
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -239,6 +243,11 @@ jobs:
           xcodebuild -project DModem.xcodeproj -scheme DModem \
             -configuration Release -derivedDataPath ../build/xcode \
             CODE_SIGN_IDENTITY=- build
+      - name: The built-in modem is in the app
+        run: |
+          app=build/xcode/Build/Products/Release/D-Modem.app/Contents/MacOS/D-Modem
+          lipo -archs "$app"
+          nm "$app" | grep -q dmodem_embed_start
       # (ditto keeps the bundle's symbolic links and executable bits)
       - name: Package
         run: ditto -c -k --keepParent build/xcode/Build/Products/Release/D-Modem.app D-Modem-macos.zip

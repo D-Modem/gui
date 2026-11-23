@@ -335,7 +335,7 @@ the pty in the group of the user (`-g`). Thus dmodemd does not need root.
 Each app can also use a modem that already runs: a device path on Linux and
 macOS, or a TCP address or a COM port on Windows.
 
-The Linux and Windows apps do not start dmodemd by default. They run the
+The Linux, macOS and Windows apps do not start dmodemd by default. They run the
 modem in a thread (`libdmodem_embed`), and its DTE is a socket. Refer to
 [The built-in modem](embedded-modem.md).
 

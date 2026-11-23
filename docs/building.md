@@ -37,8 +37,12 @@ modem. The win9x build does not include the built-in modem:
 The app is in `windows/dmodem.exe` of the build directory. MSVC
 (`cmake -S . -B build -A Win32`) and MinGW also build the same code.
 
-macOS: first use `cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build`
-(this builds libssh, for SSH). Then use `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
+macOS: first use `git submodule update --init`, then
+`cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build`.
+This builds libssh (for SSH) and the built-in modem, and writes
+`build/macos-embed.xcconfig` for the Xcode project. CMake 3.21 or later
+is necessary for the built-in modem. Then use
+`brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
 
 The Windows app on Linux or macOS: get [clang-retro MFC](https://github.com/clang-retro/mfc),
 clang and `llvm-rc` (on macOS, `brew install llvm`). Then:

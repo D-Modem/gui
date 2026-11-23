@@ -7,6 +7,10 @@
 // dmodemd runs as the user: it makes its pty and says where it is ("Use
 // `/dev/ttys003' as modem device"), and the app opens that.  With the
 // "device" line nothing is started and the given device is opened.
+//
+// When the build has the built-in modem (DMODEM_GUI_EMBED), the SIP and
+// USB lines start it in a thread of the app (libdmodem_embed), not
+// dmodemd. Its DTE is a socket, so there is no pty.
 
 import AppKit
 import Foundation
@@ -16,6 +20,36 @@ import UserNotifications
 func cstr(_ p: UnsafePointer<CChar>?) -> String {
     p.map { String(cString: $0) } ?? ""
 }
+
+#if DMODEM_GUI_EMBED
+/// The context of one start of the built-in modem, for the callbacks
+/// of its thread. Each start has its own, so that the news of an
+/// earlier start is ignored.
+private final class EmbedBox {
+    weak var modem: Modem?
+    let gen: Int
+    init(_ modem: Modem, _ gen: Int) {
+        self.modem = modem
+        self.gen = gen
+    }
+}
+
+/// A log line of the built-in modem (its thread): to the main thread.
+private let embedLog: dmodem_embed_log_fn = { ctx, line in
+    guard let ctx, let line else { return }
+    let box = Unmanaged<EmbedBox>.fromOpaque(ctx).takeUnretainedValue()
+    let s = String(cString: line)
+    DispatchQueue.main.async { box.modem?.embedLine(s, gen: box.gen) }
+}
+
+/// The end of the built-in modem's thread: to the main thread. This is
+/// the last call with the context, so it releases the context.
+private let embedExit: dmodem_embed_exit_fn = { ctx, status in
+    guard let ctx else { return }
+    let box = Unmanaged<EmbedBox>.fromOpaque(ctx).takeRetainedValue()
+    DispatchQueue.main.async { box.modem?.embedEnded(Int(status), gen: box.gen) }
+}
+#endif
 
 /// What a command of the app's got back.
 struct Response {
@@ -88,6 +122,21 @@ final class Modem: ObservableObject {
     let voice = Voice()
 
     private var process: Process?
+    /// the built-in modem (libdmodem_embed), when it was started once
+    private var embed: OpaquePointer?
+    /// the built-in modem's thread runs
+    private var embedRunning = false
+    /// bumped at each start and stop of the built-in modem
+    private var embedGen = 0
+
+    /// The build has the built-in modem.
+    static var hasBuiltin: Bool {
+        #if DMODEM_GUI_EMBED
+        return true
+        #else
+        return false
+        #endif
+    }
     private var fd: Int32 = -1
     private var source: DispatchSourceRead?
     private var pending: [UInt8] = []
@@ -115,6 +164,9 @@ final class Modem: ObservableObject {
 
     deinit {
         timer?.invalidate()
+        #if DMODEM_GUI_EMBED
+        if let e = embed { dmodem_embed_free(e) }
+        #endif
         dmc_model_free(model)
         dmc_vt_free(vt)
         dmc_session_free(session)
@@ -351,6 +403,7 @@ final class Modem: ObservableObject {
 
     // MARK: - the device
 
+    /// Opens the modem's device (a pty or a serial port) and attaches it.
     private func openDevice(_ path: String) -> Bool {
         let f = Darwin.open(path, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC)
         if f < 0 {
@@ -366,8 +419,15 @@ final class Modem: ObservableObject {
             t.c_cflag |= tcflag_t(CLOCAL | CREAD)
             tcsetattr(f, TCSANOW, &t)
         }
+        attach(f, name: path)
+        return true
+    }
+
+    /// Uses an open descriptor (a pty, a serial port, or the built-in
+    /// modem's socket) as the modem's DTE, and opens the session on it.
+    private func attach(_ f: Int32, name: String) {
         fd = f
-        device = path
+        device = name
         let s = DispatchSource.makeReadSource(fileDescriptor: f, queue: .main)
         s.setEventHandler { [weak self] in self?.readable() }
         s.resume()
@@ -380,7 +440,6 @@ final class Modem: ObservableObject {
         loadSettings()
         refreshStats()
         pump()
-        return true
     }
 
     private func readable() {
@@ -419,7 +478,7 @@ final class Modem: ObservableObject {
         lastState = state
         voice.sound(state)
         clearSettings()
-        running = process != nil
+        running = process != nil || embedRunning
     }
 
     // MARK: - dmodemd
@@ -444,15 +503,18 @@ final class Modem: ObservableObject {
             running = openDevice(c.device)
             return
         }
-        guard let exe = findDmodemd() else {
-            return say("dmodemd was not found: install D-Modem, or set its path in the line settings")
-        }
         if !c.isSetUp {
             say("Set up the SIP account first")
             if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
                 NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
             }
             return
+        }
+        #if DMODEM_GUI_EMBED
+        if c.builtin { return startEmbedded(c) }
+        #endif
+        guard let exe = findDmodemd() else {
+            return say("dmodemd was not found: install D-Modem, or set its path in the line settings")
         }
         var args: [String] = []
         if !c.country.isEmpty { args += ["-c", c.country] }
@@ -545,15 +607,112 @@ final class Modem: ObservableObject {
     }
 
     func stop() {
-        if fd >= 0 && process != nil {
+        if fd >= 0 && (process != nil || embedRunning) {
             // hang up first, so the call ends cleanly
             dmc_hangup(session)
             pump()
         }
         closeDevice()
+        #if DMODEM_GUI_EMBED
+        stopEmbedded()
+        #endif
         process?.terminate()
         running = process != nil
     }
+
+    #if DMODEM_GUI_EMBED
+    // MARK: - the built-in modem
+
+    /// Starts the built-in modem on the line settings' line, in a thread
+    /// of the app, and attaches its DTE socket.
+    private func startEmbedded(_ c: LineConfig) {
+        var keep: [UnsafeMutablePointer<CChar>] = []
+        defer { keep.forEach { free($0) } }
+        /// A C string that stays until the end of this function.
+        func cs(_ s: String) -> UnsafePointer<CChar>? {
+            guard let p = strdup(s) else { return nil }
+            keep.append(p)
+            return UnsafePointer(p)
+        }
+
+        var e = dmodem_embed_config()
+        dmodem_embed_config_init(&e)
+        if !c.country.isEmpty { e.country = cs(c.country) }
+        e.log_level = Int32(c.debug)
+        if c.line == .usb {
+            e.line = Int32(DMODEM_EMBED_USB)
+            e.usb = cs(c.usb)
+        } else {
+            e.line = Int32(DMODEM_EMBED_SIP)
+            if !c.sipAnonymous {
+                e.sip_user = cs(c.sipUser)
+                e.sip_password = cs(c.sipPassword)
+                e.sip_domain = cs(c.sipServer)
+            }
+            e.sip_listen = c.listen ? 1 : 0
+            e.sip_t38 = c.t38 ? 1 : 0
+            e.sip_v152 = c.v152 ? 1 : 0
+            e.sip_v150 = c.v150 ? 1 : 0
+            e.sip_srtp = c.srtp == "no" ? 0 : c.srtp == "require" ? 2 : 1
+        }
+        if dmodem_embed_lines() & (1 << e.line) == 0 {
+            return say("The built-in modem has no such line in this build: turn off Built-in modem in the line settings")
+        }
+        // the data file of the line's measurements, where the user may write it
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("D-Modem")
+        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        e.data_file = cs(support.appendingPathComponent("dmodem0.data").path)
+
+        if embed == nil { embed = dmodem_embed_new() }
+        guard let em = embed else { return say("Can't start the built-in modem") }
+        embedGen += 1
+        let ctx = Unmanaged.passRetained(EmbedBox(self, embedGen)).toOpaque()
+        dmodem_embed_on_log(em, embedLog, ctx)
+        dmodem_embed_on_exit(em, embedExit, ctx)
+        let f = dmodem_embed_start(em, &e)
+        if f < 0 {
+            // (no thread: the context is not used)
+            Unmanaged<EmbedBox>.fromOpaque(ctx).release()
+            let m = "Can't start the built-in modem: \(cstr(dmodem_embed_error(em)))"
+            addLog(m)
+            return say(m)
+        }
+        addLog("The built-in modem (D-Modem \(cstr(dmodem_embed_version()))) started.")
+        embedRunning = true
+        running = true
+        _ = fcntl(f, F_SETFL, fcntl(f, F_GETFL) | O_NONBLOCK)
+        attach(f, name: "Built-in modem")
+    }
+
+    /// Stops the built-in modem's thread. Its news after now is ignored.
+    private func stopEmbedded() {
+        guard let em = embed, embedRunning else { return }
+        embedGen += 1
+        dmodem_embed_stop(em)
+        embedRunning = false
+        addLog("The built-in modem stopped.")
+    }
+
+    /// A log line of the built-in modem, on the main thread.
+    fileprivate func embedLine(_ line: String, gen: Int) {
+        guard gen == embedGen else { return }
+        addLog(line)
+    }
+
+    /// The built-in modem's thread ended by itself (an error, or the
+    /// line closed), on the main thread.
+    fileprivate func embedEnded(_ status: Int, gen: Int) {
+        guard gen == embedGen, embedRunning else { return }
+        embedRunning = false
+        let m = status == 0 ? "The built-in modem stopped."
+                            : "The built-in modem stopped (error)."
+        addLog(m)
+        closeDevice()
+        running = process != nil
+        if status != 0 { say(m) }
+    }
+    #endif
 
     func saveConfig(_ c: LineConfig) {
         config = c

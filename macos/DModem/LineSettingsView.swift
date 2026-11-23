@@ -64,9 +64,16 @@ struct LineSettingsView: View {
                 TextField("Init string", text: $c.initString, prompt: Text("sent each time it opens"))
                     .font(.body.monospaced())
                 if c.line != .device {
-                    HStack {
-                        TextField("dmodemd", text: $c.dmodemd, prompt: Text("looked for"))
-                        Button("Choose…") { choosing = true }
+                    if Modem.hasBuiltin {
+                        Toggle("Built-in modem", isOn: $c.builtin)
+                        Text("Off: the app starts dmodemd.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if !Modem.hasBuiltin || !c.builtin {
+                        HStack {
+                            TextField("dmodemd", text: $c.dmodemd, prompt: Text("looked for"))
+                            Button("Choose…") { choosing = true }
+                        }
                     }
                     Stepper("Debug level: \(c.debug)", value: $c.debug, in: 0...5)
                 }
