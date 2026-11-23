@@ -74,10 +74,12 @@ jobs:
   # Both Windows builds use clang-retro (https://clang-retro.github.io/),
   # its toolchain package from its setup-toolchain action, on Linux
   windows-9x:
-    name: Windows 95 and later (clang-retro, win32-picolibc)
+    name: Windows 95 and later, the modem built in (clang-retro, win32-picolibc)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
         id: clang-dos
       - name: Packages
@@ -100,14 +102,20 @@ jobs:
         run: |
           python3 "$CLANG_DOS/share/clang-dos/check-imports.py" build/win9x/windows/dmodem.exe
           python3 "$CLANG_DOS/share/clang-dos/check-imports.py" --nt 4.0 build/win9x/windows/dmodem.exe
+          # (no iphlpapi.dll, which Windows 95 does not have, and no msvcrt.dll)
+          if "$CLANG_DOS/bin/llvm-objdump" -p build/win9x/windows/dmodem.exe |
+              grep -i "DLL Name: \(msvcrt\|iphlpapi\)"; then
+            exit 1
+          fi
+          "$CLANG_DOS/bin/llvm-nm" build/win9x/windows/dmodem.exe | grep -q dmodem_embed_start
       - uses: actions/upload-artifact@v4
         with:
           name: dmodem-windows-9x
           path: build/win9x/windows/dmodem.exe
 
-  # The app with the modem built in (external/D-Modem): Windows 98 SE,
-  # ME, 2000 and later. The modem needs msvcrt and libc++, which the
-  # Windows 95 build above (picolibc) does not have.
+  # The app with the modem built in (external/D-Modem), on msvcrt:
+  # Windows 98 SE, ME, 2000 and later. (The Windows 95 build above has
+  # the modem too, on picolibc and libc++.)
   windows-98:
     name: Windows 98 SE and later, the modem built in (clang-retro, win98)
     runs-on: ubuntu-24.04
