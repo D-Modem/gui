@@ -8,8 +8,10 @@
  *         clang-retro (cmake/clang-retro.cmake), or MinGW or MSVC.
  *
  * The modem is reached one of three ways (Link):
- *   - dmodemd started by the app on this PC (Windows 7 and later, as
- *     dmodemd needs), its DTE a TCP socket on 127.0.0.1;
+ *   - the modem built into the app (DMODEM_GUI_EMBED: libdmodem_embed,
+ *     Windows 98 SE and later), its DTE a socket; or dmodemd started by
+ *     the app on this PC (Windows 7 and later, as dmodemd needs), its
+ *     DTE a TCP socket on 127.0.0.1;
  *   - a TCP address: dmodemd as a service, or on another computer;
  *   - a COM port: a modem's serial port, a pico-serial, or dmodemd's
  *     --com through a com0com pair.
@@ -77,6 +79,9 @@ struct Config {
 	char country[64];
 	char usb[64];                   /* --usb, "" for a SIP line */
 	char dmodemd[MAX_PATH];         /* dmodemd.exe, "" next to the app */
+	/* LINE_DMODEMD: the modem built in (DMODEM_GUI_EMBED), not
+	   dmodemd.exe started ([line] builtin=0) */
+	int builtin;
 	char tcp[256];                  /* host:port */
 	char com[32];                   /* COM1 */
 	/* the COM port's settings, as HyperTerminal's Configure: bits per
@@ -130,6 +135,8 @@ bool link_break();
 void link_pump();
 /* socket messages (WM_APP_SOCKET) */
 void link_socket(WPARAM w, LPARAM l);
+/* the built-in modem's news (WM_APP_EMBED): a log line, or its end */
+void link_embed(WPARAM w, LPARAM l);
 void link_type(const char *data, int n);
 /* bytes to the far end as they are (a file transfer's) */
 void link_send(const char *data, int n);
@@ -150,6 +157,9 @@ void link_wait(int tag, ResponseFn fn, void *data);
 /* a file transfer has bytes for its line, or ended (wParam 0); the
    remote's rz waits for files (wParam 1, lParam its XferLine) */
 #define WM_APP_XFER (WM_APP + 4)
+/* news from the built-in modem's thread: a log line or its end
+   (lParam: link.cpp's EmbedNews, malloc'd) */
+#define WM_APP_EMBED (WM_APP + 5)
 
 /* main.cpp */
 void app_log(const char *line);

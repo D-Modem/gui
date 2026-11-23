@@ -14,6 +14,12 @@ add_executable(dmodem-gui
   src/termview.c
   src/audio.c)
 target_link_libraries(dmodem-gui PRIVATE dmodemctl dmodemssh PkgConfig::GTK)
+# the modem built in (libdmodem_embed): no dmodemd to start
+if(DMODEM_GUI_EMBED AND TARGET dmodem_embed)
+  target_link_libraries(dmodem-gui PRIVATE dmodem_embed)
+  target_compile_definitions(dmodem-gui PRIVATE DMODEM_GUI_EMBED)
+  set_target_properties(dmodem-gui PROPERTIES LINKER_LANGUAGE CXX)
+endif()
 # where the MT9234MU's firmware is installed, and where it is in the source
 include(GNUInstallDirs)
 target_compile_definitions(dmodem-gui PRIVATE

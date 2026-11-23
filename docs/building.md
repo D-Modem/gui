@@ -2,21 +2,33 @@
 
 Linux:
 
+    git submodule update --init
     sudo apt install cmake libgtk-4-dev libadwaita-1-dev libpulse-dev \
-        libsndfile1-dev
+        libsndfile1-dev libasound2-dev libusb-1.0-0-dev
     cmake -S . -B build && cmake --build build && ./build/linux/dmodem-gui
+
+The submodule `external/D-Modem` gives the built-in modem. Refer to
+[The built-in modem](embedded-modem.md).
 
 Windows: we build the Windows app with clang-retro. Get its toolchain
 package (`clang-dos-linux-x86_64.tar.xz` or `clang-dos-windows-x86_64.zip`,
 from the [nightly release](https://github.com/clang-retro/dos-sdk/releases/tag/nightly)).
-Then set `CLANG_DOS` to the directory of the package:
+Then set `CLANG_DOS` to the directory of the package. The win98 and win7
+builds need the submodule (`git submodule update --init`) for the built-in
+modem. The win9x build does not include the built-in modem:
 
     # Windows 95, 98, ME, NT 4.0 and later (no C runtime DLL)
     cmake -S . -B build/win9x -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake
     cmake --build build/win9x
 
-    # Windows 7 and later
+    # Windows 98 SE, ME, 2000 and later, with the built-in modem
+    cmake -S . -B build/win98 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake \
+        -DCLANG_RETRO_CONFIG=win98
+    cmake --build build/win98
+
+    # Windows 7 and later, with the built-in modem
     cmake -S . -B build/win7 -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake \
         -DCLANG_RETRO_CONFIG=win7
@@ -25,8 +37,12 @@ Then set `CLANG_DOS` to the directory of the package:
 The app is in `windows/dmodem.exe` of the build directory. MSVC
 (`cmake -S . -B build -A Win32`) and MinGW also build the same code.
 
-macOS: first use `cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build`
-(this builds libssh, for SSH). Then use `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
+macOS: first use `git submodule update --init`, then
+`cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build`.
+This builds libssh (for SSH) and the built-in modem, and writes
+`build/macos-embed.xcconfig` for the Xcode project. CMake 3.21 or later
+is necessary for the built-in modem. Then use
+`brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
 
 The Windows app on Linux or macOS: get [clang-retro MFC](https://github.com/clang-retro/mfc),
 clang and `llvm-rc` (on macOS, `brew install llvm`). Then:

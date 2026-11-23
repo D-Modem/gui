@@ -3,8 +3,8 @@
 include(FetchContent)
 include(ExternalProject)
 
-set(DMODEM_MBEDTLS_URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.4/mbedtls-3.6.4.tar.bz2)
-set(DMODEM_MBEDTLS_SHA256 ec35b18a6c593cf98c3e30db8b98ff93e8940a8c4e690e66b41dfc011d678110)
+set(DMODEM_MBEDTLS_URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2)
+set(DMODEM_MBEDTLS_SHA256 a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6)
 set(DMODEM_LIBSSH_URL https://www.libssh.org/files/0.11/libssh-0.11.3.tar.xz)
 set(DMODEM_LIBSSH_SHA256 7d8a1361bb094ec3f511964e78a5a4dba689b5986e112afabe4f4d0d6c6125c3)
 
@@ -63,10 +63,13 @@ ExternalProject_Add(dmodem_mbedtls
              -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DMBEDTLS_FATAL_WARNINGS=OFF
   BUILD_BYPRODUCTS ${_mbed_paths})
 
-# (Bionic has no S_IWRITE, the old name libssh uses)
+# libssh's sha1() and sha256() renamed: libre (in the modem built in,
+# DMODEM_GUI_EMBED) has functions of the same names
 set(_ssh_args)
+set(_ssh_cflags "-Dsha1=dmodem_ssh_sha1 -Dsha256=dmodem_ssh_sha256")
+# (Bionic has no S_IWRITE, the old name libssh uses)
 if(ANDROID)
-  list(APPEND _ssh_args -DCMAKE_C_FLAGS=-DS_IWRITE=S_IWUSR)
+  string(APPEND _ssh_cflags " -DS_IWRITE=S_IWUSR")
 endif()
 # clang-retro (cmake/clang-retro.cmake): its clang, newer than MinGW's
 # GCC, makes an error of src/threads/mbedtls.c's casts of libssh's mutex
@@ -77,13 +80,13 @@ endif()
 # Windows, and its <arpa/inet.h> conflicts with <winsock2.h>, so libssh
 # uses none of them.
 if(CLANG_DOS)
-  set(_ssh_cflags -Wno-error=incompatible-function-pointer-types)
+  string(APPEND _ssh_cflags " -Wno-error=incompatible-function-pointer-types")
   if(CLANG_RETRO_CONFIG MATCHES "picolibc")
     string(APPEND _ssh_cflags " -D_DEFAULT_SOURCE -D__STDC_WANT_LIB_EXT1__=1 -I${CMAKE_CURRENT_LIST_DIR}/picolibc")
     list(APPEND _ssh_args -DHAVE_ARPA_INET_H= -DHAVE_IO_H= -DHAVE_TERMIOS_H=)
   endif()
-  list(APPEND _ssh_args "-DCMAKE_C_FLAGS=${_ssh_cflags}")
 endif()
+list(APPEND _ssh_args "-DCMAKE_C_FLAGS=${_ssh_cflags}")
 
 # (WITH_SERVER: libssh runs a client's callbacks for the channels the
 # server opens, the forwarded agent's, only when it's built with it)

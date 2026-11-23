@@ -75,6 +75,13 @@ void window_state(App *a)
 		gtk_widget_remove_css_class(a->run_btn, "suggested-action");
 	else
 		gtk_widget_add_css_class(a->run_btn, "suggested-action");
+	/* (what runs the line: the modem built in, or dmodemd) */
+	gboolean builtin = FALSE;
+#ifdef DMODEM_GUI_EMBED
+	builtin = a->cfg.builtin && g_strcmp0(a->cfg.line, "device");
+#endif
+	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(a->run_row),
+				      builtin ? "Built-in modem" : "dmodemd");
 	char *sum = config_summary(&a->cfg);
 	adw_action_row_set_subtitle(ADW_ACTION_ROW(a->run_row), sum);
 	g_free(sum);

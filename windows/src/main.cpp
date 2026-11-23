@@ -526,6 +526,9 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 	case WM_APP_SOCKET:
 		link_socket(wp, lp);
 		return 0;
+	case WM_APP_EMBED:
+		link_embed(wp, lp);
+		return 0;
 	case WM_APP_REMOTE:
 		remote_socket(wp, lp);
 		return 0;
