@@ -97,8 +97,15 @@ void config_load(Config *c)
 	(void)old;
 	c->line = get_i(ini, "line", LINE_TCP);
 #else
+#ifdef DMODEM_GUI_EMBED
+	/* (the modem built in runs on Windows 98 SE and later) */
+	(void)old;
+	c->line = get_i(ini, "line", LINE_DMODEMD);
+#else
 	c->line = get_i(ini, "line", old ? LINE_COM : LINE_DMODEMD);
 #endif
+#endif
+	c->builtin = get_i(ini, "builtin", 1);
 	get(ini, "sip-user", "", c->sip_user, sizeof(c->sip_user));
 	get(ini, "sip-password", "", c->sip_password, sizeof(c->sip_password));
 	get(ini, "sip-server", "", c->sip_server, sizeof(c->sip_server));
@@ -155,6 +162,7 @@ void config_save(const Config *c)
 	put(ini, "country", c->country);
 	put(ini, "usb", c->usb);
 	put(ini, "dmodemd", c->dmodemd);
+	put_i(ini, "builtin", c->builtin);
 	put(ini, "tcp", c->tcp);
 	put(ini, "com", c->com);
 	put_i(ini, "com-bps", c->com_bps);
@@ -187,18 +195,25 @@ void config_summary(const Config *c, char *out, int n)
 			  c->com_bps, c->com_data, "NOEMS"[c->com_parity],
 			  c->com_stop == 1 ? "1.5" : c->com_stop == 2 ? "2" : "1");
 		break;
-	default:
+	default: {
+		/* (what runs the line: the modem built in, or dmodemd) */
+		const char *who = "dmodemd";
+#ifdef DMODEM_GUI_EMBED
+		if (c->builtin)
+			who = "Built-in modem";
+#endif
 		if (c->usb[0])
-			_snprintf(out, n, "dmodemd: USB modem (%s)", c->usb);
+			_snprintf(out, n, "%s: USB modem (%s)", who, c->usb);
 		else if (c->sip_anonymous)
-			_snprintf(out, n, "dmodemd: SIP, anonymous (no account)%s",
-				  c->listen ? ", taking calls" : "");
+			_snprintf(out, n, "%s: SIP, anonymous (no account)%s",
+				  who, c->listen ? ", taking calls" : "");
 		else if (!c->sip_user[0] || !c->sip_server[0])
-			_snprintf(out, n, "dmodemd: SIP account not set up");
+			_snprintf(out, n, "%s: SIP account not set up", who);
 		else
-			_snprintf(out, n, "dmodemd: SIP %s@%s%s", c->sip_user,
+			_snprintf(out, n, "%s: SIP %s@%s%s", who, c->sip_user,
 				  c->sip_server, c->listen ? ", taking calls" : "");
 		break;
+	}
 	}
 	out[n - 1] = '\0';
 }

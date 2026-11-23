@@ -105,11 +105,41 @@ jobs:
           name: dmodem-windows-9x
           path: build/win9x/windows/dmodem.exe
 
+  # The app with the modem built in (external/D-Modem): Windows 98 SE,
+  # ME, 2000 and later. The modem needs msvcrt and libc++, which the
+  # Windows 95 build above (picolibc) does not have.
+  windows-98:
+    name: Windows 98 SE and later, the modem built in (clang-retro, win98)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
+        id: clang-dos
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build
+      - name: Build
+        run: |
+          cmake -S . -B build/win98 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake -DCLANG_RETRO_CONFIG=win98
+          cmake --build build/win98
+      - name: Imports (Windows 98 SE)
+        run: python3 "$CLANG_DOS/share/clang-dos/check-imports.py" build/win98/windows/dmodem.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-windows-98
+          path: build/win98/windows/dmodem.exe
+
   windows:
     name: Windows 7 and later (clang-retro)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: clang-retro/dos-sdk/.github/actions/setup-toolchain@main
         id: clang-dos
       - name: Packages

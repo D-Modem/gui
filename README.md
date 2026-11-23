@@ -4,8 +4,8 @@
 
 Native apps for D-Modem on Windows, macOS and Linux.
 
-The Linux app has the modem built in, so it needs no dmodemd. The Windows
-and macOS apps start dmodemd (or connect to a dmodemd that already runs). It
+The Linux and Windows apps have the modem built in, so they need no dmodemd.
+The macOS app starts dmodemd (or connects to a dmodemd that already runs). It
 shows the modem as a desktop program. You can dial and answer from a window,
 change the settings without AT commands, and see the results of the last
 call. All three apps are thin native shells over one small C library,
@@ -60,7 +60,7 @@ macOS, refer to [Building](docs/building.md).
 
 - [Features](docs/features.md): each page and menu of the apps, with the details of the Windows app
 - [Building](docs/building.md): Linux, Windows with clang-retro, macOS, and the Windows app on Linux and macOS
-- [The built-in modem](docs/embedded-modem.md): the modem inside the Linux app, with no dmodemd
+- [The built-in modem](docs/embedded-modem.md): the modem inside the Linux and Windows apps, with no dmodemd
 - [Design](docs/design.md): how the apps are built, what they share, hardware modems (the MultiTech MT9234MU), the Windows 9x notes, and the Windows app on Linux and macOS
 - [libdmodemctl](core/include/dmodemctl.h): the API of the library
 - [Documentation style](docs/STYLE.md): the rules for ASD-STE100 Simplified Technical English
