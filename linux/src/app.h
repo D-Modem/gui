@@ -28,6 +28,9 @@ typedef struct Config {
 	char *usb, *alsa;       /* --usb's (auto), -a's (hw:1) */
 	char *device;           /* the modem's device, "device" line */
 	char *dmodemd;          /* its path, "" to look for it */
+	/* the modem built into the app (libdmodem_embed, DMODEM_GUI_EMBED)
+	   for the SIP, USB and ALSA lines; FALSE: dmodemd started */
+	gboolean builtin;
 	char *init;             /* commands sent when the modem opens */
 	int debug;              /* dmodemd -d */
 	/* the answering machine ([voice]): on, after how many RINGs, a
@@ -60,6 +63,12 @@ struct App {
 	/* the modem */
 	dmc_session *s;
 	GSubprocess *proc;
+	/* the modem built in (modem.c; a struct dmodem_embed), when it
+	   runs; its start's number, so that the news of an older start is
+	   ignored */
+	void *embed;
+	gboolean embed_running;
+	guint embed_gen;
 	GCancellable *cancel;
 	char *device;           /* the DTE's path */
 	int fd;

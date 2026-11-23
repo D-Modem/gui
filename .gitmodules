@@ -1,0 +1,4 @@
+[submodule "external/D-Modem"]
+	path = external/D-Modem
+	url = https://github.com/D-Modem/D-Modem.git
+	branch = main

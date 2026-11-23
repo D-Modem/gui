@@ -2,9 +2,13 @@
 
 Linux:
 
+    git submodule update --init
     sudo apt install cmake libgtk-4-dev libadwaita-1-dev libpulse-dev \
-        libsndfile1-dev
+        libsndfile1-dev libasound2-dev libusb-1.0-0-dev
     cmake -S . -B build && cmake --build build && ./build/linux/dmodem-gui
+
+The submodule `external/D-Modem` gives the built-in modem. Refer to
+[The built-in modem](embedded-modem.md).
 
 Windows: we build the Windows app with clang-retro. Get its toolchain
 package (`clang-dos-linux-x86_64.tar.xz` or `clang-dos-windows-x86_64.zip`,
