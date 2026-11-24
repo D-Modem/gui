@@ -4,8 +4,8 @@
 # The macOS app (macos/) builds with Xcode and takes the core from here.
 # With DMODEM_GUI_WINPORT, the Windows app also builds for Linux and
 # macOS, over clang-retro MFC's portable Win32 layer (winport/).
-# With DMODEM_GUI_EMBED, the Linux app, the Windows app (Windows 98 SE
-# and later) and the macOS app have the modem in them (libdmodem_embed
+# With DMODEM_GUI_EMBED, the Linux app, the Windows app (Windows 95 and
+# later) and the macOS app have the modem in them (libdmodem_embed
 # from the D-Modem submodule, external/D-Modem): they need no dmodemd.
 # For the macOS app, CMake writes macos-embed.xcconfig
 # (cmake/MacosEmbed.cmake).
@@ -20,20 +20,19 @@ option(DMODEM_GUI_SSH "Build libdmodemssh (libssh) for the Remote page" ON)
 option(DMODEM_GUI_WINPORT "Build the Windows app for Linux or macOS (winport/)" OFF)
 set(CLANG_RETRO_MFC "" CACHE PATH "A clang-retro MFC checkout, for DMODEM_GUI_WINPORT")
 
-# the modem built in (docs/embedded-modem.md): the Linux and macOS apps,
-# when the submodule is there (git submodule update --init)
+# the modem built in (docs/embedded-modem.md): the Linux, macOS and
+# Windows apps, when the submodule is there (git submodule update --init)
 set(DMODEM_GUI_DMODEM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/D-Modem
   CACHE PATH "The D-Modem tree, for DMODEM_GUI_EMBED")
-# and the Windows app for Windows 98 SE and later: the modem is C++17 on
-# msvcrt and libc++, which the Windows 95 build (picolibc, no C++
-# library) does not have
+# (all the Windows builds: clang-retro's win32-picolibc, the Windows 95
+# build, has libc++ for the modem's C++17, as win98 and win7 do)
 set(_embed_default OFF)
 if(EXISTS ${DMODEM_GUI_DMODEM_DIR}/CMakeLists.txt)
   if(UNIX AND NOT APPLE AND DMODEM_GUI_LINUX AND NOT DMODEM_GUI_WINPORT)
     set(_embed_default ON)
   elseif(APPLE AND NOT DMODEM_GUI_WINPORT)
     set(_embed_default ON)
-  elseif(WIN32 AND NOT CLANG_RETRO_CONFIG MATCHES "picolibc")
+  elseif(WIN32)
     set(_embed_default ON)
   endif()
 endif()

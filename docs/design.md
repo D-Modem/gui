@@ -529,9 +529,9 @@ Windows 95 to Windows 11:
   these names to `snprintf`, `strcasecmp` and `strncasecmp`.
 - MinGW and MSVC also build the same code with CMake.
 
-dmodemd itself needs Windows 7 or later. On Windows 9x and NT 4, the app
-uses a COM port by default. It can also connect to a dmodemd on another
-machine through TCP.
+The app has the modem built in on each Windows (refer to
+[The built-in modem](embedded-modem.md)). It can also use a COM port, or
+connect to a dmodemd on another machine through TCP.
 
 ## The Windows app on Linux and macOS
 

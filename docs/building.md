@@ -13,11 +13,10 @@ The submodule `external/D-Modem` gives the built-in modem. Refer to
 Windows: we build the Windows app with clang-retro. Get its toolchain
 package (`clang-dos-linux-x86_64.tar.xz` or `clang-dos-windows-x86_64.zip`,
 from the [nightly release](https://github.com/clang-retro/dos-sdk/releases/tag/nightly)).
-Then set `CLANG_DOS` to the directory of the package. The win98 and win7
-builds need the submodule (`git submodule update --init`) for the built-in
-modem. The win9x build does not include the built-in modem:
+Then set `CLANG_DOS` to the directory of the package. Each build needs the
+submodule (`git submodule update --init`) for the built-in modem:
 
-    # Windows 95, 98, ME, NT 4.0 and later (no C runtime DLL)
+    # Windows 95, 98, ME, NT 4.0 and later (no C runtime DLL), with the built-in modem
     cmake -S . -B build/win9x -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake
     cmake --build build/win9x

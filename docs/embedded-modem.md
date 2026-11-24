@@ -2,7 +2,7 @@
 
 The Linux app, the macOS app and the Windows app (Windows 98 SE and
 later) have the D-Modem modem in them. Thus, these apps do not need a
-separate `dmodemd`. The Windows 95 build still uses `dmodemd`.
+separate `dmodemd`. This includes the Windows 95 build.
 
 ## What it does
 
@@ -63,9 +63,9 @@ The D-Modem source is a git submodule in `external/D-Modem`. To get it:
 
 If the submodule is there, CMake builds the built-in modem
 (`DMODEM_GUI_EMBED`, on by default) for the Linux app, the macOS app, and
-the Windows app with the clang-retro configurations `win98`, `winme`, `win7` and later.
-It is off for `win32-picolibc` (the Windows 95 build) and for the Windows
-app on Linux and macOS (`DMODEM_GUI_WINPORT`). To build the app with no built-in
+the Windows app with the clang-retro configurations `win32-picolibc` (the
+Windows 95 build), `win98`, `winme`, `win7` and later. It is off for the
+Windows app on Linux and macOS (`DMODEM_GUI_WINPORT`). To build the app with no built-in
 modem, use `-DDMODEM_GUI_EMBED=OFF`. For a USB line and an ALSA line, also
 install `libusb-1.0-0-dev` and `libasound2-dev`.
 
@@ -94,19 +94,25 @@ Windows and macOS, the build links libusb (LGPL-2.1) statically, as
 | Linux | Done. Tested: a call from the Dial button to another D-Modem connects at 62666 bit/s (V.91), and **Stop** hangs up. |
 | Windows 98 SE and later | Done (`win98` build). It builds, and its imports agree with Windows 98 SE. It is not tested on Windows or Wine yet. |
 | Windows 7 and later | Done (`win7` build). It builds. It is not tested on Windows or Wine yet. |
-| Windows 95 and NT 4.0 | Not possible. Refer to "Windows 95" below. |
+| Windows 95, NT 4.0 and later | Done (`win32-picolibc` build). It builds, and its imports agree with Windows 95 and NT 4.0. It is not tested on Windows or Wine yet. Refer to "Windows 95" below. |
 | macOS | Done. CI builds it and checks that the library is in the app. It is not tested on a Mac yet. |
 
 ### Windows 95
 
 The Windows 95 build of the app uses the clang-retro configuration
-`win32-picolibc`. It has a C library (picolibc) but no C++ library. The
-modem is in C++17 and needs the `win98` configuration (msvcrt and libc++).
-One program cannot use the two C libraries. Thus, the app with the
-built-in modem needs Windows 98 SE or later. The Windows 95 build
-continues to use `dmodemd` on TCP, or a COM port. The `win98` build also
-does not operate on Windows NT 4.0: its libraries use `_vsnprintf_s` of
-msvcrt.dll, which NT 4.0 does not have.
+`win32-picolibc`. Its C library is picolibc and its C++ library is libc++.
+Both are linked into the app, so the app does not need `msvcrt.dll`. The
+modem (C++17) builds with this configuration. D-Modem changes some names
+of libre and of its own Windows code for picolibc (refer to
+"picolibc" in D-Modem's `docs/windows-details.md`).
+
+- On Windows 95, the app needs Winsock 2 (`ws2_32.dll`). Install the
+  Windows Socket 2 Update of Microsoft. The SSH page needs it too.
+- The modem does not need `iphlpapi.dll`, which Windows 95 does not have.
+  libre finds `GetAdaptersInfo()` at run time.
+- The `win98` build does not operate on Windows NT 4.0: its libraries use
+  `_vsnprintf_s` of msvcrt.dll, which NT 4.0 does not have. Use the
+  `win32-picolibc` build on NT 4.0.
 
 On Windows, the modem gives the app a socket on the loopback interface
 (`127.0.0.1`), because Windows does not have `socketpair()`.

@@ -76,8 +76,8 @@ jobs:
             echo
             echo "| File | What it is |"
             echo "| --- | --- |"
-            echo "| \`dmodem-win9x.exe\` | The Windows app for Windows 95, 98, ME, NT 4.0 and later. It needs a modem that runs (dmodemd, or a COM port) |"
-            echo "| \`dmodem-win98.exe\` | The Windows app with the modem built in, for Windows 98 SE, ME, 2000 and later |"
+            echo "| \`dmodem-win9x.exe\` | The Windows app with the modem built in, for Windows 95, 98, ME, NT 4.0 and later (no C runtime DLL; Windows 95 needs Winsock 2) |"
+            echo "| \`dmodem-win98.exe\` | The Windows app with the modem built in, for Windows 98 SE, ME, 2000 and later (on msvcrt.dll) |"
             echo "| \`dmodem-win7.exe\` | The Windows app for Windows 7 and later, with the modem built in |"
             echo "| \`dmodem-gui-linux-x86_64.tar.gz\` | The Linux app (GTK 4), x86_64. It needs GTK 4, libadwaita, PulseAudio and libsndfile. Its files are in \`usr/\`: extract it into \`/\`, for example with \`sudo tar -xzf dmodem-gui-linux-x86_64.tar.gz -C /\` |"
             echo "| \`D-Modem-macos.zip\` | The macOS app (SwiftUI), arm64 and x86_64, macOS 13 and later. Not notarized: right-click the app and select Open |"
