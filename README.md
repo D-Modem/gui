@@ -2,7 +2,8 @@
 
 # D-Modem desktop apps
 
-Native apps for D-Modem on Windows, macOS and Linux.
+Native apps for D-Modem on Windows, macOS and Linux. The site of the apps is
+<https://d-modem.github.io/gui/>.
 
 The apps have the modem built in, so they need no dmodemd (refer to
 [The built-in modem](docs/embedded-modem.md)). Each app
@@ -60,6 +61,7 @@ macOS, refer to [Building](docs/building.md).
 
 ## Documentation
 
+- [The site](https://d-modem.github.io/gui/): the home page, the downloads and all the pages below
 - [Features](docs/features.md): each page and menu of the apps, with the details of the Windows app
 - [Building](docs/building.md): Linux, Windows with clang-retro, macOS, and the Windows app on Linux and macOS
 - [The built-in modem](docs/embedded-modem.md): the modem inside the Linux and Windows apps, with no dmodemd

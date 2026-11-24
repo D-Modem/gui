@@ -1,0 +1,18 @@
+# The gui site at https://d-modem.github.io/gui/, built with brand's shared
+# theme and workflow (brand's docs/sites.md).
+name: Pages
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  site:
+    uses: D-Modem/brand/.github/workflows/site.yml@main

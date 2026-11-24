@@ -1,0 +1,22 @@
+INHERIT: .site/mkdocs-base.yml
+# The gui site, https://d-modem.github.io/gui/: docs/ with brand's shared
+# theme and workflow (brand's docs/sites.md). The site is built from a copy
+# of docs/ (.site/docs). docs/index.md is the home page of the site, and the
+# README stays the summary on GitHub.
+site_name: D-Modem desktop apps
+site_description: D-Modem on the desktop, for Windows 95 to Windows 11, macOS and Linux
+site_url: https://d-modem.github.io/gui/
+repo_url: https://github.com/D-Modem/gui
+repo_name: D-Modem/gui
+docs_dir: .site/docs
+extra:
+  repo: gui
+nav:
+  - Home: index.md
+  - Download: download.md
+  - Features: features.md
+  - The built-in modem: embedded-modem.md
+  - Building: building.md
+  - Design: design.md
+  - "libdmodemctl API": https://github.com/D-Modem/gui/blob/main/core/include/dmodemctl.h
+  - Documentation style: STYLE.md
