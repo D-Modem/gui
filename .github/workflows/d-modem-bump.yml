@@ -11,9 +11,9 @@
 # - each day (for an event that did not come);
 # - manually (Actions > D-Modem bump > Run workflow).
 #
-# It needs the DMODEM_BUMP_TOKEN secret: a fine-grained personal access
-# token with Contents: read and write and Pull requests: read and write
-# on D-Modem/gui, and Contents: read on D-Modem/D-Modem. Do not use the
+# It needs the DMODEM_BUMP_TOKEN secret (an organization secret): a
+# fine-grained personal access token with Contents: read and write and
+# Pull requests: read and write on D-Modem/gui. Do not use the
 # workflow's own GITHUB_TOKEN: a pull request that this token opens
 # starts no other workflow, thus Build does not run on it. Without the
 # secret, the run gives an error and stops.
