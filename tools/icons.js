@@ -1,4 +1,4 @@
-// Renders assets/dmodem.svg (D-Modem/brand's app icon on a tile) to the
+// Renders assets/dmodem.svg (D-Modem/brand's mark, avatar/org-avatar.svg, on a tile) to the
 // PNGs the apps' icons are made from, with Playwright's Chromium:
 //   node tools/icons.js && python3 tools/icons.py
 const { chromium } = require('playwright');

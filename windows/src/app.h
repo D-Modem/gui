@@ -47,14 +47,16 @@
 #endif
 
 /* the separator of paths that libssh and the C library see: Windows', or
-   POSIX on Linux and macOS (winport/); and the name of the folder that
-   holds .ssh */
+   POSIX on Linux and macOS (winport/); the name of the folder that holds
+   .ssh; and dmodemd's file name */
 #ifdef DMODEM_WINPORT
 #define DIR_SEP "/"
 #define PROFILE_NAME "home folder"
+#define DMODEMD_EXE "dmodemd"
 #else
 #define DIR_SEP "\\"
 #define PROFILE_NAME "profile"
+#define DMODEMD_EXE "dmodemd.exe"
 #endif
 
 /* (older headers, Open Watcom's among them, without the 64-bit names) */

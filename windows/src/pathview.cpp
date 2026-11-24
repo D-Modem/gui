@@ -53,21 +53,6 @@ static const char *mark(int kind, bool *wingdings)
 	}
 }
 
-#ifdef DMODEM_WINPORT
-/* (Linux and macOS, winport/: no Wingdings there; the same pictures from
-   Unicode, in a font that the system has) */
-static const wchar_t *mark_w(const char *m)
-{
-	switch (m[0]) {
-	case ':': return L"\x2328";    /* a keyboard */
-	case ';': return L"\x25A3";    /* a box */
-	case ')': return L"\x260E";    /* a telephone */
-	case '*': return L"\x2709";    /* an envelope */
-	default: return L"\x260F";     /* a telephone, white */
-	}
-}
-#endif
-
 static void line(HDC dc, int st, int x0, int x1, int y)
 {
 	bool dashed = st == DMC_STEP_SETUP || st == DMC_STEP_OFF;
@@ -133,12 +118,6 @@ static void paint(HWND w)
 		RECT g = { cx - r, cy - r, cx + r, cy + r };
 		SelectObject(dc, wd ? glyph_font : app.font);
 		SetTextColor(dc, state_color(st));
-#ifdef DMODEM_WINPORT
-		if (wd)
-			DrawTextW(dc, mark_w(m), -1, &g, DT_CENTER | DT_VCENTER |
-				  DT_SINGLELINE | DT_NOPREFIX);
-		else
-#endif
 		DrawText(dc, m, -1, &g, DT_CENTER | DT_VCENTER | DT_SINGLELINE |
 			 DT_NOPREFIX);
 		RECT tt = { x, cy + r + 4, x + cw, cy + r + 4 + th };
@@ -185,12 +164,8 @@ HWND pathview_new(HWND parent)
 		LOGFONT lf;
 		memset(&lf, 0, sizeof(lf));
 		lf.lfHeight = -20;
-#ifdef DMODEM_WINPORT
-		strcpy(lf.lfFaceName, "DejaVu Sans");
-#else
 		lf.lfCharSet = SYMBOL_CHARSET;
 		strcpy(lf.lfFaceName, "Wingdings");
-#endif
 		glyph_font = CreateFontIndirect(&lf);
 	}
 	path = dmc_path_new();
