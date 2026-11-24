@@ -1,0 +1,144 @@
+# D-Modem bump: moves the external/D-Modem submodule (the built-in
+# modem) to the latest main of D-Modem. It opens a pull request for the
+# change, or updates the open one. Build (build.yml) builds and tests
+# the apps in that pull request. The workflow merges the pull request
+# when all of its checks pass. Build then runs on main, and the next
+# nightly release (nightly.yml) has the new apps.
+#
+# It starts:
+# - from D-Modem, when its main changes (a repository_dispatch event of
+#   type "d-modem-main", from D-Modem's .github/workflows/dependents.yml);
+# - each day (for an event that did not come);
+# - manually (Actions > D-Modem bump > Run workflow).
+#
+# It needs the DMODEM_BUMP_TOKEN secret: a fine-grained personal access
+# token with Contents: read and write and Pull requests: read and write
+# on D-Modem/gui, and Contents: read on D-Modem/D-Modem. Do not use the
+# workflow's own GITHUB_TOKEN: a pull request that this token opens
+# starts no other workflow, thus Build does not run on it. Without the
+# secret, the run gives an error and stops.
+#
+# The workflow waits for the checks before it merges: with no required
+# checks on main, GitHub's auto-merge merges immediately. If a check
+# fails, the pull request stays open for a person.
+name: D-Modem bump
+
+on:
+  schedule:
+    - cron: "47 6 * * *"
+  repository_dispatch:
+    types: [d-modem-main]
+  workflow_dispatch:
+
+# (one bump at a time: a second run waits for the first)
+concurrency:
+  group: d-modem-bump
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BRANCH: bot/d-modem-bump
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    # (Build takes about 35 minutes; a hung step stops here, not at
+    # GitHub's 6 hours)
+    timeout-minutes: 90
+    steps:
+      - name: Token present
+        env:
+          TOKEN: ${{ secrets.DMODEM_BUMP_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::No DMODEM_BUMP_TOKEN secret (see this workflow's header)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DMODEM_BUMP_TOKEN }}
+          fetch-depth: 0
+
+      - name: D-Modem's latest main
+        id: bump
+        run: |
+          git submodule update --init external/D-Modem
+          old=$(git -C external/D-Modem rev-parse HEAD)
+          git -C external/D-Modem fetch --quiet origin main
+          new=$(git -C external/D-Modem rev-parse FETCH_HEAD)
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+          if [ "$old" = "$new" ]; then
+            echo "Already at D-Modem main ${new:0:7}"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git -C external/D-Modem checkout --quiet "$new"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo 'log<<EOF'
+            git -C external/D-Modem log --oneline --no-merges "$old..$new" | head -50
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        id: commit
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          OLD: ${{ steps.bump.outputs.old }}
+          NEW: ${{ steps.bump.outputs.new }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add external/D-Modem
+          git commit -m "Bump D-Modem to ${NEW:0:7}" \
+            -m "external/D-Modem: ${OLD:0:7} -> ${NEW:0:7} (D-Modem's main)." \
+            -m "Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          git push --force origin "$BRANCH"
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Pull request
+        id: pr
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DMODEM_BUMP_TOKEN }}
+          OLD: ${{ steps.bump.outputs.old }}
+          NEW: ${{ steps.bump.outputs.new }}
+          LOG: ${{ steps.bump.outputs.log }}
+        run: |
+          body=$(printf 'Moves `external/D-Modem` to D-Modem main: [`%s..%s`](https://github.com/D-Modem/D-Modem/compare/%s...%s)\n\n```\n%s\n```\n\nOpened by the D-Modem bump workflow (`.github/workflows/d-modem-bump.yml`). It merges when the checks pass.\n' \
+            "${OLD:0:7}" "${NEW:0:7}" "$OLD" "$NEW" "$LOG")
+          title="Bump D-Modem to ${NEW:0:7}"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body "$body"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
+            pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          fi
+          echo "number=$pr" >> "$GITHUB_OUTPUT"
+
+      # (the checks need some seconds to start; then the step waits for
+      # all of them)
+      - name: Merge when the checks pass
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DMODEM_BUMP_TOKEN }}
+          PR: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.commit.outputs.head }}
+        run: |
+          for i in $(seq 1 20); do
+            n=$(gh pr checks "$PR" --json name --jq length 2>/dev/null || true)
+            [ "${n:-0}" -gt 0 ] && break
+            sleep 15
+          done
+          sleep 30
+          if ! gh pr checks "$PR" --watch --interval 30; then
+            echo "::warning::A check failed on pull request #$PR: it waits for a person"
+            exit 1
+          fi
+          gh pr merge "$PR" --merge --match-head-commit "$HEAD"
