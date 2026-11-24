@@ -40,7 +40,9 @@ has the apps from the newest build of `main`. It has the Windows app (for
 Windows 95 and later, and for Windows 7 and later), the Linux app, the
 macOS app, and the Windows app for Linux and macOS. A workflow
 (`.github/workflows/nightly.yml`) replaces the release one time each day.
-When `main` has no new commits, the release does not change.
+When `main` has no new commits, the release does not change. When the
+main branch of D-Modem changes, a workflow moves the built-in modem to it
+and builds the apps again (refer to [Building](docs/building.md)).
 
 These builds are not stable releases. The files are not signed. Thus
 Windows and macOS can show a warning before the app starts.

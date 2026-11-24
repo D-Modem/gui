@@ -58,3 +58,15 @@ is older than 0.11.
 The Settings page needs a dmodemd with AT!M (the main branch of D-Modem
 since D-Modem/D-Modem#103). The other pages operate with all versions of
 D-Modem 1.0.
+
+## Updates from D-Modem
+
+The workflow `.github/workflows/d-modem-bump.yml` keeps the submodule
+`external/D-Modem` on the main branch of D-Modem. It starts when the main
+branch of D-Modem changes, one time each day, or when you start it
+manually. It opens a pull request that moves the submodule. Build
+(`.github/workflows/build.yml`) builds and tests the apps in that pull
+request. The workflow merges the pull request when all checks pass. If a
+check fails, the pull request stays open for a person. The workflow needs
+a `DMODEM_BUMP_TOKEN` secret. The header of the workflow gives the
+necessary permissions.
