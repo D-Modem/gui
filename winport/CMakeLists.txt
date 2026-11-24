@@ -3,12 +3,6 @@
 #
 #   cmake -B build -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC=/path/to/mfc \
 #         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-#
-# This is a first pass. The layer does not have serial ports, pipes or
-# audio (waveOut, waveIn and ACM) yet. The files in include/ and
-# src/stubs.cpp supply stand-ins: these functions fail, so the app uses
-# the TCP and SSH links only. When the layer gets these functions,
-# remove the stand-ins.
 enable_language(CXX)
 
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -64,10 +58,7 @@ set(APP_RES_CPP "${CMAKE_CURRENT_BINARY_DIR}/app-res.cpp")
 add_custom_command(OUTPUT "${APP_RES_CPP}"
   COMMAND ${CMAKE_COMMAND} -E env RC=${DMODEM_LLVM_RC} CXX=${CMAKE_CXX_COMPILER}
           ${Python3_EXECUTABLE} "${CLANG_RETRO_MFC}/port/tools/res2cpp.py"
-          -I "${_win}/src" -I "${_win}/res" app.rc -o "${APP_RES_CPP}"
-  # (app.rc by a relative path: llvm-rc takes an absolute macOS path,
-  # /Users/..., for an option)
-  WORKING_DIRECTORY "${_win}/res"
+          -I "${_win}/src" -I "${_win}/res" "${_win}/res/app.rc" -o "${APP_RES_CPP}"
   DEPENDS "${_win}/res/app.rc" "${_win}/res/app.manifest" "${_win}/res/dmodem.ico"
           "${_win}/src/resource.h"
   COMMENT "Converting app.rc to C++"
@@ -76,12 +67,10 @@ add_custom_command(OUTPUT "${APP_RES_CPP}"
 include("${_win}/sources.cmake")
 add_executable(dmodem-win32
   ${DMODEM_WIN_SOURCES}
-  src/stubs.cpp
   "${APP_RES_CPP}")
 set_target_properties(dmodem-win32 PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
-# Our stand-in headers come first, then the layer's headers.
 target_include_directories(dmodem-win32 BEFORE PRIVATE
-  include "${CLANG_RETRO_MFC}/port/include" "${_win}/src" "${_win}/res")
+  "${CLANG_RETRO_MFC}/port/include" "${_win}/src" "${_win}/res")
 target_compile_definitions(dmodem-win32 PRIVATE DMODEM_WINPORT)
 target_compile_options(dmodem-win32 PRIVATE -Wall -Wno-unused-parameter)
 target_link_libraries(dmodem-win32 PRIVATE dmodemctl winport)
