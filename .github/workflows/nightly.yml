@@ -91,6 +91,13 @@ jobs:
             fi
           } > notes.md
 
+      # The GITHUB_TOKEN of this workflow can delete the release but gets
+      # "HTTP 403: Resource not accessible by integration" when it creates
+      # the release. Thus the step uses the DMODEM_BUMP_TOKEN organization
+      # secret (Contents: read and write on D-Modem/gui, refer to
+      # d-modem-bump.yml) if it is available.
       - name: Publish
         if: steps.pick.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.DMODEM_BUMP_TOKEN || github.token }}
         run: .github/scripts/nightly-publish.sh "${{ steps.pick.outputs.sha }}" notes.md out
