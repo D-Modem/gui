@@ -8,6 +8,12 @@
  * dmodemd runs as the user: it makes its pty and says where it is
  * ("Use `/dev/pts/3' as modem device"), and the app opens that.  With
  * the "device" line nothing is started and the given device is opened.
+ *
+ * With the modem built in (DMODEM_GUI_EMBED, the "builtin" setting),
+ * the SIP, USB and ALSA lines start no dmodemd: libdmodem_embed runs the
+ * modem in a thread of the app, and its DTE is a socket in place of the
+ * pty.  Its log lines and its end come from that thread, and go to the
+ * main loop with g_idle_add().
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -20,6 +26,10 @@
 #include <glib-unix.h>
 
 #include "app.h"
+
+#ifdef DMODEM_GUI_EMBED
+#include "dmodem_embed.h"
+#endif
 
 typedef struct Waiting {
 	ResponseFn fn;
@@ -140,6 +150,25 @@ static gboolean readable(gint fd, GIOCondition cond, gpointer data)
 	return G_SOURCE_CONTINUE;
 }
 
+/* the DTE fd (open, non-blocking) given to the session: name is what the
+   Modem page shows as its device */
+static void attach_dte(App *a, int fd, const char *name)
+{
+	a->fd = fd;
+	g_free(a->device);
+	a->device = g_strdup(name);
+	a->fd_watch = g_unix_fd_add(fd, G_IO_IN | G_IO_HUP | G_IO_ERR,
+				    readable, a);
+	dmc_open(a->s, now_ms());
+	window_opened(a);
+	/* the user's own commands first */
+	if (*a->cfg.init)
+		modem_command(a, a->cfg.init, 0, NULL, NULL);
+	modem_pump(a);
+}
+
+/* the device at path opened as the DTE (raw, 115200 bit/s): FALSE, with
+   a message, if it can't be */
 static gboolean open_dte(App *a, const char *path)
 {
 	int fd = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
@@ -163,19 +192,180 @@ static gboolean open_dte(App *a, const char *path)
 			t.c_cflag |= CRTSCTS;
 		tcsetattr(fd, TCSANOW, &t);
 	}
-	a->fd = fd;
-	g_free(a->device);
-	a->device = g_strdup(path);
-	a->fd_watch = g_unix_fd_add(fd, G_IO_IN | G_IO_HUP | G_IO_ERR,
-				    readable, a);
-	dmc_open(a->s, now_ms());
-	window_opened(a);
-	/* the user's own commands first */
-	if (*a->cfg.init)
-		modem_command(a, a->cfg.init, 0, NULL, NULL);
-	modem_pump(a);
+	attach_dte(a, fd, path);
 	return TRUE;
 }
+
+/*
+ *    the modem built in (libdmodem_embed)
+ */
+
+#ifdef DMODEM_GUI_EMBED
+/* news from the modem's thread, for the main loop: a log line, or the
+   end (line NULL) with its status */
+typedef struct EmbedNews {
+	App *a;
+	guint gen;
+	char *line;
+	int status;
+} EmbedNews;
+
+/* a log line, or the modem's end, on the main loop; news of an older
+   start is dropped */
+static gboolean embed_news(gpointer data)
+{
+	EmbedNews *n = data;
+	App *a = n->a;
+	if (n->gen == a->embed_gen) {
+		if (n->line) {
+			app_log(a, n->line);
+			if (dmc_daemon_error(n->line))
+				window_toast(a, n->line + 7);
+		} else {
+			char *m = g_strdup_printf("The built-in modem stopped%s",
+						  n->status < 0 ?
+						  " (error)." : ".");
+			app_log(a, m);
+			if (n->status < 0)
+				window_toast(a, m);
+			g_free(m);
+			a->embed_running = FALSE;
+			close_dte(a);
+			window_state(a);
+		}
+	}
+	g_free(n->line);
+	g_free(n);
+	return G_SOURCE_REMOVE;
+}
+
+/* the news of start gen (ctx) to the main loop */
+static void embed_post(App *a, guint gen, const char *line, int status)
+{
+	EmbedNews *n = g_new0(EmbedNews, 1);
+	n->a = a;
+	n->gen = gen;
+	n->line = line ? g_strdup(line) : NULL;
+	n->status = status;
+	g_idle_add(embed_news, n);
+}
+
+/* the start that a callback is for: the app and the start's number */
+typedef struct EmbedCtx {
+	App *a;
+	guint gen;
+} EmbedCtx;
+
+/* a line of the modem's log (the modem's thread) */
+static void embed_log(void *ctx, const char *line)
+{
+	EmbedCtx *c = ctx;
+	embed_post(c->a, c->gen, line, 0);
+}
+
+/* the modem stopped (the modem's thread) */
+static void embed_exit(void *ctx, int status)
+{
+	EmbedCtx *c = ctx;
+	embed_post(c->a, c->gen, NULL, status);
+}
+
+/* the line settings as libdmodem_embed has them; FALSE, with a message,
+   for a line it doesn't have */
+static gboolean embed_config(App *a, dmodem_embed_config *e)
+{
+	Config *c = &a->cfg;
+	dmodem_embed_config_init(e);
+	e->country = c->country;
+	e->log_level = c->debug;
+	if (!g_strcmp0(c->line, "usb")) {
+		e->line = DMODEM_EMBED_USB;
+		e->usb = c->usb;
+	} else if (!g_strcmp0(c->line, "alsa")) {
+		e->line = DMODEM_EMBED_ALSA;
+		e->alsa = c->alsa;
+	} else {
+		e->line = DMODEM_EMBED_SIP;
+		if (!c->sip_anonymous) {
+			e->sip_user = c->sip_user;
+			e->sip_password = c->sip_password;
+			e->sip_domain = c->sip_server;
+		}
+		e->sip_listen = c->listen;
+		e->sip_t38 = c->t38;
+		e->sip_v152 = c->v152;
+		e->sip_v150 = c->v150;
+		e->sip_srtp = !g_strcmp0(c->srtp, "no") ? 0 :
+			!g_strcmp0(c->srtp, "require") ? 2 : 1;
+	}
+	if (!(dmodem_embed_lines() & (1 << e->line))) {
+		window_toast(a, "The built-in modem has no such line in this "
+			     "build: start dmodemd (line settings, Advanced)");
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/* the modem started in the app on the line settings' line */
+static void embed_start(App *a)
+{
+	dmodem_embed_config e;
+	if (!embed_config(a, &e))
+		return;
+	/* the data file of the line's measurements, where the user may
+	   write it */
+	char *dir = g_build_filename(g_get_user_data_dir(), "dmodem-gui",
+				     NULL);
+	g_mkdir_with_parents(dir, 0700);
+	char *data = g_build_filename(dir, "dmodem0.data", NULL);
+	e.data_file = data;
+	if (!a->embed)
+		a->embed = dmodem_embed_new();
+	if (!a->embed) {
+		g_free(dir);
+		g_free(data);
+		return;
+	}
+	/* (one context for each start, kept: the thread may use it until
+	   its end) */
+	EmbedCtx *ctx = g_new0(EmbedCtx, 1);
+	ctx->a = a;
+	ctx->gen = ++a->embed_gen;
+	dmodem_embed_on_log(a->embed, embed_log, ctx);
+	dmodem_embed_on_exit(a->embed, embed_exit, ctx);
+	int fd = dmodem_embed_start(a->embed, &e);
+	g_free(dir);
+	g_free(data);
+	if (fd < 0) {
+		char *m = g_strdup_printf("Can't start the built-in modem: %s",
+					  dmodem_embed_error(a->embed));
+		window_toast(a, m);
+		app_log(a, m);
+		g_free(m);
+		window_state(a);
+		return;
+	}
+	char *m = g_strdup_printf("The built-in modem (D-Modem %s) started.",
+				  dmodem_embed_version());
+	app_log(a, m);
+	g_free(m);
+	a->embed_running = TRUE;
+	attach_dte(a, fd, "Built-in modem");
+	window_state(a);
+}
+
+/* the modem built in stopped: its thread ended */
+static void embed_stop(App *a)
+{
+	if (!a->embed)
+		return;
+	/* (news of this start after now is not wanted) */
+	a->embed_gen++;
+	dmodem_embed_stop(a->embed);
+	a->embed_running = FALSE;
+	app_log(a, "The built-in modem stopped.");
+}
+#endif
 
 /*
  *    dmodemd
@@ -295,6 +485,17 @@ void modem_start(App *a)
 		window_state(a);
 		return;
 	}
+#ifdef DMODEM_GUI_EMBED
+	if (c->builtin) {
+		if (!g_strcmp0(c->line, "sip") && !config_sip_ready(c)) {
+			window_toast(a, "Set up the SIP account first");
+			prefs_show(a);
+			return;
+		}
+		embed_start(a);
+		return;
+	}
+#endif
 	char *exe = find_dmodemd(c);
 	if (!exe) {
 		window_toast(a, "dmodemd was not found: install D-Modem, or "
@@ -388,6 +589,15 @@ void modem_stop(App *a)
 		close_dte(a);
 		g_subprocess_send_signal(a->proc, SIGTERM);
 	} else {
+#ifdef DMODEM_GUI_EMBED
+		if (a->embed_running) {
+			/* hang up first, so the call ends cleanly */
+			if (a->fd >= 0)
+				dmc_hangup(a->s);
+			modem_pump(a);
+			embed_stop(a);
+		}
+#endif
 		close_dte(a);
 	}
 	window_state(a);
@@ -395,7 +605,7 @@ void modem_stop(App *a)
 
 gboolean modem_running(App *a)
 {
-	return a->proc != NULL || a->fd >= 0;
+	return a->proc != NULL || a->embed_running || a->fd >= 0;
 }
 
 void modem_type(App *a, const char *data, gsize n)

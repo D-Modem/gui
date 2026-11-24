@@ -27,7 +27,7 @@
 
 enum {
 	IAC = 255, DONT = 254, DO = 253, WONT = 252, WILL = 251, SB = 250,
-	SE = 240,
+	SE = 240, BRK = 243,
 	O_BINARY = 0, O_ECHO = 1, O_SGA = 3, O_TTYPE = 24, O_NAWS = 31
 };
 
@@ -334,6 +334,16 @@ DMC_API void dmc_net_type(dmc_net *n, const char *data, int len)
 DMC_API int dmc_net_output(dmc_net *n, char *buf, int max)
 {
 	return buf_take(&n->out, buf, max);
+}
+
+DMC_API int dmc_net_break(dmc_net *n)
+{
+	/* Telnet's BRK; rlogin has none */
+	if (n->proto != DMC_NET_TELNET)
+		return 0;
+	buf_addc(&n->out, (char)IAC);
+	buf_addc(&n->out, (char)BRK);
+	return 1;
 }
 
 DMC_API void dmc_net_resize(dmc_net *n, int cols, int rows)

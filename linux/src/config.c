@@ -55,6 +55,7 @@ void config_load(Config *c)
 	c->alsa = get_s(k, "alsa", "hw:1");
 	c->device = get_s(k, "device", "/dev/ttyDM0");
 	c->dmodemd = get_s(k, "dmodemd", "");
+	c->builtin = get_b(k, "builtin", TRUE);
 	c->init = get_s(k, "init", "");
 	c->debug = g_key_file_get_integer(k, "line", "debug", NULL);
 	/* the answering machine: off until the user turns it on */
@@ -114,6 +115,7 @@ void config_save(const Config *c)
 	g_key_file_set_string(k, "line", "alsa", c->alsa);
 	g_key_file_set_string(k, "line", "device", c->device);
 	g_key_file_set_string(k, "line", "dmodemd", c->dmodemd);
+	g_key_file_set_boolean(k, "line", "builtin", c->builtin);
 	g_key_file_set_string(k, "line", "init", c->init);
 	g_key_file_set_integer(k, "line", "debug", c->debug);
 	g_key_file_set_boolean(k, "voice", "voicemail", c->voicemail);
@@ -208,7 +210,7 @@ typedef struct Prefs {
 	AdwEntryRow *user, *server, *country, *usb, *alsa, *device, *dmodemd,
 		*init;
 	AdwPasswordEntryRow *password;
-	AdwSwitchRow *anonymous, *listen, *t38, *v152, *v150;
+	AdwSwitchRow *anonymous, *listen, *t38, *v152, *v150, *builtin;
 	AdwSpinRow *debug;
 	AdwPreferencesGroup *sip, *usb_g, *alsa_g, *device_g;
 } Prefs;
@@ -362,6 +364,9 @@ static void closed(AdwDialog *d, gpointer data)
 	c->alsa = text_of(p->alsa);
 	c->device = text_of(p->device);
 	c->dmodemd = text_of(p->dmodemd);
+#ifdef DMODEM_GUI_EMBED
+	c->builtin = adw_switch_row_get_active(p->builtin);
+#endif
 	c->init = text_of(p->init);
 	c->debug = (int)adw_spin_row_get_value(p->debug);
 	config_save(c);
@@ -426,6 +431,10 @@ void prefs_show(App *a)
 
 	AdwPreferencesGroup *adv = group(page, "Advanced", NULL);
 	p->init = entry(adv, "Commands when the modem opens", c->init);
+#ifdef DMODEM_GUI_EMBED
+	p->builtin = toggle(adv, "Built-in modem", "Run the modem in this "
+			    "app. Off: start dmodemd", c->builtin);
+#endif
 	p->dmodemd = entry(adv, "dmodemd (empty to look for it)", c->dmodemd);
 	GtkWidget *dbg = adw_spin_row_new_with_range(0, 9, 1);
 	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(dbg),

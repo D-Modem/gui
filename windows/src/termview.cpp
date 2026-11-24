@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "resource.h"
 
 #ifndef WM_MOUSEWHEEL
 #define WM_MOUSEWHEEL 0x020A
@@ -46,6 +47,19 @@ struct TermView {
 	int buttons;            /* the mouse buttons down, for reports */
 	TermTypedFn fn;
 	void *ctx;
+	/* the selection: from the anchor to the end, in rows as
+	   dmc_vt_cell() has them (below 0 the scrollback) */
+	bool sel, selecting;
+	int ar, ac, er, ec;
+	TermPrintedFn pfn;      /* what the remote prints goes to it */
+	void *pctx;
+	bool echo;              /* ASCII Setup: what is typed also shown */
+	/* Terminal Settings: Backspace as Ctrl+H, Space, Ctrl+H; the
+	   function, arrow and Ctrl keys as Windows keys; the cursor's
+	   shape (0 block, 1 underline) and blink */
+	bool bs_three, win_keys, cur_blink;
+	int cur_shape;
+	bool eat_char;          /* a key done: its WM_CHAR not sent */
 	HFONT fonts[4];         /* regular, bold, italic, bold italic */
 	/* a row being drawn */
 	HDC row_dc;
@@ -131,11 +145,27 @@ static void play_music(dmc_vt *vt)
 /* ------------------------------------------------------------------ */
 /* the screen's size */
 
-static void make_fonts(TermView *t)
+/* the fonts made for the view freed (not the app's) */
+static void free_fonts(TermView *t)
+{
+	for (int i = 1; i < 4; i++)
+		if (t->fonts[i] && t->fonts[i] != t->fonts[0] &&
+		    t->fonts[i] != app.mono_font)
+			DeleteObject(t->fonts[i]);
+	if (t->fonts[0] && t->fonts[0] != app.mono_font)
+		DeleteObject(t->fonts[0]);
+	for (int i = 0; i < 4; i++)
+		t->fonts[i] = NULL;
+}
+
+/* the regular font [base] (the app's when NULL), and its bold and
+   italic */
+static void make_fonts(TermView *t, HFONT base = NULL)
 {
 	LOGFONT lf;
-	GetObject(app.mono_font, sizeof(lf), &lf);
-	t->fonts[0] = app.mono_font;
+	free_fonts(t);
+	t->fonts[0] = base ? base : app.mono_font;
+	GetObject(t->fonts[0], sizeof(lf), &lf);
 	lf.lfWeight = FW_BOLD;
 	t->fonts[1] = CreateFontIndirect(&lf);
 	lf.lfWeight = FW_NORMAL;
@@ -145,13 +175,13 @@ static void make_fonts(TermView *t)
 	t->fonts[3] = CreateFontIndirect(&lf);
 	for (int i = 1; i < 4; i++)
 		if (!t->fonts[i])
-			t->fonts[i] = app.mono_font;
+			t->fonts[i] = t->fonts[0];
 }
 
 static void measure(TermView *t)
 {
 	HDC dc = GetDC(t->w);
-	HGDIOBJ old = SelectObject(dc, app.mono_font);
+	HGDIOBJ old = SelectObject(dc, t->fonts[0]);
 	TEXTMETRIC tm;
 	GetTextMetrics(dc, &tm);
 	t->fcw = tm.tmAveCharWidth > 0 ? tm.tmAveCharWidth : 8;
@@ -227,6 +257,7 @@ static void layout(TermView *t)
 		t->oy = 0;
 	dmc_vt_set_cell_pixels(t->vt, cw, ch);
 	if (cols != dmc_vt_cols(t->vt) || rows != dmc_vt_rows(t->vt)) {
+		t->sel = t->selecting = false;
 		dmc_vt_resize(t->vt, cols, rows);
 		update_scrollbar(t);
 	}
@@ -512,7 +543,15 @@ static void draw_row(TermView *t, int vrow, int ncols, bool cursor_here)
 			int l = cx * cw, r = l + ((cells[cx].flags & DMC_CELL_WIDE) ? 2 * cw : cw);
 			int style = dmc_vt_cursor_style(vt);
 			int th = ch / 8 > 1 ? ch / 8 : 2;
-			if (!t->focused) {
+			/* (the remote's DECSCUSR, else the settings': 1 a
+			   blinking block, 2 a block, 3 and 4 an underline) */
+			if (style == 0)
+				style = (t->cur_shape == 1 ? 3 : 1) + (t->cur_blink ? 0 : 1);
+			if (t->focused && (style & 1))
+				t->has_blink = true;
+			if (t->focused && (style & 1) && t->blink_off) {
+				/* (blinking: off now) */
+			} else if (!t->focused) {
 				px_rect(t, l, 0, r, 1, cc);
 				px_rect(t, l, ch - 1, r, ch, cc);
 				px_rect(t, l, 0, l + 1, ch, cc);
@@ -534,6 +573,253 @@ static void draw_row(TermView *t, int vrow, int ncols, bool cursor_here)
 	}
 }
 
+/* ------------------------------------------------------------------ */
+/* the selection */
+
+/* the selection from its first cell to its last */
+static void sel_range(TermView *t, int *r0, int *c0, int *r1, int *c1)
+{
+	if (t->ar < t->er || (t->ar == t->er && t->ac <= t->ec)) {
+		*r0 = t->ar; *c0 = t->ac; *r1 = t->er; *c1 = t->ec;
+	} else {
+		*r0 = t->er; *c0 = t->ec; *r1 = t->ar; *c1 = t->ac;
+	}
+}
+
+static void sel_clear(TermView *t)
+{
+	if (t->sel)
+		InvalidateRect(t->w, NULL, FALSE);
+	t->sel = t->selecting = false;
+}
+
+/* the selection's cells of each row on the screen, inverted */
+static void paint_selection(TermView *t, HDC mem)
+{
+	if (!t->sel)
+		return;
+	int r0, c0, r1, c1;
+	sel_range(t, &r0, &c0, &r1, &c1);
+	int rows = dmc_vt_rows(t->vt), cols = dmc_vt_cols(t->vt);
+	for (int y = 0; y < rows; y++) {
+		int vrow = y + t->scroll;
+		if (vrow < r0 || vrow > r1)
+			continue;
+		int from = vrow == r0 ? c0 : 0, to = vrow == r1 ? c1 : cols - 1;
+		int k = dmc_vt_line_size(t->vt, vrow) == DMC_LINE_SINGLE ? 1 : 2;
+		int x0 = from * k * t->cw, x1 = (to + 1) * k * t->cw;
+		if (x1 > cols * t->cw)
+			x1 = cols * t->cw;
+		if (x1 > x0)
+			PatBlt(mem, t->ox + x0, t->oy + y * t->ch, x1 - x0, t->ch,
+			       DSTINVERT);
+	}
+}
+
+/* the blanks at the ends of the lines dropped, in place */
+static void trim_ends(char *s)
+{
+	char *o = s, *blank = NULL;
+	for (const char *p = s; *p; p++) {
+		if (*p == ' ') {
+			if (!blank)
+				blank = o;
+		} else if (*p == '\n') {
+			if (blank)
+				o = blank;
+			blank = NULL;
+		} else {
+			blank = NULL;
+		}
+		*o++ = *p;
+	}
+	if (blank)
+		o = blank;
+	*o = '\0';
+}
+
+/* UTF-8 to UTF-16 (malloc'ed, CR LF for each line end) */
+static WCHAR *wide_lines(const char *s, int *len)
+{
+	int n = 0;
+	for (const char *p = s; *p; p++)
+		n += *p == '\n' ? 2 : 1;
+	WCHAR *w = (WCHAR *)malloc(((size_t)n + 1) * sizeof(WCHAR));
+	if (!w)
+		return NULL;
+	int k = 0;
+	const unsigned char *p = (const unsigned char *)s;
+	while (*p) {
+		unsigned long c = *p++;
+		int more = 0;
+		if (c >= 0xf0) {
+			c &= 7;
+			more = 3;
+		} else if (c >= 0xe0) {
+			c &= 15;
+			more = 2;
+		} else if (c >= 0xc0) {
+			c &= 31;
+			more = 1;
+		}
+		while (more-- > 0 && (*p & 0xc0) == 0x80)
+			c = (c << 6) | (*p++ & 0x3f);
+		if (c == '\n')
+			w[k++] = '\r';
+		if (c >= 0x10000) {
+			c -= 0x10000;
+			w[k++] = (WCHAR)(0xd800 + (c >> 10));
+			w[k++] = (WCHAR)(0xdc00 + (c & 0x3ff));
+		} else {
+			w[k++] = (WCHAR)c;
+		}
+	}
+	w[k] = 0;
+	if (len)
+		*len = k;
+	return w;
+}
+
+static HGLOBAL global_copy(const void *data, size_t n)
+{
+	HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, n);
+	if (!g)
+		return NULL;
+	void *p = GlobalLock(g);
+	memcpy(p, data, n);
+	GlobalUnlock(g);
+	return g;
+}
+
+/* the selection's text to the clipboard: Unicode, and the ANSI code
+   page's for Windows 9x programs */
+static bool copy_selection(TermView *t)
+{
+	if (!t->sel)
+		return false;
+	int r0, c0, r1, c1;
+	sel_range(t, &r0, &c0, &r1, &c1);
+	const char *r = dmc_vt_text_range(t->vt, r0, c0, r1, c1);
+	char *text = (char *)malloc(strlen(r) + 1);
+	if (!text)
+		return false;
+	strcpy(text, r);
+	trim_ends(text);
+	int len = 0;
+	WCHAR *w = wide_lines(text, &len);
+	free(text);
+	if (!w)
+		return false;
+	bool ok = false;
+	if (OpenClipboard(t->w)) {
+		EmptyClipboard();
+		HGLOBAL g = global_copy(w, ((size_t)len + 1) * sizeof(WCHAR));
+		if (g && SetClipboardData(CF_UNICODETEXT, g))
+			ok = true;
+		int an = WideCharToMultiByte(CP_ACP, 0, w, len + 1, NULL, 0,
+					     NULL, NULL);
+		char *a = an > 0 ? (char *)malloc((size_t)an) : NULL;
+		if (a && WideCharToMultiByte(CP_ACP, 0, w, len + 1, a, an, NULL,
+					     NULL) > 0) {
+			g = global_copy(a, (size_t)an);
+			if (g && SetClipboardData(CF_TEXT, g))
+				ok = true;
+		}
+		free(a);
+		CloseClipboard();
+	}
+	free(w);
+	return ok;
+}
+
+static void select_all(TermView *t)
+{
+	t->ar = -dmc_vt_history(t->vt);
+	t->ac = 0;
+	t->er = dmc_vt_rows(t->vt) - 1;
+	t->ec = dmc_vt_cols(t->vt) - 1;
+	t->sel = true;
+	t->selecting = false;
+	InvalidateRect(t->w, NULL, FALSE);
+}
+
+/* the cell under a point as a row of dmc_vt_cell(), in the screen */
+static void sel_cell(TermView *t, int x, int y, int *row, int *col)
+{
+	int rows = dmc_vt_rows(t->vt), cols = dmc_vt_cols(t->vt);
+	int r = (y - t->oy) / (t->ch > 0 ? t->ch : 1);
+	if (y < t->oy)
+		r = 0;
+	if (r >= rows)
+		r = rows - 1;
+	*row = r + t->scroll;
+	int k = dmc_vt_line_size(t->vt, *row) == DMC_LINE_SINGLE ? 1 : 2;
+	int c = (x - t->ox) / (t->cw * k > 0 ? t->cw * k : 1);
+	if (x < t->ox)
+		c = 0;
+	if (c >= cols)
+		c = cols - 1;
+	*col = c;
+}
+
+/* the word (no blanks) under a point */
+static void select_word(TermView *t, int x, int y)
+{
+	int row, col, cols = dmc_vt_cols(t->vt);
+	sel_cell(t, x, y, &row, &col);
+	uint32_t c = dmc_vt_char(t->vt, row, col);
+	if (c == ' ' || c == 0) {
+		sel_clear(t);
+		return;
+	}
+	int a = col, b = col;
+	while (a > 0 && dmc_vt_char(t->vt, row, a - 1) != ' ')
+		a--;
+	while (b < cols - 1 && dmc_vt_char(t->vt, row, b + 1) != ' ')
+		b++;
+	t->ar = t->er = row;
+	t->ac = a;
+	t->ec = b;
+	t->sel = true;
+	InvalidateRect(t->w, NULL, FALSE);
+}
+
+static void paste(TermView *t);
+
+/* the right button's menu, as HyperTerminal has it */
+static void context_menu(TermView *t, LPARAM lp)
+{
+	enum { CM_COPY = 1, CM_PASTE, CM_ALL };
+	HMENU m = CreatePopupMenu();
+	AppendMenu(m, MF_STRING | (t->sel ? 0 : MF_GRAYED), CM_COPY,
+		   "&Copy\tCtrl+Insert");
+	AppendMenu(m, MF_STRING |
+		   (IsClipboardFormatAvailable(CF_TEXT) ||
+		    IsClipboardFormatAvailable(CF_UNICODETEXT) ? 0 : MF_GRAYED),
+		   CM_PASTE, "&Paste to Host\tShift+Insert");
+	AppendMenu(m, MF_SEPARATOR, 0, NULL);
+	AppendMenu(m, MF_STRING, CM_ALL, "Select &All");
+	POINT p;
+	p.x = (short)LOWORD(lp);
+	p.y = (short)HIWORD(lp);
+	ClientToScreen(t->w, &p);
+	int cmd = (int)TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON,
+				      p.x, p.y, 0, t->w, NULL);
+	DestroyMenu(m);
+	switch (cmd) {
+	case CM_COPY:
+		copy_selection(t);
+		sel_clear(t);
+		break;
+	case CM_PASTE:
+		paste(t);
+		break;
+	case CM_ALL:
+		select_all(t);
+		break;
+	}
+}
+
 static void paint(TermView *t, HDC dc, RECT *area)
 {
 	RECT r;
@@ -549,7 +835,7 @@ static void paint(TermView *t, HDC dc, RECT *area)
 	int cw = t->cw, ch = t->ch, w = cols * cw;
 	t->has_blink = false;
 	if (row_buffer(t, dc, w, ch)) {
-		HGDIOBJ oldf = SelectObject(t->row_dc, app.mono_font);
+		HGDIOBJ oldf = SelectObject(t->row_dc, t->fonts[0]);
 		for (int y = 0; y < rows; y++) {
 			int vrow = y + t->scroll;
 			int size = dmc_vt_line_size(vt, vrow);
@@ -574,6 +860,7 @@ static void paint(TermView *t, HDC dc, RECT *area)
 					   size == DMC_LINE_DOUBLE_TOP ? 0 : ch / 2,
 					   hw, ch / 2, SRCCOPY);
 		}
+		paint_selection(t, mem);
 		/* the status line under the screen */
 		if (t->status_rows) {
 			const char *s = dmc_vt_status_line(vt);
@@ -583,7 +870,7 @@ static void paint(TermView *t, HDC dc, RECT *area)
 			for (int i = 0; i < n; i++)
 				dx[i] = cw;
 			RECT sr = { 0, 0, w, ch };
-			SelectObject(t->row_dc, app.mono_font);
+			SelectObject(t->row_dc, t->fonts[0]);
 			SetTextColor(t->row_dc, cref(dmc_vt_background(vt)));
 			SetBkColor(t->row_dc, cref(dmc_vt_foreground(vt)));
 			ExtTextOutW(t->row_dc, 0, 0, ETO_OPAQUE | ETO_CLIPPED, &sr,
@@ -630,12 +917,26 @@ static int mods_now()
 	return m;
 }
 
+/* what is typed, on the screen too when the echo is on (not a key's
+   escape sequence: an arrow key does not move the cursor here) */
+static void echo_typed(TermView *t, const char *b, int n)
+{
+	if (t->echo && n > 0 && b[0] != 0x1b)
+		termview_feed(t->w, b, n);
+}
+
 static void send_key(TermView *t, int key, int mods)
 {
 	char b[64];
 	int n = dmc_vt_key_mods(t->vt, key, mods, b, sizeof(b));
+	/* Backspace as Ctrl+H, Space, Ctrl+H (the character erased) */
+	if (key == DMC_KEY_BACKSPACE && t->bs_three && !mods) {
+		memcpy(b, "\b \b", 3);
+		n = 3;
+	}
 	to_bottom(t);
 	send_text(t, b, n);
+	echo_typed(t, b, n);
 }
 
 /* a character typed, as the terminal sends it */
@@ -644,6 +945,7 @@ static void send_cp(TermView *t, unsigned long cp, int mods)
 	char b[64];
 	int n = dmc_vt_char_bytes(t->vt, (uint32_t)cp, mods, b, sizeof(b));
 	send_text(t, b, n);
+	echo_typed(t, b, n);
 }
 
 /* a character in the ANSI code page as Unicode */
@@ -744,6 +1046,10 @@ static int vk_key(WPARAM wp, int mods, TermView *t, HWND w)
 			paste(t);
 			return -1;
 		}
+		if (mods == DMC_MOD_CTRL) {
+			copy_selection(t);
+			return -1;
+		}
 		return DMC_KEY_INSERT;
 	case VK_DELETE: return DMC_KEY_DELETE;
 	case VK_TAB: return mods & DMC_MOD_SHIFT ? DMC_KEY_BACKTAB : 0;
@@ -755,6 +1061,51 @@ static int vk_key(WPARAM wp, int mods, TermView *t, HWND w)
 	if (wp >= VK_F13 && wp <= VK_F20)
 		return DMC_KEY_F13 + (int)(wp - VK_F13);
 	return 0;
+}
+
+/* the function, arrow and Ctrl keys as Windows keys: Ctrl+C copies,
+   Ctrl+V pastes, Ctrl+A selects all, the arrows and Page Up and Down
+   scroll (the function keys go to the window: the caller's); true when
+   the key was one of these */
+static bool windows_key(TermView *t, WPARAM wp, int mods)
+{
+	if (mods == DMC_MOD_CTRL) {
+		switch (wp) {
+		case 'C':
+			copy_selection(t);
+			return true;
+		case 'V':
+			paste(t);
+			return true;
+		case 'A':
+			select_all(t);
+			return true;
+		}
+	}
+	if (mods & (DMC_MOD_CTRL | DMC_MOD_ALT))
+		return false;
+	switch (wp) {
+	case VK_UP:
+		SendMessage(t->w, WM_VSCROLL, SB_LINEUP, 0);
+		return true;
+	case VK_DOWN:
+		SendMessage(t->w, WM_VSCROLL, SB_LINEDOWN, 0);
+		return true;
+	case VK_PRIOR:
+		SendMessage(t->w, WM_VSCROLL, SB_PAGEUP, 0);
+		return true;
+	case VK_NEXT:
+		SendMessage(t->w, WM_VSCROLL, SB_PAGEDOWN, 0);
+		return true;
+	case VK_LEFT:
+	case VK_RIGHT:
+	case VK_HOME:
+	case VK_END:
+	case VK_INSERT:
+	case VK_DELETE:
+		return true;
+	}
+	return false;
 }
 
 static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
@@ -775,21 +1126,37 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		return 0;
 	}
 	case WM_LBUTTONDOWN:
+	case WM_LBUTTONDBLCLK:
 	case WM_MBUTTONDOWN: {
 		SetFocus(w);
 		SetCapture(w);
-		int button = m == WM_LBUTTONDOWN ? 0 : 1;
+		int button = m == WM_MBUTTONDOWN ? 1 : 0;
 		t->buttons |= 1 << button;
-		if (mouse_report(t, button, lp, 1, 0))
+		/* (Shift: a selection, also when the remote takes the mouse) */
+		bool shift = (wp & MK_SHIFT) != 0;
+		if (!shift && mouse_report(t, button, lp, 1, 0))
 			return 0;
-		if (m == WM_LBUTTONDOWN) {
+		if (button)
+			return 0;
+		int x = (short)LOWORD(lp), y = (short)HIWORD(lp);
+		if (m == WM_LBUTTONDBLCLK) {
+			select_word(t, x, y);
+			return 0;
+		}
+		sel_clear(t);
+		sel_cell(t, x, y, &t->ar, &t->ac);
+		t->er = t->ar;
+		t->ec = t->ac;
+		t->selecting = true;
+		if (!shift) {
 			/* a RIPscrip button's */
 			int cols = dmc_vt_cols(t->vt), rows = dmc_vt_rows(t->vt);
-			double fx = ((short)LOWORD(lp) - t->ox) / (double)(cols * t->cw);
-			double fy = ((short)HIWORD(lp) - t->oy) / (double)(rows * t->ch);
+			double fx = (x - t->ox) / (double)(cols * t->cw);
+			double fy = (y - t->oy) / (double)(rows * t->ch);
 			char b[256];
 			int n = dmc_vt_tap(t->vt, fx, fy, b, sizeof(b));
 			if (n > 0) {
+				t->selecting = false;
 				to_bottom(t);
 				send_text(t, b, n);
 			}
@@ -802,11 +1169,15 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		t->buttons &= ~(1 << button);
 		if (!t->buttons)
 			ReleaseCapture();
+		if (!button && t->selecting) {
+			t->selecting = false;
+			return 0;
+		}
 		mouse_report(t, button, lp, 0, 0);
 		return 0;
 	}
 	case WM_RBUTTONDOWN:
-		if (mouse_report(t, 2, lp, 1, 0)) {
+		if (!(wp & MK_SHIFT) && mouse_report(t, 2, lp, 1, 0)) {
 			t->buttons |= 4;
 			return 0;
 		}
@@ -817,9 +1188,28 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 			mouse_report(t, 2, lp, 0, 0);
 			return 0;
 		}
-		paste(t);
+		context_menu(t, lp);
 		return 0;
 	case WM_MOUSEMOVE: {
+		if (t->selecting) {
+			int x = (short)LOWORD(lp), y = (short)HIWORD(lp);
+			RECT r;
+			GetClientRect(w, &r);
+			/* above or under the screen: the scrollback scrolled */
+			if (y < 0)
+				SendMessage(w, WM_VSCROLL, SB_LINEUP, 0);
+			else if (y >= r.bottom)
+				SendMessage(w, WM_VSCROLL, SB_LINEDOWN, 0);
+			int row, col;
+			sel_cell(t, x, y, &row, &col);
+			if (row != t->er || col != t->ec || !t->sel) {
+				t->er = row;
+				t->ec = col;
+				t->sel = t->er != t->ar || t->ec != t->ac || t->sel;
+				InvalidateRect(w, NULL, FALSE);
+			}
+			return 0;
+		}
 		int b = t->buttons & 1 ? 0 : t->buttons & 2 ? 1 : t->buttons & 4 ? 2 : 3;
 		mouse_report(t, b, lp, 1, 1);
 		return 0;
@@ -881,6 +1271,20 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN: {
 		int mods = mods_now();
+		t->eat_char = false;
+		/* Ctrl+Break: a break, to the page's line */
+		if (wp == VK_CANCEL) {
+			PostMessage(app.main, WM_COMMAND, IDM_BREAK, 0);
+			t->eat_char = true;
+			return 0;
+		}
+		if (t->win_keys && windows_key(t, wp, mods)) {
+			t->eat_char = true;
+			return 0;
+		}
+		/* (the function keys to the window: F10 the menu) */
+		if (t->win_keys && wp >= VK_F1 && wp <= VK_F24)
+			break;
 		int key = vk_key(wp, mods, t, w);
 		if (key < 0)
 			return 0;
@@ -905,6 +1309,10 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		}
 		break;
 	case WM_CHAR: {
+		if (t->eat_char) {
+			t->eat_char = false;
+			return 0;
+		}
 		int mods = mods_now() & ~DMC_MOD_ALT;
 		to_bottom(t);
 		switch (wp) {
@@ -944,9 +1352,7 @@ static LRESULT CALLBACK view_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 			DeleteObject(t->row_bmp);
 			DeleteDC(t->row_dc);
 		}
-		for (int i = 1; i < 4; i++)
-			if (t->fonts[i] != app.mono_font)
-				DeleteObject(t->fonts[i]);
+		free_fonts(t);
 		dmc_vt_free(t->vt);
 		free(t);
 		return 0;
@@ -960,7 +1366,7 @@ HWND termview_new(HWND parent, int id, TermTypedFn fn, void *ctx)
 	if (!registered) {
 		WNDCLASS wc;
 		memset(&wc, 0, sizeof(wc));
-		wc.style = CS_HREDRAW | CS_VREDRAW;
+		wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
 		wc.lpfnWndProc = view_proc;
 		wc.hInstance = app.inst;
 		wc.hCursor = LoadCursor(NULL, IDC_IBEAM);
@@ -994,17 +1400,26 @@ void termview_feed(HWND w, const char *data, int n)
 		return;
 	int before = dmc_vt_history(t->vt);
 	dmc_vt_feed(t->vt, data, n);
+	int moved = dmc_vt_history(t->vt) - before;
 	if (t->scroll)
-		t->scroll -= dmc_vt_history(t->vt) - before;
+		t->scroll -= moved;
+	/* the selection stays on its text as the lines go up */
+	if (t->sel || t->selecting) {
+		t->ar -= moved;
+		t->er -= moved;
+		if (t->ar < -dmc_vt_history(t->vt) || t->er < -dmc_vt_history(t->vt))
+			sel_clear(t);
+	}
 	if (t->scroll < -dmc_vt_history(t->vt))
 		t->scroll = -dmc_vt_history(t->vt);
 	char r[256];
 	int k;
 	while ((k = dmc_vt_reply(t->vt, r, sizeof(r))) > 0)
 		send_text(t, r, k);
-	/* (what went to the printer: not kept) */
-	while (dmc_vt_printed(t->vt, r, sizeof(r)) > 0)
-		;
+	/* what went to the printer: to the page's printer */
+	while ((k = dmc_vt_printed(t->vt, r, sizeof(r))) > 0)
+		if (t->pfn)
+			t->pfn(r, k, t->pctx);
 	if (dmc_vt_bells(t->vt))
 		MessageBeep(MB_OK);
 	play_music(t->vt);
@@ -1021,6 +1436,7 @@ void termview_reset(HWND w)
 		return;
 	dmc_vt_reset(t->vt);
 	t->scroll = 0;
+	sel_clear(t);
 	layout(t);
 	update_scrollbar(t);
 	InvalidateRect(w, NULL, FALSE);
@@ -1038,6 +1454,48 @@ void termview_set_backspace(HWND w, char b)
 	TermView *t = of(w);
 	if (t)
 		dmc_vt_set_backspace(t->vt, (unsigned char)b);
+}
+
+void termview_set_options(HWND w, const TermOptions *o)
+{
+	TermView *t = of(w);
+	if (!t)
+		return;
+	if (o->backspace >= 0)
+		dmc_vt_set_backspace(t->vt, o->backspace == 1 ? 0x7f : 0x08);
+	t->bs_three = o->backspace == 2;
+	t->win_keys = o->windows_keys;
+	t->cur_shape = o->cursor;
+	t->cur_blink = o->cursor_blink;
+	dmc_vt_set_scrollback(t->vt, o->scrollback);
+	if (t->scroll < -dmc_vt_history(t->vt))
+		t->scroll = -dmc_vt_history(t->vt);
+	/* the font: the app's when none is named or it can't be made */
+	HFONT f = NULL;
+	if (o->font[0] && o->font_size > 0) {
+		HDC dc = GetDC(w);
+		int h = -MulDiv(o->font_size, GetDeviceCaps(dc, LOGPIXELSY), 72);
+		ReleaseDC(w, dc);
+		f = CreateFont(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+			       DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+			       CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+			       FIXED_PITCH | FF_MODERN, o->font);
+	}
+	make_fonts(t, f);
+	measure(t);
+	layout(t);
+	update_scrollbar(t);
+	InvalidateRect(w, NULL, TRUE);
+}
+
+void termview_set_ascii(HWND w, int flags, int enter, bool echo)
+{
+	TermView *t = of(w);
+	if (!t)
+		return;
+	dmc_vt_set_ascii(t->vt, flags);
+	dmc_vt_set_enter(t->vt, enter);
+	t->echo = echo;
 }
 
 void termview_set_profile(HWND w, const char *id)
@@ -1076,4 +1534,63 @@ const char *term_types_chosen(HWND combo)
 	int i = (int)SendMessage(combo, CB_GETCURSEL, 0, 0);
 	const char *id = dmc_vt_profile_id(i);
 	return id ? id : dmc_vt_profile_id(0);
+}
+
+bool termview_has_selection(HWND w)
+{
+	TermView *t = of(w);
+	return t && t->sel;
+}
+
+bool termview_copy(HWND w)
+{
+	TermView *t = of(w);
+	return t && copy_selection(t);
+}
+
+void termview_paste(HWND w)
+{
+	TermView *t = of(w);
+	if (t)
+		paste(t);
+}
+
+void termview_select_all(HWND w)
+{
+	TermView *t = of(w);
+	if (t)
+		select_all(t);
+}
+
+char *termview_text(HWND w, bool selection)
+{
+	TermView *t = of(w);
+	if (!t)
+		return NULL;
+	const char *s;
+	if (selection && t->sel) {
+		int r0, c0, r1, c1;
+		sel_range(t, &r0, &c0, &r1, &c1);
+		s = dmc_vt_text_range(t->vt, r0, c0, r1, c1);
+	} else {
+		s = dmc_vt_text_range(t->vt, t->scroll, 0,
+				      t->scroll + dmc_vt_rows(t->vt) - 1,
+				      dmc_vt_cols(t->vt) - 1);
+	}
+	size_t n = strlen(s);
+	char *c = (char *)malloc(n + 1);
+	if (c) {
+		memcpy(c, s, n + 1);
+		trim_ends(c);
+	}
+	return c;
+}
+
+void termview_set_printer(HWND w, TermPrintedFn fn, void *ctx)
+{
+	TermView *t = of(w);
+	if (t) {
+		t->pfn = fn;
+		t->pctx = ctx;
+	}
 }

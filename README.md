@@ -4,7 +4,8 @@
 
 Native apps for D-Modem on Windows, macOS and Linux.
 
-Each app starts dmodemd (or connects to a dmodemd that already runs). It
+The apps (not the Windows 95 build) have the modem built in, so they need no dmodemd (refer to
+[The built-in modem](docs/embedded-modem.md)). Each app
 shows the modem as a desktop program. You can dial and answer from a window,
 change the settings without AT commands, and see the results of the last
 call. All three apps are thin native shells over one small C library,
@@ -14,13 +15,9 @@ libdmodemctl. Thus they operate in the same way.
 - **Phone**: voice calls through the sound card (dial, answer, keypad), and an
   answering machine that takes messages on this computer when you enable it (disabled by default)
 - **Terminal**: the AT console, and the setup screens of the modem (AT!CF, AT!CT)
-- **Remote**: log in to a server by SSH, Telnet or rlogin, in a separate terminal. SSH is built in, on libssh: it uses the keys, agent, config and known hosts of OpenSSH. It can use or import the `.ppk` keys of PuTTY. It uses Pageant on Windows, and an ssh-agent on Linux and macOS. On Windows 95, SSH needs CryptoAPI (Windows 95 OSR2, or Internet Explorer 3 or later)
-- **Terminal types**: the two terminals use the emulator of the D-Modem app, ported to C:
-  xterm, the VT52 to VT525 of DEC, ANSI-BBS (with Avatar, RIPscrip and Amiga ANSI),
-  the PETSCII of the Commodores, the ATASCII of the Atari 8-bit and the ST, Viewdata,
-  the Minitel and the Tektronix 4014. They have sixel, ReGIS and Tektronix
-  graphics, and the font of each machine (the SyncTERM copies of their ROMs,
-  LGPL-2.0-or-later: `core/licenses/syncterm-fonts-LGPL-2.0.txt`)
+- **Remote**: log in to a server by SSH, Telnet or rlogin, in a separate terminal. SSH is built in, on libssh, and it uses the keys and the agent of OpenSSH and PuTTY
+- **Terminal types**: the terminal emulator of the D-Modem app, ported to C: xterm, DEC VT52 to VT525, ANSI-BBS, PETSCII, ATASCII, Viewdata, Minitel and Tektronix 4014, with sixel, ReGIS and Tektronix graphics
+- **The Windows app**: file transfers (ZMODEM, YMODEM, XMODEM and Kermit), copy and capture, and the ASCII Setup, Terminal Settings and Call menu of HyperTerminal. Refer to [Features](docs/features.md)
 - **Settings**: each modem setting as a native control, from AT!M
 - **Call Stats**: the rate, modulation, error control and line figures of the last call (AT#UD, ATI11)
 - **Line settings**: a SIP account, a USB modem, or a modem that already runs (dmodemd, or a hardware modem such as the MultiTech MT9234MU)
@@ -36,6 +33,18 @@ libdmodemctl. Thus they operate in the same way.
 
 <img src="docs/images/linux-phone.png" width="49%" alt="The Linux app's Phone page"> <img src="docs/images/windows-phone.png" width="49%" alt="The Windows app's Phone page taking a message">
 
+## Nightly builds
+
+The [nightly release](https://github.com/D-Modem/gui/releases/tag/nightly)
+has the apps from the newest build of `main`. It has the Windows app (for
+Windows 95 and later, and for Windows 7 and later), the Linux app, the
+macOS app, and the Windows app for Linux and macOS. A workflow
+(`.github/workflows/nightly.yml`) replaces the release one time each day.
+When `main` has no new commits, the release does not change.
+
+These builds are not stable releases. The files are not signed. Thus
+Windows and macOS can show a warning before the app starts.
+
 ## Quick start
 
 Linux:
@@ -44,46 +53,14 @@ Linux:
         libsndfile1-dev
     cmake -S . -B build && cmake --build build && ./build/linux/dmodem-gui
 
-Windows: we build the Windows app with clang-retro. Get its toolchain
-package (`clang-dos-linux-x86_64.tar.xz` or `clang-dos-windows-x86_64.zip`,
-from the [nightly release](https://github.com/clang-retro/dos-sdk/releases/tag/nightly)).
-Then set `CLANG_DOS` to the directory of the package:
-
-    # Windows 95, 98, ME, NT 4.0 and later (no C runtime DLL)
-    cmake -S . -B build/win9x -G Ninja -DCMAKE_BUILD_TYPE=Release \
-        -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake
-    cmake --build build/win9x
-
-    # Windows 7 and later
-    cmake -S . -B build/win7 -G Ninja -DCMAKE_BUILD_TYPE=Release \
-        -DCLANG_DOS=/opt/clang-dos -DCMAKE_TOOLCHAIN_FILE=cmake/clang-retro.cmake \
-        -DCLANG_RETRO_CONFIG=win7
-    cmake --build build/win7
-
-The app is in `windows/dmodem.exe` of the build directory. MSVC
-(`cmake -S . -B build -A Win32`) and MinGW also build the same code.
-
-macOS: first use `cmake -S . -B build -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 && cmake --build build`
-(this builds libssh, for SSH). Then use `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
-
-The Windows app on Linux or macOS: get [clang-retro MFC](https://github.com/clang-retro/mfc),
-clang and `llvm-rc` (on macOS, `brew install llvm`). Then:
-
-    cmake -S . -B build -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC=/path/to/mfc \
-        -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-    cmake --build build --target dmodem-win32 && ./build/winport/dmodem-win32
-
-The first CMake build downloads libssh and mbedTLS for SSH. This always
-occurs on Windows and macOS. Use `-DDMODEM_GUI_SSH=OFF` for a build with
-no SSH. On Linux, it occurs if the libssh of the system
-is older than 0.11.
-
-The Settings page needs a dmodemd with AT!M (the main branch of D-Modem
-since D-Modem/D-Modem#103). The other pages operate with all versions of
-D-Modem 1.0.
+For Windows (with clang-retro), macOS, and the Windows app on Linux and
+macOS, refer to [Building](docs/building.md).
 
 ## Documentation
 
+- [Features](docs/features.md): each page and menu of the apps, with the details of the Windows app
+- [Building](docs/building.md): Linux, Windows with clang-retro, macOS, and the Windows app on Linux and macOS
+- [The built-in modem](docs/embedded-modem.md): the modem inside the Linux and Windows apps, with no dmodemd
 - [Design](docs/design.md): how the apps are built, what they share, hardware modems (the MultiTech MT9234MU), the Windows 9x notes, and the Windows app on Linux and macOS
 - [libdmodemctl](core/include/dmodemctl.h): the API of the library
 - [Documentation style](docs/STYLE.md): the rules for ASD-STE100 Simplified Technical English
@@ -96,7 +73,7 @@ D-Modem 1.0.
 | [app](https://github.com/D-Modem/app) | The D-Modem app for Android and iOS: a dial-up modem on a SIP call |
 | [gui](https://github.com/D-Modem/gui) | D-Modem on the desktop: native apps for Windows, macOS and Linux |
 | [hardware](https://github.com/D-Modem/hardware) | pico-serial: RP2040 serial adapters and phone-line USB sticks |
-| [menu](https://github.com/D-Modem/menu) | modemmenu: the login and menu dial-up callers reach |
+| [login](https://github.com/D-Modem/login) | dmodem-login: the login, menu and LDAP provider for dial-up callers |
 | [bbs](https://github.com/D-Modem/bbs) | A bulletin board for telnet, SSH, TN3270 and modem callers |
 | [go3270](https://github.com/D-Modem/go3270) | A Go library for 3270 terminal servers, used by bbs |
 | [brand](https://github.com/D-Modem/brand) | Logos, colours, type and the naming guide |

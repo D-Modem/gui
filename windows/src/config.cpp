@@ -101,8 +101,15 @@ void config_load(Config *c)
 	(void)old;
 	c->line = get_i(ini, "line", LINE_DMODEMD);
 #else
+#ifdef DMODEM_GUI_EMBED
+	/* (the modem built in runs on Windows 98 SE and later) */
+	(void)old;
+	c->line = get_i(ini, "line", LINE_DMODEMD);
+#else
 	c->line = get_i(ini, "line", old ? LINE_COM : LINE_DMODEMD);
 #endif
+#endif
+	c->builtin = get_i(ini, "builtin", 1);
 	get(ini, "sip-user", "", c->sip_user, sizeof(c->sip_user));
 	get(ini, "sip-password", "", c->sip_password, sizeof(c->sip_password));
 	get(ini, "sip-server", "", c->sip_server, sizeof(c->sip_server));
@@ -116,6 +123,22 @@ void config_load(Config *c)
 	get(ini, "dmodemd", "", c->dmodemd, sizeof(c->dmodemd));
 	get(ini, "tcp", "127.0.0.1:2323", c->tcp, sizeof(c->tcp));
 	get(ini, "com", "COM1", c->com, sizeof(c->com));
+	/* (115,200 bps, 8N1, RTS/CTS: as it was before these settings) */
+	c->com_bps = get_i(ini, "com-bps", 115200);
+	if (c->com_bps < 110)
+		c->com_bps = 115200;
+	c->com_data = get_i(ini, "com-data-bits", 8);
+	if (c->com_data < 5 || c->com_data > 8)
+		c->com_data = 8;
+	c->com_parity = get_i(ini, "com-parity", 0);
+	if (c->com_parity < 0 || c->com_parity > 4)
+		c->com_parity = 0;
+	c->com_stop = get_i(ini, "com-stop-bits", 0);
+	if (c->com_stop < 0 || c->com_stop > 2)
+		c->com_stop = 0;
+	c->com_flow = get_i(ini, "com-flow", 2);
+	if (c->com_flow < 0 || c->com_flow > 2)
+		c->com_flow = 2;
 	get(ini, "init", "", c->init, sizeof(c->init));
 	/* the answering machine: off until the user turns it on */
 	c->voicemail = (int)GetPrivateProfileInt("voice", "voicemail", 0, ini);
@@ -143,8 +166,14 @@ void config_save(const Config *c)
 	put(ini, "country", c->country);
 	put(ini, "usb", c->usb);
 	put(ini, "dmodemd", c->dmodemd);
+	put_i(ini, "builtin", c->builtin);
 	put(ini, "tcp", c->tcp);
 	put(ini, "com", c->com);
+	put_i(ini, "com-bps", c->com_bps);
+	put_i(ini, "com-data-bits", c->com_data);
+	put_i(ini, "com-parity", c->com_parity);
+	put_i(ini, "com-stop-bits", c->com_stop);
+	put_i(ini, "com-flow", c->com_flow);
 	put(ini, "init", c->init);
 	char b[16];
 	_snprintf(b, sizeof(b), "%d", c->voicemail);
@@ -165,20 +194,30 @@ void config_summary(const Config *c, char *out, int n)
 		_snprintf(out, n, "dmodemd at %s", c->tcp);
 		break;
 	case LINE_COM:
-		_snprintf(out, n, "The modem on %s", c->com);
+		/* (as HyperTerminal's status bar: 115200 8-N-1) */
+		_snprintf(out, n, "The modem on %s (%d %d-%c-%s)", c->com,
+			  c->com_bps, c->com_data, "NOEMS"[c->com_parity],
+			  c->com_stop == 1 ? "1.5" : c->com_stop == 2 ? "2" : "1");
 		break;
-	default:
+	default: {
+		/* (what runs the line: the modem built in, or dmodemd) */
+		const char *who = "dmodemd";
+#ifdef DMODEM_GUI_EMBED
+		if (c->builtin)
+			who = "Built-in modem";
+#endif
 		if (c->usb[0])
-			_snprintf(out, n, "dmodemd: USB modem (%s)", c->usb);
+			_snprintf(out, n, "%s: USB modem (%s)", who, c->usb);
 		else if (c->sip_anonymous)
-			_snprintf(out, n, "dmodemd: SIP, anonymous (no account)%s",
-				  c->listen ? ", taking calls" : "");
+			_snprintf(out, n, "%s: SIP, anonymous (no account)%s",
+				  who, c->listen ? ", taking calls" : "");
 		else if (!c->sip_user[0] || !c->sip_server[0])
-			_snprintf(out, n, "dmodemd: SIP account not set up");
+			_snprintf(out, n, "%s: SIP account not set up", who);
 		else
-			_snprintf(out, n, "dmodemd: SIP %s@%s%s", c->sip_user,
+			_snprintf(out, n, "%s: SIP %s@%s%s", who, c->sip_user,
 				  c->sip_server, c->listen ? ", taking calls" : "");
 		break;
+	}
 	}
 	out[n - 1] = '\0';
 }
@@ -193,6 +232,30 @@ bool config_sip_ready(const Config *c)
  */
 
 static Config *editing;
+
+/* the choices of the COM port's settings, as HyperTerminal lists them */
+static const int bps_list[] = {
+	110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600,
+	115200, 230400, 460800, 921600, 0
+};
+static const char *const parity_names[] = { "None", "Odd", "Even", "Mark", "Space", NULL };
+static const char *const stop_names[] = { "1", "1.5", "2", NULL };
+static const char *const flow_names[] = { "None", "Xon / Xoff", "Hardware", NULL };
+
+/* a list of names into a combo box, [sel] chosen */
+static void fill(HWND d, int id, const char *const *names, int sel)
+{
+	HWND c = GetDlgItem(d, id);
+	for (int i = 0; names[i]; i++)
+		SendMessage(c, CB_ADDSTRING, 0, (LPARAM)names[i]);
+	SendMessage(c, CB_SETCURSEL, (WPARAM)sel, 0);
+}
+
+static int chosen(HWND d, int id, int def)
+{
+	int i = (int)SendDlgItemMessage(d, id, CB_GETCURSEL, 0, 0);
+	return i < 0 ? def : i;
+}
 
 static void enable(HWND d)
 {
@@ -215,6 +278,11 @@ static void enable(HWND d)
 		EnableWindow(GetDlgItem(d, account_ids[i]), here && !anon);
 	EnableWindow(GetDlgItem(d, IDC_L_ADDRESS), tcp);
 	EnableWindow(GetDlgItem(d, IDC_L_PORT), com);
+	static const int com_ids[] = {
+		IDC_L_BPS, IDC_L_DATA, IDC_L_PARITY, IDC_L_STOP, IDC_L_FLOW, 0
+	};
+	for (int i = 0; com_ids[i]; i++)
+		EnableWindow(GetDlgItem(d, com_ids[i]), com);
 }
 
 static void check(HWND d, int id, int on)
@@ -272,6 +340,19 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 			SendMessage(port, CB_ADDSTRING, 0, (LPARAM)n);
 		}
 		SetWindowText(port, c->com);
+		HWND bps = GetDlgItem(d, IDC_L_BPS);
+		for (int i = 0; bps_list[i]; i++) {
+			char n[16];
+			_snprintf(n, sizeof(n), "%d", bps_list[i]);
+			n[sizeof(n) - 1] = '\0';
+			SendMessage(bps, CB_ADDSTRING, 0, (LPARAM)n);
+		}
+		SetDlgItemInt(d, IDC_L_BPS, (UINT)c->com_bps, FALSE);
+		static const char *const data_names[] = { "5", "6", "7", "8", NULL };
+		fill(d, IDC_L_DATA, data_names, c->com_data - 5);
+		fill(d, IDC_L_PARITY, parity_names, c->com_parity);
+		fill(d, IDC_L_STOP, stop_names, c->com_stop);
+		fill(d, IDC_L_FLOW, flow_names, c->com_flow);
 		SetDlgItemText(d, IDC_L_INIT, c->init);
 		enable(d);
 		return TRUE;
@@ -305,6 +386,16 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 			GetDlgItemText(d, IDC_L_PATH, c->dmodemd, sizeof(c->dmodemd));
 			GetDlgItemText(d, IDC_L_ADDRESS, c->tcp, sizeof(c->tcp));
 			GetDlgItemText(d, IDC_L_PORT, c->com, sizeof(c->com));
+			{
+				char b[16];
+				GetDlgItemText(d, IDC_L_BPS, b, sizeof(b));
+				int v = atoi(b);
+				c->com_bps = v >= 110 ? v : 115200;
+			}
+			c->com_data = 5 + chosen(d, IDC_L_DATA, 3);
+			c->com_parity = chosen(d, IDC_L_PARITY, 0);
+			c->com_stop = chosen(d, IDC_L_STOP, 0);
+			c->com_flow = chosen(d, IDC_L_FLOW, 2);
 			GetDlgItemText(d, IDC_L_INIT, c->init, sizeof(c->init));
 			EndDialog(d, IDOK);
 			return TRUE;

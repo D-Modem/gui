@@ -136,6 +136,9 @@ DMC_API void dmc_feed(dmc_session *s, const char *data, int n);
    session reads the command lines in them, to follow ATD, ATA, ATH and
    AT!C typed by hand) */
 DMC_API void dmc_type(dmc_session *s, const char *data, int n);
+/* bytes to the far end as they are, during a call (a file transfer's):
+   not taken as typed (no escape, no command) */
+DMC_API void dmc_send(dmc_session *s, const char *data, int n);
 /* the time now: runs the timers (a command's timeout, the escape's
    guard times); returns the ms until it next needs to be called, -1 if
    only when something happens */
@@ -143,6 +146,8 @@ DMC_API int dmc_poll(dmc_session *s, int64_t now_ms);
 
 /* bytes to write to the modem: up to max into buf, how many */
 DMC_API int dmc_output(dmc_session *s, char *buf, int max);
+/* how many bytes dmc_output has for the DTE now */
+DMC_API int dmc_output_waiting(const dmc_session *s);
 /* bytes for the terminal view: up to max into buf, how many (what the
    modem sent, less the DMC_QUIET commands') */
 DMC_API int dmc_terminal(dmc_session *s, char *buf, int max);
@@ -492,6 +497,8 @@ DMC_API void dmc_vt_feed(dmc_vt *t, const char *data, int n);
 /* the screen's answers to the remote's questions (where the cursor is,
    what terminal it is), to write to it as if typed */
 DMC_API int dmc_vt_reply(dmc_vt *t, char *buf, int max);
+/* the scrollback's size: the newest lines kept, the oldest dropped */
+DMC_API void dmc_vt_set_scrollback(dmc_vt *t, int lines);
 /* how many lines of scrollback there are now */
 DMC_API int dmc_vt_history(const dmc_vt *t);
 /* a cell: row 0 the screen's top, -1 the newest scrollback line and so
@@ -538,6 +545,14 @@ DMC_API int dmc_vt_char_bytes(dmc_vt *t, uint32_t cp, int mods, char *buf,
 /* what Enter sends (0 CR, 1 CR LF, 2 LF) and Backspace (0x08 or 0x7f) */
 DMC_API void dmc_vt_set_enter(dmc_vt *t, int mode);
 DMC_API void dmc_vt_set_backspace(dmc_vt *t, int code);
+/* HyperTerminal's ASCII Setup, for the received data: an LF added after
+   each CR (the LF of a CR LF is not doubled), each byte set to 7 bits,
+   and no wrap at the right margin (the last column is written again) */
+#define DMC_VT_ASCII_ADD_LF 1
+#define DMC_VT_ASCII_7BIT 2
+#define DMC_VT_ASCII_NO_WRAP 4
+DMC_API void dmc_vt_set_ascii(dmc_vt *t, int flags);
+DMC_API int dmc_vt_get_ascii(const dmc_vt *t);
 /* a mouse event, when the remote asked for them: button 0-2, 64 and 65
    the wheel; the bytes to send (0: none) */
 DMC_API int dmc_vt_mouse_wanted(const dmc_vt *t);
@@ -651,6 +666,113 @@ DMC_API void dmc_net_type(dmc_net *n, const char *data, int len);
 DMC_API int dmc_net_output(dmc_net *n, char *buf, int max);
 /* the screen's new size, told to the server */
 DMC_API void dmc_net_resize(dmc_net *n, int cols, int rows);
+/* a break to the server (Telnet's IAC BRK): 1, or 0 when the protocol has
+   none (rlogin) */
+DMC_API int dmc_net_break(dmc_net *n);
+
+/* ------------------------------------------------------------------
+ * File transfers on a terminal's line, as the Android app has them:
+ * ZMODEM, YMODEM, XMODEM, XMODEM-1K, Kermit, Intel HEX, Motorola
+ * S-records and plain text.  A transfer runs on a thread of its own; the
+ * app feeds it what comes from the remote (in place of the terminal),
+ * writes what it gives to the remote, and reads its status.
+ */
+enum {
+	DMC_XFER_ZMODEM,
+	DMC_XFER_YMODEM,
+	DMC_XFER_YMODEM_G,              /* YMODEM with no ACKs (an error-free line) */
+	DMC_XFER_XMODEM,
+	DMC_XFER_XMODEM_1K,
+	DMC_XFER_KERMIT,
+	DMC_XFER_INTEL_HEX,
+	DMC_XFER_SREC,
+	DMC_XFER_TEXT,
+	DMC_XFER_PROTOCOLS
+};
+
+/* a protocol's name ("ZMODEM"); whether it sends more than one file */
+DMC_API const char *dmc_xfer_label(int protocol);
+DMC_API int dmc_xfer_batch(int protocol);
+/* what to type at the remote's shell for its end: remote_sends, its send
+   (the files' names go after it, "sz -b "), else its receive ("rz -b") */
+DMC_API const char *dmc_xfer_command(int protocol, int remote_sends);
+
+typedef struct dmc_xfer dmc_xfer;
+
+/* how a transfer goes (all 0: as the protocol does by default) */
+typedef struct dmc_xfer_options {
+	/* ZMODEM crash recovery: a part of a file that is in the folder is
+	   continued, and a part received is kept when the transfer stops
+	   (receiving); the receiver is asked to continue (sending) */
+	int resume;
+	/* plain text sent: a wait after each line, and after each
+	   character, in ms */
+	int line_delay_ms, char_delay_ms;
+	/* ZMODEM with zstd stopped: files are not compressed (sending), and
+	   compressed files are not taken (receiving).  When it is not
+	   stopped, zstd is used only where the other side can use it too
+	   (D-Modem's BBS, GUI and app) */
+	int no_zstd;
+} dmc_xfer_options;
+
+/* files from the remote into folder (name: XMODEM's file, which it does
+   not name; Intel HEX's, S-records' and plain text's too) */
+DMC_API dmc_xfer *dmc_xfer_receive(int protocol, const char *folder,
+				   const char *name);
+/* files to the remote (XMODEM, the hex records and plain text: the first) */
+DMC_API dmc_xfer *dmc_xfer_send(int protocol, const char *const *paths,
+				int n);
+/* the same, with options (NULL: the defaults) */
+DMC_API dmc_xfer *dmc_xfer_receive_opt(int protocol, const char *folder,
+				       const char *name,
+				       const dmc_xfer_options *o);
+DMC_API dmc_xfer *dmc_xfer_send_opt(int protocol, const char *const *paths,
+				    int n, const dmc_xfer_options *o);
+/* the file being received skipped, and the transfer goes on to the next
+   (ZMODEM and Kermit; the others ignore it) */
+DMC_API void dmc_xfer_skip(dmc_xfer *x);
+/* whether the protocol can skip a file (receiving) */
+DMC_API int dmc_xfer_can_skip(int protocol);
+/* whether the file now goes compressed with zstd (ZMODEM with zstd) */
+DMC_API int dmc_xfer_zstd(dmc_xfer *x);
+/* bytes from the remote */
+DMC_API void dmc_xfer_feed(dmc_xfer *x, const char *data, int n);
+/* bytes for the remote: how many */
+DMC_API int dmc_xfer_output(dmc_xfer *x, char *buf, int max);
+/* stopped: the other side told (ZMODEM's CANs, Kermit's E packet) */
+DMC_API void dmc_xfer_cancel(dmc_xfer *x);
+/* fn(ctx) called, on the transfer's thread, when it has bytes for the
+   remote or has ended (once until the next dmc_xfer_output): for an app
+   that posts itself a message to write them at once */
+DMC_API void dmc_xfer_set_notify(dmc_xfer *x, void (*fn)(void *ctx), void *ctx);
+
+typedef struct dmc_xfer_status {
+	int protocol, sending;
+	int running;                    /* 0: ended, result says how */
+	char file[256];                 /* the file now */
+	long long bytes, size;          /* size -1: not known */
+	int files;                      /* files done */
+	int errors;                     /* blocks sent again */
+	char result[256];               /* "" it went well, else why not */
+} dmc_xfer_status;
+
+DMC_API void dmc_xfer_get_status(dmc_xfer *x, dmc_xfer_status *st);
+/* the names the received files got (i from 0; NULL past the last) */
+DMC_API const char *dmc_xfer_received(dmc_xfer *x, int i);
+/* once ended: what came after the transfer, for the terminal */
+DMC_API int dmc_xfer_leftover(dmc_xfer *x, char *buf, int max);
+/* the thread waited for, all freed */
+DMC_API void dmc_xfer_free(dmc_xfer *x);
+
+/* what a remote starts in what came: its sz (receive here), its rz (it
+   waits for files) or its kermit -s; *at where it starts */
+enum {
+	DMC_XFER_DETECT_NONE,
+	DMC_XFER_DETECT_ZMODEM_SEND,
+	DMC_XFER_DETECT_ZMODEM_RECEIVE,
+	DMC_XFER_DETECT_KERMIT_SEND
+};
+DMC_API int dmc_xfer_detect(const char *data, int n, int *at);
 
 #ifdef __cplusplus
 }

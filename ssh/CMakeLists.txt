@@ -26,8 +26,9 @@ else()
 endif()
 
 add_library(dmodemssh STATIC src/dmodemssh.c src/ppk.c src/agent.c)
-# (the Windows 95 build: a gai_strerrorA with no Unicode call)
-if(CLANG_RETRO_CONFIG MATCHES "picolibc")
+# (the Windows 95 build, and the Windows 98 SE and ME builds of the app
+# with the modem built in: a gai_strerrorA with no Unicode call)
+if(CLANG_RETRO_CONFIG MATCHES "picolibc|^win98|^winme")
   target_sources(dmodemssh PRIVATE src/gai_strerror.c)
 endif()
 target_include_directories(dmodemssh PUBLIC include)

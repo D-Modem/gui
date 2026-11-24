@@ -8,12 +8,22 @@
  *
  * Only what Windows 95 has: Winsock 1.1 (WSAAsyncSelect), anonymous
  * pipes read with PeekNamedPipe, and a COM port read on the timer.
+ *
+ * With the modem built in (DMODEM_GUI_EMBED, Windows 98 SE and later),
+ * the dmodemd line starts no dmodemd: libdmodem_embed runs the modem in
+ * a thread of the app, and gives a connected socket as its DTE.  The
+ * thread's log lines and its end come to the main window as
+ * WM_APP_EMBED.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "app.h"
+
+#ifdef DMODEM_GUI_EMBED
+#include "dmodem_embed.h"
+#endif
 
 /* the commands that wait for their responses */
 struct Waiting {
@@ -33,6 +43,11 @@ static int proc_n;
 static char port_out[8192];             /* what the DTE has yet to take */
 static int port_out_n;
 static int connect_tries;
+#ifdef DMODEM_GUI_EMBED
+static dmodem_embed *embed;             /* the modem built in */
+static int embed_running;
+static unsigned embed_gen;              /* its start's number */
+#endif
 
 static int64_t now_ms()
 {
@@ -45,8 +60,22 @@ bool link_open()
 		com != INVALID_HANDLE_VALUE;
 }
 
+bool link_break()
+{
+	/* (a COM port's: the line held at space for 250 ms) */
+	if (com == INVALID_HANDLE_VALUE || !SetCommBreak(com))
+		return false;
+	Sleep(250);
+	ClearCommBreak(com);
+	return true;
+}
+
 bool link_running()
 {
+#ifdef DMODEM_GUI_EMBED
+	if (embed_running)
+		return true;
+#endif
 	return proc != NULL || sock != INVALID_SOCKET ||
 		com != INVALID_HANDLE_VALUE;
 }
@@ -156,14 +185,23 @@ static bool open_com(const char *name)
 	memset(&dcb, 0, sizeof(dcb));
 	dcb.DCBlength = sizeof(dcb);
 	GetCommState(com, &dcb);
-	dcb.BaudRate = CBR_115200;
-	dcb.ByteSize = 8;
-	dcb.Parity = NOPARITY;
-	dcb.StopBits = ONESTOPBIT;
+	/* Line Settings' bits per second, data bits, parity, stop bits and
+	   flow control (Xon/Xoff: DC1 and DC3, both ways; hardware: RTS and
+	   CTS) */
+	dcb.BaudRate = (DWORD)app.cfg.com_bps;
+	dcb.ByteSize = (BYTE)app.cfg.com_data;
+	dcb.Parity = (BYTE)app.cfg.com_parity;
+	dcb.fParity = app.cfg.com_parity != 0;
+	dcb.StopBits = (BYTE)app.cfg.com_stop;
 	dcb.fBinary = TRUE;
 	dcb.fDtrControl = DTR_CONTROL_ENABLE;
-	dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
-	dcb.fOutxCtsFlow = TRUE;
+	dcb.fRtsControl = app.cfg.com_flow == 2 ? RTS_CONTROL_HANDSHAKE : 0x01;
+	dcb.fOutxCtsFlow = app.cfg.com_flow == 2;
+	dcb.fOutX = dcb.fInX = app.cfg.com_flow == 1;
+	dcb.XonChar = 0x11;
+	dcb.XoffChar = 0x13;
+	dcb.XonLim = 256;
+	dcb.XoffLim = 256;
 	SetCommState(com, &dcb);
 	/* reads return at once with what there is */
 	COMMTIMEOUTS t;
@@ -333,6 +371,148 @@ static bool start_dmodemd()
 	return true;
 }
 
+#ifdef DMODEM_GUI_EMBED
+/* news from the modem's thread (WM_APP_EMBED's lParam): a log line, or
+   the end (line empty) with its status */
+struct EmbedNews {
+	unsigned gen;
+	int end, status;
+	char line[1];
+};
+
+/* a log line, or the end, posted to the main window (any thread) */
+static void embed_post(unsigned gen, const char *line, int end, int status)
+{
+	size_t n = line ? strlen(line) : 0;
+	EmbedNews *e = (EmbedNews *)malloc(sizeof(EmbedNews) + n);
+	if (!e)
+		return;
+	e->gen = gen;
+	e->end = end;
+	e->status = status;
+	memcpy(e->line, line ? line : "", n + 1);
+	if (!PostMessage(app.main, WM_APP_EMBED, 0, (LPARAM)e))
+		free(e);
+}
+
+/* a line of the modem's log (the modem's thread); ctx is the start's
+   number */
+static void embed_log(void *ctx, const char *line)
+{
+	embed_post((unsigned)(UINT_PTR)ctx, line, 0, 0);
+}
+
+/* the modem stopped (the modem's thread) */
+static void embed_exit(void *ctx, int status)
+{
+	embed_post((unsigned)(UINT_PTR)ctx, NULL, 1, status);
+}
+
+/* the modem started in the app on the line settings' line, its DTE the
+   socket that libdmodem_embed gives */
+static bool start_embedded()
+{
+	Config &c = app.cfg;
+	if (!c.usb[0] && !config_sip_ready(&c)) {
+		app_message("Set up the SIP account first (Modem, Line Settings)");
+		return false;
+	}
+	dmodem_embed_config e;
+	dmodem_embed_config_init(&e);
+	e.country = c.country;
+	if (c.usb[0]) {
+		e.line = DMODEM_EMBED_USB;
+		e.usb = c.usb;
+	} else {
+		e.line = DMODEM_EMBED_SIP;
+		if (!c.sip_anonymous) {
+			e.sip_user = c.sip_user;
+			e.sip_password = c.sip_password;
+			e.sip_domain = c.sip_server;
+		}
+		e.sip_listen = c.listen;
+		e.sip_t38 = c.t38;
+		e.sip_v152 = c.v152;
+		e.sip_v150 = c.v150;
+	}
+	/* the line's measurements, kept from call to call */
+	char data[MAX_PATH];
+	app_data_dir(data, sizeof(data) - 16);
+	strcat(data, "\\dmodem0.data");
+	e.data_file = data;
+	if (!embed)
+		embed = dmodem_embed_new();
+	if (!embed)
+		return false;
+	embed_gen++;
+	dmodem_embed_on_log(embed, embed_log, (void *)(UINT_PTR)embed_gen);
+	dmodem_embed_on_exit(embed, embed_exit, (void *)(UINT_PTR)embed_gen);
+	int fd = dmodem_embed_start(embed, &e);
+	char m[300];
+	if (fd < 0) {
+		_snprintf(m, sizeof(m), "Can't start the built-in modem: %s",
+			  dmodem_embed_error(embed));
+		m[sizeof(m) - 1] = '\0';
+		app_message(m);
+		app_log(m);
+		return false;
+	}
+	_snprintf(m, sizeof(m), "The built-in modem (D-Modem %s) started.",
+		  dmodem_embed_version());
+	m[sizeof(m) - 1] = '\0';
+	app_log(m);
+	embed_running = 1;
+	/* (a connected socket: the same messages as a TCP line's) */
+	sock = (SOCKET)fd;
+	sock_ready = 1;
+	WSAAsyncSelect(sock, app.main, WM_APP_SOCKET,
+		       FD_READ | FD_WRITE | FD_CLOSE);
+	opened("Built-in modem");
+	return true;
+}
+
+/* the modem built in stopped, its thread ended */
+static void stop_embedded()
+{
+	if (!embed || !embed_running)
+		return;
+	/* (news of this start after now is not wanted) */
+	embed_gen++;
+	dmodem_embed_stop(embed);
+	embed_running = 0;
+	app_log("The built-in modem stopped.");
+}
+#endif
+
+/* see app.h */
+void link_embed(WPARAM w, LPARAM l)
+{
+	(void)w;
+#ifdef DMODEM_GUI_EMBED
+	EmbedNews *e = (EmbedNews *)l;
+	if (e && e->gen == embed_gen) {
+		if (!e->end) {
+			app_log(e->line);
+			if (dmc_daemon_error(e->line) && !link_open())
+				app_message(e->line + 7);
+		} else {
+			const char *m = e->status < 0 ?
+				"The built-in modem stopped (error)." :
+				"The built-in modem stopped.";
+			app_log(m);
+			if (e->status < 0)
+				app_message(m);
+			embed_running = 0;
+			close_port();
+			app_state();
+		}
+	}
+	free(e);
+#else
+	(void)l;
+#endif
+}
+
 void link_start()
 {
 	if (link_running())
@@ -346,6 +526,12 @@ void link_start()
 		ok = open_com(app.cfg.com);
 		break;
 	default:
+#ifdef DMODEM_GUI_EMBED
+		if (app.cfg.builtin) {
+			ok = start_embedded();
+			break;
+		}
+#endif
 		ok = start_dmodemd();
 		break;
 	}
@@ -359,6 +545,9 @@ void link_stop()
 		dmc_hangup(app.s);
 		link_pump();
 	}
+#ifdef DMODEM_GUI_EMBED
+	stop_embedded();
+#endif
 	close_port();
 	if (proc) {
 		/* dmodemd has no window to close: it is ended */
@@ -517,11 +706,16 @@ void link_pump()
 	dmc_poll(app.s, now_ms());
 	char buf[4096];
 	int n;
-	while ((n = dmc_output(app.s, buf, sizeof(buf))) > 0) {
-		if (port_out_n + n > (int)sizeof(port_out))
-			n = (int)sizeof(port_out) - port_out_n;
+	/* (what the DTE can't take yet waits in the session) */
+	for (;;) {
+		int room = (int)sizeof(port_out) - port_out_n;
+		if (room > (int)sizeof(buf))
+			room = (int)sizeof(buf);
+		if (room <= 0 || (n = dmc_output(app.s, buf, room)) <= 0)
+			break;
 		memcpy(port_out + port_out_n, buf, n);
 		port_out_n += n;
+		port_write();
 	}
 	port_write();
 	while ((n = dmc_terminal(app.s, buf, sizeof(buf))) > 0)
@@ -551,6 +745,22 @@ void link_type(const char *data, int n)
 		return;
 	dmc_type(app.s, data, n);
 	link_pump();
+}
+
+void link_send(const char *data, int n)
+{
+	if (!link_open())
+		return;
+	dmc_send(app.s, data, n);
+	link_pump();
+}
+
+int link_room()
+{
+	if (!link_open())
+		return 0;
+	int room = (int)sizeof(port_out) - port_out_n - dmc_output_waiting(app.s);
+	return room > 0 ? room : 0;
 }
 
 void link_wait(int tag, ResponseFn fn, void *data)

@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (C) 2026 D-Modem Authors
  *
- * gai_strerror.c - gai_strerrorA for the Windows 95 build (clang-retro,
- *                  picolibc).  The one of mingw-w64's libws2_32.a calls
+ * gai_strerror.c - gai_strerrorA for the Windows 9x builds (clang-retro:
+ *                  picolibc, win98 and winme).  The one of mingw-w64's libws2_32.a calls
  *                  FormatMessageW, which Windows 9x has only as a stub.
  *                  This one is linked before it (ssh/CMakeLists.txt) and
  *                  calls FormatMessageA.  (Only Windows: the macOS

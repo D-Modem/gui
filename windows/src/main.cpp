@@ -109,16 +109,51 @@ void app_log(const char *line)
 	log_append(line);
 }
 
-void app_state()
+/* when the call was connected (GetTickCount), 0 when not online; the
+   seconds the status bar shows */
+static DWORD online_at;
+static long online_shown = -1;
+
+/* the state in the status bar, with the connect timer when online, as
+   HyperTerminal has it: "Online 0:01:05" */
+static void show_state()
 {
 	char t[160];
 	int st = dmc_state(app.s);
-	if (link_running() && st == DMC_CLOSED)
+	if (link_running() && st == DMC_CLOSED) {
 		strcpy(t, "Starting");
-	else
+	} else if (online_at) {
+		long s = (long)((GetTickCount() - online_at) / 1000);
+		online_shown = s;
+		_snprintf(t, sizeof(t), "%s %ld:%02ld:%02ld", dmc_state_name(st),
+			  s / 3600, s / 60 % 60, s % 60);
+	} else {
 		_snprintf(t, sizeof(t), "%s", dmc_state_name(st));
+	}
 	t[sizeof(t) - 1] = '\0';
 	SendMessage(status_bar, SB_SETTEXT, 1, (LPARAM)t);
+}
+
+/* the connect timer moved on a second */
+static void state_tick()
+{
+	if (online_at && (long)((GetTickCount() - online_at) / 1000) != online_shown)
+		show_state();
+}
+
+void app_state()
+{
+	int st = dmc_state(app.s);
+	bool on = st == DMC_ONLINE || st == DMC_ONLINE_COMMAND;
+	bool was_online = online_at != 0;
+	if (on && !online_at)
+		online_at = GetTickCount() ? GetTickCount() : 1;
+	else if (!on)
+		online_at = 0;
+	show_state();
+	/* Terminal Settings: Exit program upon disconnecting */
+	if (was_online && !online_at && termset_exit_on_disconnect())
+		PostMessage(app.main, WM_CLOSE, 0, 0);
 	modem_page_state();
 	voice_state();
 	term_state();
@@ -128,6 +163,7 @@ void app_state()
 void app_opened()
 {
 	app_state();
+	call_opened();
 	settings_load();
 	stats_refresh();
 }
@@ -204,8 +240,36 @@ static void lower_labels(HWND page)
 	}
 }
 
+static int page_now;
+
+/* the line of the page shown, for the Transfer menu: the Remote page's
+   login, else the modem */
+static XferLine *line_now()
+{
+	return page_now == PAGE_REMOTE ? &remote_line : &term_line;
+}
+
+/* the terminal of the page shown, for the Edit menu: NULL on a page
+   with none */
+static HWND view_now()
+{
+	if (page_now != PAGE_TERM && page_now != PAGE_REMOTE)
+		return NULL;
+	XferLine *l = line_now();
+	return l->view ? *l->view : NULL;
+}
+
+/* a call's ATD answered: its result when it failed (NO CARRIER, BUSY) */
+static void call_done(const dmc_event *ev, void *data)
+{
+	(void)data;
+	if (!ev->ok)
+		app_message(ev->result);
+}
+
 static void show_page(int i)
 {
+	page_now = i;
 	for (int p = 0; p < PAGES; p++)
 		ShowWindow(app.pages[p], p == i ? SW_SHOW : SW_HIDE);
 	if (i == PAGE_TERM)
@@ -323,6 +387,50 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 				app_state();
 			}
 			return 0;
+		case IDM_ASCII:
+			ascii_dialog(w);
+			return 0;
+		case IDM_CALL: {
+			char n[128];
+			if (dmc_state(app.s) != DMC_IDLE) {
+				app_message(link_running() ?
+					    "The modem is not idle: disconnect first" :
+					    "Start the modem first (Modem menu)");
+				return 0;
+			}
+			if (!call_dialog(w, n, sizeof(n)))
+				return 0;
+			char cmd[140];
+			_snprintf(cmd, sizeof(cmd), "ATD%s", n);
+			cmd[sizeof(cmd) - 1] = '\0';
+			link_command(cmd, 0, call_done, NULL);
+			/* (the call on the Terminal page, as HyperTerminal) */
+			TabCtrl_SetCurSel(app.tabs, PAGE_TERM);
+			show_page(PAGE_TERM);
+			return 0;
+		}
+		case IDM_WAITCALL:
+			call_wait(!call_waiting());
+			return 0;
+		case IDM_DISCONNECT:
+			if (line_now() == &remote_line) {
+				remote_stop();
+			} else {
+				dmc_hangup(app.s);
+				link_pump();
+			}
+			return 0;
+		case IDM_TERMSET:
+			termset_dialog(w, line_now() == &remote_line);
+			return 0;
+		case IDM_BREAK:
+			if (line_now() == &remote_line ? remote_break() : link_break())
+				app_message("Break sent");
+			else
+				app_message(line_now() == &remote_line ?
+					    "This connection cannot send a break (Telnet only)" :
+					    "This line cannot send a break (a COM port only)");
+			return 0;
 		case IDM_START:
 			if (link_running())
 				link_stop();
@@ -335,16 +443,120 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		case IDM_ABOUT:
 			about();
 			return 0;
+		case IDM_SEND:
+			xfer_send_dialog(line_now(), -1);
+			return 0;
+		case IDM_RECEIVE:
+			xfer_receive_dialog(line_now());
+			return 0;
+		case IDM_AUTORECV:
+			xfer_set_auto(!xfer_auto());
+			return 0;
+		case IDM_XZSTD:
+			xfer_set_zstd(!xfer_zstd());
+			return 0;
+		case IDM_XCANCEL:
+			xfer_cancel();
+			return 0;
+		case IDM_EDCOPY:
+			if (view_now())
+				termview_copy(view_now());
+			return 0;
+		case IDM_EDPASTE:
+			if (view_now())
+				termview_paste(view_now());
+			return 0;
+		case IDM_SELALL:
+			if (view_now())
+				termview_select_all(view_now());
+			return 0;
+		case IDM_FPRINT:
+			capture_print(line_now());
+			return 0;
+		case IDM_CAPTURE:
+			capture_text_start(line_now());
+			return 0;
+		case IDM_CAPPAUSE:
+			capture_text_pause(line_now(),
+					   capture_text_state(line_now()) == CAPTURE_ON);
+			return 0;
+		case IDM_CAPSTOP:
+			capture_text_stop(line_now());
+			return 0;
+		case IDM_CAPPRINT:
+			capture_printer(line_now(),
+					capture_printer_state(line_now()) == CAPTURE_OFF);
+			return 0;
+		case IDM_PRNPAUSE:
+			capture_printer_pause(line_now(),
+					      capture_printer_state(line_now()) == CAPTURE_ON);
+			return 0;
 		}
 		break;
+	case WM_INITMENUPOPUP: {
+		HMENU m = (HMENU)wp;
+		bool busy = xfer_running();
+		EnableMenuItem(m, IDM_SEND, MF_BYCOMMAND | (busy ? MF_GRAYED : MF_ENABLED));
+		EnableMenuItem(m, IDM_RECEIVE, MF_BYCOMMAND | (busy ? MF_GRAYED : MF_ENABLED));
+		EnableMenuItem(m, IDM_XCANCEL, MF_BYCOMMAND | (busy ? MF_ENABLED : MF_GRAYED));
+		{
+			int st = dmc_state(app.s);
+			bool remote = line_now() == &remote_line;
+			EnableMenuItem(m, IDM_CALL, MF_BYCOMMAND |
+				       (st == DMC_IDLE ? MF_ENABLED : MF_GRAYED));
+			CheckMenuItem(m, IDM_WAITCALL, MF_BYCOMMAND |
+				      (call_waiting() ? MF_CHECKED : MF_UNCHECKED));
+			EnableMenuItem(m, IDM_DISCONNECT, MF_BYCOMMAND |
+				       (remote || st == DMC_DIALING ||
+					st == DMC_ANSWERING || st == DMC_ONLINE ||
+					st == DMC_ONLINE_COMMAND ? MF_ENABLED : MF_GRAYED));
+		}
+		CheckMenuItem(m, IDM_AUTORECV, MF_BYCOMMAND |
+			      (xfer_auto() ? MF_CHECKED : MF_UNCHECKED));
+		CheckMenuItem(m, IDM_XZSTD, MF_BYCOMMAND |
+			      (xfer_zstd() ? MF_CHECKED : MF_UNCHECKED));
+		HWND v = view_now();
+		UINT has_view = v ? MF_ENABLED : MF_GRAYED;
+		EnableMenuItem(m, IDM_EDCOPY, MF_BYCOMMAND |
+			       (v && termview_has_selection(v) ? MF_ENABLED : MF_GRAYED));
+		EnableMenuItem(m, IDM_EDPASTE, MF_BYCOMMAND | has_view);
+		EnableMenuItem(m, IDM_SELALL, MF_BYCOMMAND | has_view);
+		EnableMenuItem(m, IDM_FPRINT, MF_BYCOMMAND | has_view);
+		XferLine *l = line_now();
+		int ct = capture_text_state(l), cp = capture_printer_state(l);
+		EnableMenuItem(m, IDM_CAPTURE, MF_BYCOMMAND |
+			       (ct == CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		EnableMenuItem(m, IDM_CAPPAUSE, MF_BYCOMMAND |
+			       (ct != CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		CheckMenuItem(m, IDM_CAPPAUSE, MF_BYCOMMAND |
+			      (ct == CAPTURE_PAUSED ? MF_CHECKED : MF_UNCHECKED));
+		EnableMenuItem(m, IDM_CAPSTOP, MF_BYCOMMAND |
+			       (ct != CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		CheckMenuItem(m, IDM_CAPPRINT, MF_BYCOMMAND |
+			      (cp != CAPTURE_OFF ? MF_CHECKED : MF_UNCHECKED));
+		EnableMenuItem(m, IDM_PRNPAUSE, MF_BYCOMMAND |
+			       (cp != CAPTURE_OFF ? MF_ENABLED : MF_GRAYED));
+		CheckMenuItem(m, IDM_PRNPAUSE, MF_BYCOMMAND |
+			      (cp == CAPTURE_PAUSED ? MF_CHECKED : MF_UNCHECKED));
+		break;
+	}
 	case WM_TIMER:
 		if (wp == TIMER_PUMP || wp == TIMER_VOICE)
 			link_pump();
 		else if (wp == TIMER_REMOTE)
 			remote_tick();
+		xfer_pump();
+		capture_tick();
+		state_tick();
+		return 0;
+	case WM_APP_XFER:
+		xfer_message(wp, lp);
 		return 0;
 	case WM_APP_SOCKET:
 		link_socket(wp, lp);
+		return 0;
+	case WM_APP_EMBED:
+		link_embed(wp, lp);
 		return 0;
 	case WM_APP_REMOTE:
 		remote_socket(wp, lp);
@@ -357,6 +569,7 @@ static LRESULT CALLBACK main_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 		KillTimer(w, TIMER_VOICE);
 		audio_stop();
 		remote_stop();
+		capture_close_all();
 		if (link_running())
 			link_stop();
 		PostQuitMessage(0);
@@ -433,6 +646,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0) > 0) {
+		if (xfer_dialog_key(&msg))
+			continue;
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}

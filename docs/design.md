@@ -119,6 +119,206 @@ to fill the window, by whole pixels where they fit.
 | Linux | `termview.c`: a GtkDrawingArea drawn with Cairo and Pango (the app does not use VTE now) |
 | macOS | `TerminalView.swift`: an NSView drawn with Core Graphics |
 
+### Copy, capture and print (Windows app)
+
+The Windows terminal control (`termview.cpp`) keeps a selection. The
+selection uses the rows of `dmc_vt_cell` (a row below 0 is in the
+scrollback). The selection moves up with its text when new lines push the
+text into the scrollback.
+
+- Drag with the left mouse button to select. Double-click to select a word.
+  When the remote side uses the mouse, hold Shift.
+- Copy (Ctrl+Insert, or the Edit menu, or the menu of the right mouse
+  button) puts the text on the clipboard. The text comes from
+  `dmc_vt_text_range`. The app removes the blanks at the end of each line.
+  The clipboard gets Unicode text and the text of the ANSI code page.
+- Paste to Host (Shift+Insert) types the clipboard text.
+
+`ascii.cpp` has the ASCII Setup dialog (Modem menu). `dmodem.ini` keeps
+the settings in the `[ascii]` section: `send_lf`, `echo`, `line_delay`,
+`char_delay`, `add_lf`, `seven_bit` and `wrap`. The app applies them to
+the two terminals:
+
+- `send_lf` sets Enter to CR LF (`dmc_vt_set_enter`).
+- `echo` shows the characters that you type on the terminal. The app does
+  not show the escape sequences of the keys (for example, the arrow keys).
+- `add_lf`, `seven_bit` and `wrap` go to `dmc_vt_set_ascii`. With
+  `DMC_VT_ASCII_ADD_LF`, the terminal adds an LF after each CR that it
+  receives. When an LF follows the CR, the terminal does not use that LF,
+  thus a CR LF does not give two lines. `DMC_VT_ASCII_7BIT` removes bit 8
+  of each byte. `DMC_VT_ASCII_NO_WRAP` stops the wrap at the right margin:
+  the terminal writes each new character in the last column.
+
+`termset.cpp` has the Terminal Settings dialog (Modem menu). It applies
+to the terminal of the page that shows: the Remote page's, else the
+modem's. `dmodem.ini` keeps the settings in `[terminal]` (the modem) and
+`[remote_terminal]` (Remote). `termview_set_options` applies them:
+
+- `backspace`: 0 sends Ctrl+H, 1 sends Del, 2 sends Ctrl+H, Space,
+  Ctrl+H. The default of the modem is 0 (the configurator of the modem
+  uses Ctrl+H). The default of Remote is 1.
+- `windows_keys`: Ctrl+C copies, Ctrl+V pastes, Ctrl+A selects all. The
+  arrow keys, Page Up and Page Down scroll the backscroll. The function
+  keys go to the window (F10 opens the menu). The terminal does not send
+  these keys.
+- `backscroll`: the lines that the terminal keeps
+  (`dmc_vt_set_scrollback`). When the number is smaller, the terminal
+  keeps the newest lines.
+- `font` and `font_size`: a fixed-pitch font. When the name is empty, the
+  terminal uses the font of the app.
+- `cursor` (0 block, 1 underline) and `cursor_blink`. A DECSCUSR from the
+  remote side has priority.
+- `telnet_id` (Remote only): the TERMINAL-TYPE that Telnet sends. When it
+  is empty, Telnet sends the name of the terminal type.
+- `exit_on_disconnect` (modem only): the app closes when a call ends.
+
+The status bar shows the connect timer during a call ("Online 0:01:05").
+Send Break (Call menu, or Ctrl+Break in a terminal) sends a break. On a
+COM port, the app holds the line at space for 250 ms (`SetCommBreak`). On
+Telnet, the app sends IAC BRK (`dmc_net_break`). TCP to dmodemd, rlogin
+and SSH cannot send a break, and the status bar tells you.
+
+`calls.cpp` has the Call menu, as HyperTerminal has it:
+
+- Call opens the Call dialog. A session is a name and a number (or a SIP
+  address). `dmodem.ini` keeps the sessions in the `[sessions]` section
+  (`count`, `name1`, `number1` ...). Save adds or changes a session, and
+  Delete removes it. Call dials the number (ATD) and shows the Terminal
+  page.
+- Wait for a Call sends ATS0=1: the modem answers at the first ring. The
+  app sends ATS0=1 again each time the modem opens. When you clear the
+  check mark, the app sends ATS0=0.
+- Disconnect hangs up the call (`dmc_hangup`), or closes the Remote
+  connection when the Remote page shows.
+
+The Line Settings dialog has the settings of a COM port, as the Configure
+dialog of HyperTerminal: bits per second (110 to 921,600), data bits (5 to
+8), parity (none, odd, even, mark, space), stop bits (1, 1.5, 2) and flow
+control (none, Xon/Xoff, hardware). `dmodem.ini` keeps them as `com-bps`,
+`com-data-bits`, `com-parity`, `com-stop-bits` and `com-flow`. The default
+is 115,200 bps, 8 data bits, no parity, 1 stop bit and hardware flow
+control.
+
+`capture.cpp` has the captures. Each capture is of one line (the modem or
+the Remote login). The capture does not get the bytes of a file transfer.
+
+- Capture Text writes the bytes from the line to a file, as they come
+  (with the escape sequences). The app adds the bytes to the end of a file
+  that exists, as HyperTerminal does. `dmodem.ini` keeps the folder in the
+  `[capture]` section.
+- Capture to Printer keeps the text from the line. The app removes the
+  escape sequences and the control characters (but not tabs, line ends and
+  form feeds). When you stop the capture, the app prints the text on the
+  default printer.
+- Print (Modem menu) prints the screen or the selection, with the print
+  dialog.
+- When the remote side prints (`CSI 5 i`, `dmc_vt_printed`), the app prints
+  the text on the default printer after the remote side stops for 3
+  seconds. During Capture to Printer, this text goes into the capture.
+
+The app prints with GDI: Courier New at 10 points, with margins of half an
+inch. The app wraps long lines, and a form feed starts a new page.
+
+## File transfers
+
+The file transfer protocols are in libdmodemctl (`core/src/xfer*.c`). They
+are a C port of the protocols of the D-Modem app (`ZModem.kt`,
+`XYModem.kt`, `Kermit.kt`, `HexRecords.kt` and `TextTransfer.kt`). The
+protocols are:
+
+- ZMODEM: CRC-16 and CRC-32 headers, ZDLE escapes, streaming data (ZCRCG)
+  with a ZCRCQ each 16 KB, and recovery from errors with ZRPOS.
+- ZMODEM crash recovery (`dmc_xfer_options.resume`, "ZMODEM with Crash
+  Recovery" in the dialogs). The receiver continues a part of a file that
+  is in the folder: it opens the file to add to it, and it sends ZRPOS with
+  the length of the part. The receiver also does this when the sender sets
+  ZF0 to ZCRECOV (`sz -r`). If the file is there whole, the receiver sends
+  ZSKIP. When a transfer stops, the receiver keeps the part that it
+  received. The sender with this option sets ZF0 to ZCRECOV.
+- ZMODEM with zstd (the specification is `docs/zmodem-zstd.md` in the
+  D-Modem repository). The D-Modem BBS, GUI and app use this mode. The
+  receiver sets `CANZSTD` (0x40) in ZF1 of its ZRINIT. The sender sets
+  `ZTZSTD` (8) in ZF2 of the ZFILE for each file that it compresses. Then
+  the sender sends the file as independent zstd frames, one frame for each
+  chunk of 64 KB. After a ZRPOS, the chunk is half as large (minimum 1 KB).
+  After an ACK, the chunk is two times as large (maximum 64 KB). The
+  receiver writes only complete frames. All positions are file offsets,
+  thus ZRPOS and crash recovery operate as without zstd. The sender does
+  not compress a file of 0 bytes, a file with a compressed extension (for
+  example `.zip`, `.gz` or `.jpg`), or a file whose first 64 KB do not
+  become 5% smaller. When the other side does not use this mode, the
+  transfer is normal ZMODEM. To stop zstd, set `dmc_xfer_options.no_zstd`
+  (the Windows app: Transfer, ZMODEM Compression (zstd)).
+  `dmc_xfer_zstd` tells if the file now goes with zstd. The zstd encoder
+  and decoder are in `core/src/zstd_codec.c`. They are a C port of the
+  codec of the D-Modem app (`Zstd.kt`), and they do not use libzstd.
+- YMODEM, XMODEM and XMODEM-1K.
+- YMODEM-G: the receiver asks with G. The sender sends the blocks and does
+  not wait for an ACK. Use it only on a line that corrects its errors (V.42).
+  An error stops the transfer, because a block cannot come again. The
+  sender does plain YMODEM when the receiver asks with C (lrzsz's `rb`).
+  lrzsz's `sb` sends no empty block 0 at the end in YMODEM-G, thus the
+  receiver ends the batch when no block 0 comes after a file.
+- Kermit: long packets, block checks 1 to 3, attribute packets,
+  repeat counts and 8-bit prefixes.
+- Intel HEX and Motorola S-records: the app sends a file of records as it
+  is, and it encodes other files as records. When it receives, it decodes
+  the records to a binary image.
+- Plain text: the app sends the bytes of the file as they are. With
+  `line_delay_ms` and `char_delay_ms`, the app waits after each line end
+  and after each character (as the ASCII Setup of HyperTerminal). When it
+  receives, it keeps the text until the line is quiet. A cancel keeps the
+  text that came.
+
+`dmc_xfer_skip` skips the file that the app receives now. ZMODEM sends
+ZSKIP. Kermit puts X in the ACK of a data packet, and the sender ends the
+file with Z and D. The progress dialog has a Skip file button for these
+two protocols.
+
+Each transfer runs on its thread (CreateThread on Windows, pthreads on
+other systems). The thread and the app use two queues with a lock:
+
+1. The app gives the bytes from the line to `dmc_xfer_feed`.
+2. The app gets the bytes for the line from `dmc_xfer_output`. The app
+   gets only as much as the line can send now. The queue holds 32 KB
+   maximum, thus the thread waits when the line is slow.
+3. The notify function of `dmc_xfer_set_notify` tells the app when there
+   are bytes to send. On Windows, it posts `WM_APP_XFER` to the window.
+4. `dmc_xfer_get_status` gives the file, the bytes, the size, the retries
+   and the result.
+
+The protocol code reads files only through `xfer_src_read`, and writes
+files only through `xfer_dst_write`. The positions in the protocols are
+file offsets. When a transfer fails or you cancel it, the app deletes the
+part of the file that it received (but not for plain text).
+`dmc_xfer_cancel` sends the cancel sequence of the protocol: 10 CAN and
+10 BS for ZMODEM, an E packet for Kermit.
+
+`dmc_xfer_detect` finds the start of a transfer in the received data: the
+ZRQINIT of sz, the ZRINIT of rz, and the Send-Init of kermit -s. When
+Automatic Receive is on, the app starts a receive, or it opens the Send
+File dialog for rz.
+
+The Windows app (`windows/src/xfer.cpp`) has these parts:
+
+- The Transfer menu: Send File, Receive File, Automatic Receive and
+  Cancel Transfer. The Terminal page also has Send and Receive buttons.
+- The Send File and Receive File dialogs, and a progress dialog as in
+  HyperTerminal. The progress dialog shows the file, the protocol, the
+  retries, the throughput, the time and the bytes.
+- The transfer uses the line of the page that you see: the modem on the
+  Terminal page, or the login on the Remote page (`struct XferLine`).
+- `dmodem.ini` keeps the folder, the protocols and Automatic Receive in
+  the `[transfer]` section. The default folder is `Received` in the data
+  folder of the app.
+
+`core/test/xfer_test.c` tests each protocol on a clean line and on a line
+with noise. It also does a test with `sz` and `rz` (lrzsz) and with
+C-Kermit on a pty, when they are installed. Set `DMODEM_XFER_INTEROP=1` to
+make these tests mandatory.
+
+The Linux and macOS apps do not have a transfer UI at this time.
+
 ## How the apps start dmodemd
 
 | | Linux | macOS | Windows |
@@ -134,6 +334,10 @@ the pty in the group of the user (`-g`). Thus dmodemd does not need root.
 
 Each app can also use a modem that already runs: a device path on Linux and
 macOS, or a TCP address or a COM port on Windows.
+
+The Linux, macOS and Windows apps do not start dmodemd by default. They run the
+modem in a thread (`libdmodem_embed`), and its DTE is a socket. Refer to
+[The built-in modem](embedded-modem.md).
 
 ## Hardware modems: the MultiTech MT9234MU
 

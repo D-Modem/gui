@@ -713,7 +713,7 @@ void vt_print(dmc_vt *t, int32_t cp)
 	}
 	t->last_char = cp;
 	if (t->pending_wrap) {
-		if (t->autowrap) {
+		if (t->autowrap && !(t->ascii & DMC_VT_ASCII_NO_WRAP)) {
 			t->screen[t->cy]->wrapped = 1;
 			vt_carriage_return(t);
 			vt_index(t);
@@ -726,7 +726,7 @@ void vt_print(dmc_vt *t, int32_t cp)
 	if (t->cx >= lc)
 		t->cx = lc - 1;
 	if (w == 2 && t->cx == lc - 1) {
-		if (!t->autowrap || lc < 2)
+		if (!t->autowrap || (t->ascii & DMC_VT_ASCII_NO_WRAP) || lc < 2)
 			return;
 		line_clear(t->screen[t->cy], t->cx, t->cols, t->style);
 		t->screen[t->cy]->wrapped = 1;
@@ -1567,19 +1567,75 @@ void dmc_vt_resize(dmc_vt *t, int cols, int rows)
 int dmc_vt_cols(const dmc_vt *t) { return t->cols; }
 int dmc_vt_rows(const dmc_vt *t) { return t->rows; }
 
+/* one byte from the remote, to the terminal of the profile */
+static void feed_byte(dmc_vt *t, int b)
+{
+	if (t->interp->reads_octets)
+		t->interp->ops->process(t->interp, b);
+	else
+		decode(t, b);
+}
+
 void dmc_vt_feed(dmc_vt *t, const char *data, int n)
 {
 	int i;
 	for (i = 0; i < n; i++) {
 		int b = (unsigned char)data[i];
-		if (t->interp->reads_octets)
-			t->interp->ops->process(t->interp, b);
-		else
-			decode(t, b);
+		if (t->ascii & DMC_VT_ASCII_7BIT)
+			b &= 0x7f;
+		if (t->ascii & DMC_VT_ASCII_ADD_LF) {
+			/* a CR gets its LF; the LF of a CR LF is not
+			   given two times */
+			if (b == '\n' && t->ascii_cr) {
+				t->ascii_cr = 0;
+				continue;
+			}
+			t->ascii_cr = b == '\r';
+			feed_byte(t, b);
+			if (b == '\r')
+				feed_byte(t, '\n');
+			continue;
+		}
+		feed_byte(t, b);
 	}
 	if (t->interp->ops->flush)
 		t->interp->ops->flush(t->interp);
 	t->changed = 1;
+}
+
+void dmc_vt_set_scrollback(dmc_vt *t, int lines)
+{
+	struct vt_line **h;
+	int n, i, drop;
+	if (lines < 0)
+		lines = 0;
+	if (lines == t->hist_max)
+		return;
+	/* the newest lines kept, the oldest freed */
+	n = t->hist_n < lines ? t->hist_n : lines;
+	drop = t->hist_n - n;
+	for (i = 0; i < drop; i++)
+		line_free(hist_at(t, i));
+	h = xcalloc((size_t)(lines ? lines : 1), sizeof(*h));
+	for (i = 0; i < n; i++)
+		h[i] = hist_at(t, drop + i);
+	free(t->hist);
+	t->hist = h;
+	t->hist_max = lines;
+	t->hist_n = n;
+	t->hist_first = 0;
+	t->changed = 1;
+}
+
+void dmc_vt_set_ascii(dmc_vt *t, int flags)
+{
+	t->ascii = flags;
+	t->ascii_cr = 0;
+}
+
+int dmc_vt_get_ascii(const dmc_vt *t)
+{
+	return t->ascii;
 }
 
 int dmc_vt_reply(dmc_vt *t, char *buf, int max)

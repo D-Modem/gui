@@ -162,14 +162,26 @@ static void controls()
 	}
 }
 
+static void raw_write(const char *data, int n);
+static int line_room();
+static bool line_open();
+
+/* the login's line, for the file transfers */
+XferLine remote_line = { "the remote server", &view, raw_write, line_room,
+			 line_open };
+
 static void show(const char *s, int n)
 {
-	termview_feed(view, s, n);
+	if (!xfer_take(&remote_line, s, n)) {
+		capture_feed(&remote_line, s, n);
+		termview_feed(view, s, n);
+	}
 }
 
+/* the app's own words on the screen (not captured) */
 static void show_line(const char *s)
 {
-	show(s, (int)strlen(s));
+	termview_feed(view, s, (int)strlen(s));
 }
 
 static void ended(const char *why)
@@ -263,6 +275,44 @@ static void pump()
 static void typed(const char *data, int n, void *ctx)
 {
 	(void)ctx;
+	/* (nothing typed gets into a transfer's packets) */
+	if (xfer_busy(&remote_line))
+		return;
+	raw_write(data, n);
+}
+
+static bool line_open()
+{
+	return running != 0;
+}
+
+/* (Telnet and rlogin: what waits for the socket; SSH: its own) */
+static int line_room()
+{
+	if (!running)
+		return 0;
+	int kept = pending_n;
+#ifdef DMODEM_HAVE_SSH
+	if (!net && ssh && shell > 0) {
+		kept = dmc_ssh_write(ssh_conn(), shell, NULL, 0);
+		if (kept < 0)
+			return 0;
+	}
+#endif
+	int room = 32 * 1024 - kept;
+	return room > 0 ? room : 0;
+}
+
+bool remote_break()
+{
+	if (!running || !net || !sock_open || !dmc_net_break(net))
+		return false;
+	flush();
+	return true;
+}
+
+static void raw_write(const char *data, int n)
+{
 	if (!running)
 		return;
 	if (net && sock_open) {
@@ -1207,10 +1257,13 @@ static bool start_socket(int proto, const char *host, int port,
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == INVALID_SOCKET)
 		return false;
-	/* (Telnet's TERMINAL-TYPE, rlogin's TERM) */
+	/* (Telnet's TERMINAL-TYPE, rlogin's TERM; Terminal Settings' Telnet
+	   terminal ID first) */
 	const char *type = termview_profile(view);
+	char id[40];
+	termset_telnet_id(id, sizeof(id));
 	net = dmc_net_new(proto, user, proto == DMC_NET_TELNET ?
-			  dmc_vt_profile_telnet(type) :
+			  (id[0] ? id : dmc_vt_profile_telnet(type)) :
 			  dmc_vt_profile_term(type), cols, rows);
 	sock_open = false;
 	WSAAsyncSelect(sock, app.main, WM_APP_REMOTE,
@@ -1360,6 +1413,9 @@ HWND remote_page_new(HWND parent)
 	login_btn = make_child("BUTTON", "&Login...", WS_TABSTOP, page, IDC_R_LOGIN);
 #endif
 	view = termview_new(page, IDC_R_TERM, typed, NULL);
+	termview_set_printer(view, capture_printed, &remote_line);
+	termset_apply(view, true);
+	ascii_apply(view);
 	status_txt = make_child("STATIC", "Not connected", SS_LEFTNOWORDWRAP,
 				page, IDC_R_STATUS);
 	make_child("STATIC", "&Terminal:", SS_RIGHT, page, IDC_R_TYPELABEL);

@@ -272,6 +272,8 @@ struct dmc_vt {
 	struct vt_link *link;
 	int join_next;
 	int autowrap, origin_mode, insert_mode, newline_mode;
+	/* ASCII Setup's receive items (DMC_VT_ASCII_*), and a CR just fed */
+	int ascii, ascii_cr;
 	int top, bottom;
 	uint8_t *tabs;
 	int lr_margins, left, right;

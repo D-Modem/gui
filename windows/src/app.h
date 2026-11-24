@@ -8,8 +8,10 @@
  *         clang-retro (cmake/clang-retro.cmake), or MinGW or MSVC.
  *
  * The modem is reached one of three ways (Link):
- *   - dmodemd started by the app on this PC (Windows 7 and later, as
- *     dmodemd needs), its DTE a TCP socket on 127.0.0.1;
+ *   - the modem built into the app (DMODEM_GUI_EMBED: libdmodem_embed,
+ *     Windows 98 SE and later), its DTE a socket; or dmodemd started by
+ *     the app on this PC (Windows 7 and later, as dmodemd needs), its
+ *     DTE a TCP socket on 127.0.0.1;
  *   - a TCP address: dmodemd as a service, or on another computer;
  *   - a COM port: a modem's serial port, a pico-serial, or dmodemd's
  *     --com through a com0com pair.
@@ -79,8 +81,16 @@ struct Config {
 	char country[64];
 	char usb[64];                   /* --usb, "" for a SIP line */
 	char dmodemd[MAX_PATH];         /* dmodemd.exe, "" next to the app */
+	/* LINE_DMODEMD: the modem built in (DMODEM_GUI_EMBED), not
+	   dmodemd.exe started ([line] builtin=0) */
+	int builtin;
 	char tcp[256];                  /* host:port */
 	char com[32];                   /* COM1 */
+	/* the COM port's settings, as HyperTerminal's Configure: bits per
+	   second, data bits (5 to 8), parity (0 none, 1 odd, 2 even, 3 mark,
+	   4 space), stop bits (0 one, 1 one and a half, 2 two), flow control
+	   (0 none, 1 Xon/Xoff, 2 hardware) */
+	int com_bps, com_data, com_parity, com_stop, com_flow;
 	char init[256];                 /* commands when the modem opens */
 	/* the answering machine ([voice]): on, after how many RINGs, a
 	   message's longest (s) */
@@ -121,11 +131,19 @@ void link_start();
 void link_stop();
 bool link_running();
 bool link_open();                   /* the DTE is open */
+/* a break on the line (a COM port's only): false when none can be sent */
+bool link_break();
 /* the session's output written, input read, events handled */
 void link_pump();
 /* socket messages (WM_APP_SOCKET) */
 void link_socket(WPARAM w, LPARAM l);
+/* the built-in modem's news (WM_APP_EMBED): a log line, or its end */
+void link_embed(WPARAM w, LPARAM l);
 void link_type(const char *data, int n);
+/* bytes to the far end as they are (a file transfer's) */
+void link_send(const char *data, int n);
+/* how many more bytes link_send can take now */
+int link_room();
 int link_command(const char *cmd, int flags, ResponseFn fn, void *data);
 /* fn gets the response of the session's command tag (dmc_voice_dial()'s
    and the like) */
@@ -138,6 +156,12 @@ void link_wait(int tag, ResponseFn fn, void *data);
 #define TIMER_REMOTE 3
 /* an event of the Remote page's SSH connection, from its thread */
 #define WM_APP_SSH (WM_APP + 3)
+/* a file transfer has bytes for its line, or ended (wParam 0); the
+   remote's rz waits for files (wParam 1, lParam its XferLine) */
+#define WM_APP_XFER (WM_APP + 4)
+/* news from the built-in modem's thread: a log line or its end
+   (lParam: link.cpp's EmbedNews, malloc'd) */
+#define WM_APP_EMBED (WM_APP + 5)
 
 /* main.cpp */
 void app_log(const char *line);
@@ -178,12 +202,123 @@ void termview_reset(HWND w);
 void termview_size(HWND w, int *cols, int *rows);
 /* what Backspace sends (DEL unless set) */
 void termview_set_backspace(HWND w, char b);
+/* Terminal Settings: Backspace sends Ctrl+H (0), Del (1) or Ctrl+H,
+   Space, Ctrl+H (2) (-1: as it is); the function, arrow and Ctrl keys as
+   Windows keys; the backscroll's lines; the font (none: the app's) and
+   its size in points; the cursor (0 block, 1 underline) and its blink */
+struct TermOptions {
+	int backspace;
+	bool windows_keys;
+	int scrollback;
+	char font[32];
+	int font_size;
+	int cursor;
+	bool cursor_blink;
+};
+void termview_set_options(HWND w, const TermOptions *o);
+/* ASCII Setup: the received data's DMC_VT_ASCII_* flags, what Enter sends
+   (0 CR, 1 CR LF), and the local echo */
+void termview_set_ascii(HWND w, int flags, int enter, bool echo);
+/* the selection (drag with the left button, double-click a word): to
+   the clipboard; the clipboard's text typed; all the lines selected */
+bool termview_has_selection(HWND w);
+bool termview_copy(HWND w);
+void termview_paste(HWND w);
+void termview_select_all(HWND w);
+/* the selection's text, or the screen's (UTF-8, malloc'ed) */
+char *termview_text(HWND w, bool selection);
+/* what the remote sends to its printer (UTF-8) goes to fn */
+typedef void (*TermPrintedFn)(const char *data, int n, void *ctx);
+void termview_set_printer(HWND w, TermPrintedFn fn, void *ctx);
 /* the kind of terminal it is (dmc_vt_set_profile()'s id) */
 void termview_set_profile(HWND w, const char *id);
 const char *termview_profile(HWND w);
 /* a combo box of the kinds of terminal, id chosen; the one chosen */
 void term_types_fill(HWND combo, const char *id);
 const char *term_types_chosen(HWND combo);
+
+/* xfer.cpp: file transfers on a terminal's line (the Terminal page's
+   modem, the Remote page's login) */
+struct XferLine {
+	const char *what;               /* "the modem", for messages */
+	HWND *view;                     /* its terminal control */
+	void (*write)(const char *data, int n);  /* to the far end, as they are */
+	int (*room)();                  /* how much write can take now */
+	bool (*open)();                 /* a far end to send to */
+};
+extern XferLine term_line, remote_line;
+/* what came on the line: a transfer's (true), else the terminal's; the
+   remote's own starts (its sz, kermit -s, rz) noticed */
+bool xfer_take(XferLine *l, const char *data, int n);
+/* the transfer's bytes to its line, its dialog brought up to date */
+void xfer_pump();
+/* WM_APP_XFER */
+void xfer_message(WPARAM w, LPARAM l);
+/* the Send File and Receive File dialogs (protocol -1: the last one) */
+void xfer_send_dialog(XferLine *l, int protocol);
+void xfer_receive_dialog(XferLine *l);
+void xfer_cancel();
+bool xfer_running();
+/* a transfer runs on l: what's typed doesn't go */
+bool xfer_busy(XferLine *l);
+bool xfer_auto();
+void xfer_set_auto(bool on);
+/* ZMODEM with zstd (where the other side has it too: D-Modem's BBS, GUI
+   and app) */
+bool xfer_zstd();
+void xfer_set_zstd(bool on);
+/* the transfer's dialog's keys (IsDialogMessage) */
+bool xfer_dialog_key(MSG *m);
+
+/* calls.cpp: the Call dialog (the sessions in [sessions]): the number
+   chosen into number; Wait for a Call (ATS0=1), sent again when the
+   modem opens */
+bool call_dialog(HWND parent, char *number, int n);
+bool call_waiting();
+void call_wait(bool on);
+void call_opened();
+
+/* termset.cpp: Terminal Settings, for the modem's terminal or the
+   Remote page's ([terminal], [remote_terminal] in dmodem.ini) */
+void termset_apply(HWND view, bool remote);
+void termset_dialog(HWND parent, bool remote);
+/* the Telnet terminal ID set (empty: the terminal type's) */
+void termset_telnet_id(char *out, int n);
+bool termset_exit_on_disconnect();
+
+/* ascii.cpp: ASCII Setup ([ascii] in dmodem.ini), for both terminals */
+struct AsciiSetup {
+	bool send_lf;           /* Enter sends CR LF */
+	bool echo;              /* what is typed shown here too */
+	int line_delay;         /* a text file sent: ms after each line */
+	int char_delay;         /* and after each character */
+	bool add_lf;            /* an LF added after each CR received */
+	bool seven_bit;         /* the data received as 7-bit ASCII */
+	bool wrap;              /* lines wrap at the right margin */
+};
+void ascii_load(AsciiSetup *a);
+/* the settings to a terminal control */
+void ascii_apply(HWND view);
+void ascii_dialog(HWND parent);
+
+/* capture.cpp: Capture Text, Capture to Printer and Print, for a line */
+enum { CAPTURE_OFF, CAPTURE_ON, CAPTURE_PAUSED };
+/* what came on the line for its terminal (not a transfer's bytes) */
+void capture_feed(XferLine *l, const char *data, int n);
+/* the remote's printing (a TermPrintedFn; ctx its XferLine) */
+void capture_printed(const char *data, int n, void *ctx);
+/* the remote's printing printed once it stops (the main window's timer) */
+void capture_tick();
+void capture_text_start(XferLine *l);
+void capture_text_stop(XferLine *l);
+void capture_text_pause(XferLine *l, bool pause);
+int capture_text_state(XferLine *l);
+void capture_printer(XferLine *l, bool on);
+void capture_printer_pause(XferLine *l, bool pause);
+int capture_printer_state(XferLine *l);
+/* the screen or the selection to a printer (the print dialog) */
+void capture_print(XferLine *l);
+void capture_close_all();
 
 /* remote.cpp: the Remote page, a login by SSH, Telnet or rlogin */
 HWND remote_page_new(HWND parent);
@@ -196,6 +331,8 @@ void remote_ssh(LPARAM l);
 /* the focus to its first control */
 bool remote_focus();
 void remote_stop();
+/* a break to the server (Telnet's): false when none can be sent */
+bool remote_break();
 
 /* settings.cpp: the Settings page */
 HWND settings_page_new(HWND parent);
