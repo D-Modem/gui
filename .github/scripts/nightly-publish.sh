@@ -18,9 +18,12 @@ files=("$dir"/*)
 [ ${#files[@]} -gt 0 ] || { echo "::error::No files to publish in $dir"; exit 1; }
 title="Nightly build ($(date -u +%Y-%m-%d), ${sha:0:7})"
 
-# release_id: prints the ID of the "nightly" release, or nothing
+# release_id: prints the ID of the "nightly" release, or nothing. (gh
+# writes the error body of a 404 to stdout: on an error, print nothing.)
 release_id() {
-  gh api "repos/$GH_REPO/releases/tags/nightly" --jq .id 2>/dev/null || true
+  local id
+  id=$(gh api "repos/$GH_REPO/releases/tags/nightly" --jq .id 2>/dev/null) || id=
+  echo "$id"
 }
 
 # move_tag: puts the "nightly" tag at $sha, and makes the tag if it is
