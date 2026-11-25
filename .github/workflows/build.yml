@@ -172,12 +172,15 @@ jobs:
           path: build/win7/windows/dmodem.exe
 
   # The Windows app for Linux and macOS (winport/), over the portable
-  # Win32 layer of clang-retro MFC.
+  # Win32 layer of clang-retro MFC, with the modem built in
+  # (external/D-Modem)
   winport-linux:
-    name: Windows app on Linux (clang-retro MFC's Win32 layer)
+    name: Windows app on Linux, the modem built in (clang-retro MFC's Win32 layer)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/checkout@v4
         with:
           repository: clang-retro/mfc
@@ -186,13 +189,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build clang llvm libx11-dev xvfb xauth
+            cmake ninja-build clang llvm libx11-dev xvfb xauth \
+            libusb-1.0-0-dev libasound2-dev
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DDMODEM_GUI_LINUX=OFF -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           cmake --build build --target dmodem-win32
+      - name: The built-in modem is in the app
+        run: nm build/winport/dmodem-win32 | grep -q dmodem_embed_start
       - name: Smoke test (Xvfb)
         run: xvfb-run -a winport/test/smoke.sh build/winport/dmodem-win32
       - name: Package
@@ -203,10 +209,12 @@ jobs:
           path: dmodem-win32-linux-x86_64.tar.gz
 
   winport-macos:
-    name: Windows app on macOS (clang-retro MFC's Win32 layer)
+    name: Windows app on macOS, the modem built in (clang-retro MFC's Win32 layer)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/checkout@v4
         with:
           repository: clang-retro/mfc
@@ -219,6 +227,8 @@ jobs:
             -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           cmake --build build --target dmodem-win32 -j"$(sysctl -n hw.ncpu)"
+      - name: The built-in modem is in the app
+        run: nm build/winport/dmodem-win32 | grep -q dmodem_embed_start
       - name: Package
         run: tar -C build/winport -czf dmodem-win32-macos-arm64.tar.gz dmodem-win32
       - uses: actions/upload-artifact@v4
@@ -245,17 +255,24 @@ jobs:
         run: |
           brew install xcodegen
           cd macos && xcodegen
+      # (arm64 and x86_64: with no destination, xcodebuild builds for
+      # the runner's Mac alone)
       - name: Build
         run: |
           cd macos
           xcodebuild -project DModem.xcodeproj -scheme DModem \
             -configuration Release -derivedDataPath ../build/xcode \
+            -destination 'generic/platform=macOS' \
+            ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY=- build
-      - name: The built-in modem is in the app
+      - name: The built-in modem is in the app, for each architecture
         run: |
           app=build/xcode/Build/Products/Release/D-Modem.app/Contents/MacOS/D-Modem
           lipo -archs "$app"
-          nm "$app" | grep -q dmodem_embed_start
+          for arch in arm64 x86_64; do
+            lipo "$app" -verify_arch "$arch"
+            nm -arch "$arch" "$app" | grep -q dmodem_embed_start
+          done
       # (ditto keeps the bundle's symbolic links and executable bits)
       - name: Package
         run: ditto -c -k --keepParent build/xcode/Build/Products/Release/D-Modem.app D-Modem-macos.zip

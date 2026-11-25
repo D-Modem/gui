@@ -44,7 +44,9 @@ is necessary for the built-in modem. Then use
 `brew install xcodegen && cd macos && xcodegen && open DModem.xcodeproj`.
 
 The Windows app on Linux or macOS: get [clang-retro MFC](https://github.com/clang-retro/mfc),
-clang and `llvm-rc` (on macOS, `brew install llvm`). Then:
+clang and `llvm-rc` (on macOS, `brew install llvm`). For the built-in
+modem, get the D-Modem submodule (`git submodule update --init`). On
+Linux, also install `libusb-1.0-0-dev` and `libasound2-dev`. Then:
 
     cmake -S . -B build -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC=/path/to/mfc \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++

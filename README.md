@@ -23,7 +23,7 @@ libdmodemctl. Thus they operate in the same way.
 - **Call Stats**: the rate, modulation, error control and line figures of the last call (AT#UD, ATI11)
 - **Line settings**: a SIP account, a USB modem, or a modem that already runs (dmodemd, or a hardware modem such as the MultiTech MT9234MU)
 - **Windows 95 and later**: plain Win32, built with [clang-retro](https://clang-retro.github.io/). The modem is built in on each Windows. The app can also connect to a modem through TCP or a COM port
-- **The Windows app on Linux and macOS**: the same Win32 code, built over the portable Win32 layer of [clang-retro MFC](https://github.com/clang-retro/mfc). It starts dmodemd, or connects to a modem through TCP or a COM port. Refer to "The Windows app on Linux and macOS" in [Design](docs/design.md)
+- **The Windows app on Linux and macOS**: the same Win32 code, built over the portable Win32 layer of [clang-retro MFC](https://github.com/clang-retro/mfc). It has the built-in modem. It can also start dmodemd, or connect to a modem through TCP or a COM port. Refer to "The Windows app on Linux and macOS" in [Design](docs/design.md)
 
 | | Windows | macOS | Linux |
 | --- | --- | --- | --- |

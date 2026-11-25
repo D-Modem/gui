@@ -5,8 +5,9 @@
 # With DMODEM_GUI_WINPORT, the Windows app also builds for Linux and
 # macOS, over clang-retro MFC's portable Win32 layer (winport/).
 # With DMODEM_GUI_EMBED, the Linux app, the Windows app (Windows 95 and
-# later) and the macOS app have the modem in them (libdmodem_embed
-# from the D-Modem submodule, external/D-Modem): they need no dmodemd.
+# later), the macOS app and the Windows app on Linux and macOS have the
+# modem in them (libdmodem_embed from the D-Modem submodule,
+# external/D-Modem): they need no dmodemd.
 # For the macOS app, CMake writes macos-embed.xcconfig
 # (cmake/MacosEmbed.cmake).
 cmake_minimum_required(VERSION 3.16)
@@ -21,16 +22,17 @@ option(DMODEM_GUI_WINPORT "Build the Windows app for Linux or macOS (winport/)" 
 set(CLANG_RETRO_MFC "" CACHE PATH "A clang-retro MFC checkout, for DMODEM_GUI_WINPORT")
 
 # the modem built in (docs/embedded-modem.md): the Linux, macOS and
-# Windows apps, when the submodule is there (git submodule update --init)
+# Windows apps, and the Windows app on Linux and macOS (winport/), when
+# the submodule is there (git submodule update --init)
 set(DMODEM_GUI_DMODEM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/D-Modem
   CACHE PATH "The D-Modem tree, for DMODEM_GUI_EMBED")
 # (all the Windows builds: clang-retro's win32-picolibc, the Windows 95
 # build, has libc++ for the modem's C++17, as win98 and win7 do)
 set(_embed_default OFF)
 if(EXISTS ${DMODEM_GUI_DMODEM_DIR}/CMakeLists.txt)
-  if(UNIX AND NOT APPLE AND DMODEM_GUI_LINUX AND NOT DMODEM_GUI_WINPORT)
+  if(UNIX AND NOT APPLE AND (DMODEM_GUI_LINUX OR DMODEM_GUI_WINPORT))
     set(_embed_default ON)
-  elseif(APPLE AND NOT DMODEM_GUI_WINPORT)
+  elseif(APPLE)
     set(_embed_default ON)
   elseif(WIN32)
     set(_embed_default ON)
@@ -38,7 +40,7 @@ if(EXISTS ${DMODEM_GUI_DMODEM_DIR}/CMakeLists.txt)
 endif()
 option(DMODEM_GUI_EMBED "Build the modem into the app (libdmodem_embed)"
   ${_embed_default})
-if(DMODEM_GUI_EMBED AND (WIN32 OR APPLE OR DMODEM_GUI_LINUX))
+if(DMODEM_GUI_EMBED AND (WIN32 OR APPLE OR DMODEM_GUI_LINUX OR DMODEM_GUI_WINPORT))
   if(NOT EXISTS ${DMODEM_GUI_DMODEM_DIR}/CMakeLists.txt)
     message(FATAL_ERROR "DMODEM_GUI_EMBED: no D-Modem in "
       "${DMODEM_GUI_DMODEM_DIR} (git submodule update --init)")

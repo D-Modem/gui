@@ -80,9 +80,9 @@ jobs:
             echo "| \`dmodem-win98.exe\` | The Windows app with the modem built in, for Windows 98 SE, ME, 2000 and later (on msvcrt.dll) |"
             echo "| \`dmodem-win7.exe\` | The Windows app for Windows 7 and later, with the modem built in |"
             echo "| \`dmodem-gui-linux-x86_64.tar.gz\` | The Linux app (GTK 4), x86_64. It needs GTK 4, libadwaita, PulseAudio and libsndfile. Its files are in \`usr/\`: extract it into \`/\`, for example with \`sudo tar -xzf dmodem-gui-linux-x86_64.tar.gz -C /\` |"
-            echo "| \`D-Modem-macos.zip\` | The macOS app (SwiftUI), arm64 and x86_64, macOS 13 and later. Not notarized: right-click the app and select Open |"
-            echo "| \`dmodem-win32-linux-x86_64.tar.gz\` | The Windows app on Linux (X11), x86_64 |"
-            echo "| \`dmodem-win32-macos-arm64.tar.gz\` | The Windows app on macOS, arm64 |"
+            echo "| \`D-Modem-macos.zip\` | The macOS app (SwiftUI) with the modem built in, arm64 and x86_64, macOS 13 and later. Not notarized: right-click the app and select Open |"
+            echo "| \`dmodem-win32-linux-x86_64.tar.gz\` | The Windows app on Linux (X11) with the modem built in, x86_64 |"
+            echo "| \`dmodem-win32-macos-arm64.tar.gz\` | The Windows app on macOS with the modem built in, arm64 |"
             echo "| \`SHA256SUMS\` | The SHA-256 of each file |"
             if [ -f missing ]; then
               echo

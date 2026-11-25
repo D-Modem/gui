@@ -556,12 +556,21 @@ code is the same as on Windows.
     no `SHGetFolderPath`.
   - The line is dmodemd by default. The layer tells the app that Windows
     is version 5, and on Windows the app then uses a COM port by default.
-  - dmodemd is `dmodemd` next to the app, or else on the `PATH`.
+  - dmodemd is `dmodemd` next to the app, or else on the `PATH`. The app
+    starts dmodemd only when the built-in modem is off (`builtin=0`).
+- With the D-Modem submodule, the app has the built-in modem
+  (`DMODEM_GUI_EMBED`), as the Windows app on Windows has it. The layer's
+  `SOCKET` is a POSIX file descriptor, so `WSAAsyncSelect` works with the
+  socket that `libdmodem_embed` gives. The data file of the line is
+  `dmodem0.data` in the settings folder.
   - SSH uses `~/.ssh` and `/` in paths, because libssh uses POSIX paths
     on these systems.
 - The layer changes a COM port name to a device: `COM1` is `/dev/ttyS0`.
 - CI builds the app on Linux and macOS. On Linux, `winport/test/smoke.sh`
-  starts the app in Xvfb two times: with a TCP line, and with a dmodemd
-  that the app starts (`winport/test/dmodemd`, a test dmodemd). Each time,
+  starts the app in Xvfb three times: with a TCP line, with a dmodemd
+  that the app starts (`winport/test/dmodemd`, a test dmodemd), and with
+  the built-in modem on a SIP line with no account. For the first two,
   the test makes sure that the app stays up and sends AT commands to a
-  test modem.
+  test modem. For the third, the test makes sure that the app stays up
+  and that the built-in modem writes its data file. On Linux and macOS,
+  CI also makes sure that the built-in modem is in the app.
