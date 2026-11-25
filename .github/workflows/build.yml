@@ -208,9 +208,20 @@ jobs:
           name: dmodem-win32-linux
           path: dmodem-win32-linux-x86_64.tar.gz
 
+  # arm64 for a Mac with Apple silicon, and x86_64 for an Intel Mac. The
+  # runner has Apple silicon: it builds the x86_64 app with
+  # CMAKE_OSX_ARCHITECTURES=x86_64 (winport/CMakeLists.txt).
   winport-macos:
-    name: Windows app on macOS, the modem built in (clang-retro MFC's Win32 layer)
+    name: Windows app on macOS (${{ matrix.arch }}), the modem built in (clang-retro MFC's Win32 layer)
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            artifact: dmodem-win32-macos
+          - arch: x86_64
+            artifact: dmodem-win32-macos-x86_64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -225,16 +236,21 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           cmake --build build --target dmodem-win32 -j"$(sysctl -n hw.ncpu)"
+      - name: The app is for ${{ matrix.arch }} only
+        run: |
+          lipo -archs build/winport/dmodem-win32
+          test "$(lipo -archs build/winport/dmodem-win32)" = "${{ matrix.arch }}"
       - name: The built-in modem is in the app
         run: nm build/winport/dmodem-win32 | grep -q dmodem_embed_start
       - name: Package
-        run: tar -C build/winport -czf dmodem-win32-macos-arm64.tar.gz dmodem-win32
+        run: tar -C build/winport -czf dmodem-win32-macos-${{ matrix.arch }}.tar.gz dmodem-win32
       - uses: actions/upload-artifact@v4
         with:
-          name: dmodem-win32-macos
-          path: dmodem-win32-macos-arm64.tar.gz
+          name: ${{ matrix.artifact }}
+          path: dmodem-win32-macos-${{ matrix.arch }}.tar.gz
 
   # The built-in modem (external/D-Modem) is built by CMake, which
   # writes build/macos-embed.xcconfig for the Xcode project

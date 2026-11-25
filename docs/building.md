@@ -52,6 +52,11 @@ Linux, also install `libusb-1.0-0-dev` and `libasound2-dev`. Then:
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
     cmake --build build --target dmodem-win32 && ./build/winport/dmodem-win32
 
+On macOS, the app is for the architecture of the Mac. To build the app
+for an Intel Mac on a Mac with Apple silicon, add
+`-DCMAKE_OSX_ARCHITECTURES=x86_64` to the first command. Set one
+architecture only. The app cannot be a universal binary.
+
 The first CMake build downloads libssh and mbedTLS for SSH. This always
 occurs on Windows and macOS. Use `-DDMODEM_GUI_SSH=OFF` for a build with
 no SSH. On Linux, it occurs if the libssh of the system
