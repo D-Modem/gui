@@ -566,7 +566,7 @@ code is the same as on Windows.
   - SSH uses `~/.ssh` and `/` in paths, because libssh uses POSIX paths
     on these systems.
 - The layer changes a COM port name to a device: `COM1` is `/dev/ttyS0`.
-- CI builds the app on Linux and macOS. On Linux, `winport/test/smoke.sh`
+- CI builds the app on Linux, and on macOS for arm64 and x86_64. On Linux, `winport/test/smoke.sh`
   starts the app in Xvfb three times: with a TCP line, with a dmodemd
   that the app starts (`winport/test/dmodemd`, a test dmodemd), and with
   the built-in modem on a SIP line with no account. For the first two,

@@ -16,8 +16,21 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_program(DMODEM_LLVM_RC NAMES llvm-rc llvm-rc-20 llvm-rc-19 llvm-rc-18
   HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin REQUIRED)
 
-# The target triple of the layer's Makefile
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+# The target triple of the layer's Makefile. On macOS, the
+# architecture is CMAKE_OSX_ARCHITECTURES when it is set, else the
+# architecture of this Mac. Thus a Mac with Apple silicon can build the
+# app for an Intel Mac: -DCMAKE_OSX_ARCHITECTURES=x86_64. The layer
+# builds for one architecture only.
+set(_winport_arch "${CMAKE_SYSTEM_PROCESSOR}")
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+  list(LENGTH CMAKE_OSX_ARCHITECTURES _n_archs)
+  if(NOT _n_archs EQUAL 1)
+    message(FATAL_ERROR "DMODEM_GUI_WINPORT: set one architecture in "
+      "CMAKE_OSX_ARCHITECTURES (arm64 or x86_64), not \"${CMAKE_OSX_ARCHITECTURES}\"")
+  endif()
+  set(_winport_arch "${CMAKE_OSX_ARCHITECTURES}")
+endif()
+if(_winport_arch MATCHES "^(arm64|aarch64)$")
   set(_arch_linux aarch64)
   set(_arch_apple arm64)
 else()

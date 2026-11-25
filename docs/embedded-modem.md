@@ -101,7 +101,7 @@ Windows and macOS, the build links libusb (LGPL-2.1) statically, as
 | Windows 95, NT 4.0 and later | Done (`win32-picolibc` build). It builds, and its imports agree with Windows 95 and NT 4.0. It is not tested on Windows or Wine yet. Refer to "Windows 95" below. |
 | macOS | Done. CI builds it for arm64 and x86_64, and checks that the library is in the app for each architecture. It is not tested on a Mac yet. |
 | The Windows app on Linux | Done. CI builds it, checks that the library is in the app, and starts the built-in modem in Xvfb (`winport/test/smoke.sh`). |
-| The Windows app on macOS | Done (arm64). CI builds it and checks that the library is in the app. It is not tested on a Mac yet. |
+| The Windows app on macOS | Done (arm64 and x86_64). CI builds it for each architecture, and checks that the library is in the app. It is not tested on a Mac yet. |
 
 ### Windows 95
 
