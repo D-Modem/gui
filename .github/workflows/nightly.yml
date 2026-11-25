@@ -1,15 +1,21 @@
 # Nightly: the "nightly" pre-release of the apps, from the artifacts of
 # the newest complete run of build.yml on main. It does not build the
-# apps again. Each run replaces the release and moves its tag. When
-# main has no new commits, the run stops and the release does not
-# change. A manual run (Actions > Nightly > Run workflow) can publish
-# again with "force".
+# apps again. It runs each time a run of build.yml on main completes,
+# and once a day. Each run updates the release in place and moves its
+# tag: a run that fails does not delete the release. When main has no
+# new commits, the run stops and the release does not change. A manual
+# run (Actions > Nightly > Run workflow) can publish again with "force".
 #
 # The files are not signed: Windows SmartScreen and macOS Gatekeeper
 # show a warning for them.
 name: Nightly
 
 on:
+  # (each change to main: when its build completes)
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: "23 5 * * *"
   workflow_dispatch:
@@ -91,13 +97,21 @@ jobs:
             fi
           } > notes.md
 
-      # The GITHUB_TOKEN of this workflow can delete the release but gets
-      # "HTTP 403: Resource not accessible by integration" when it creates
-      # the release. Thus the step uses the DMODEM_BUMP_TOKEN organization
-      # secret (Contents: read and write on D-Modem/gui, refer to
-      # d-modem-bump.yml) if it is available.
+      # The step uses the DMODEM_BUMP_TOKEN organization secret
+      # (Contents: read and write on D-Modem/gui, refer to
+      # d-modem-bump.yml) if it is available. If that token fails (for
+      # example "HTTP 403: Resource not accessible by personal access
+      # token"), the next step tries again with the GITHUB_TOKEN of this
+      # workflow. The script updates the release in place, so a failed
+      # try does not delete it.
       - name: Publish
-        if: steps.pick.outputs.skip == 'false'
+        id: publish
+        if: steps.pick.outputs.skip == 'false' && env.HAS_BUMP_TOKEN == 'true'
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.DMODEM_BUMP_TOKEN || github.token }}
+          HAS_BUMP_TOKEN: ${{ secrets.DMODEM_BUMP_TOKEN != '' }}
+          GH_TOKEN: ${{ secrets.DMODEM_BUMP_TOKEN }}
+        run: .github/scripts/nightly-publish.sh "${{ steps.pick.outputs.sha }}" notes.md out
+      - name: Publish (GITHUB_TOKEN)
+        if: steps.pick.outputs.skip == 'false' && steps.publish.outcome != 'success'
         run: .github/scripts/nightly-publish.sh "${{ steps.pick.outputs.sha }}" notes.md out
