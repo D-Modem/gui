@@ -16,10 +16,10 @@ When `main` has no new commits, the release does not change.
 | Windows 95, 98, ME, NT 4.0 and later | [`dmodem-win9x.exe`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win9x.exe) | The Windows app with the built-in modem. It needs no C runtime DLL. Windows 95 needs Winsock 2. |
 | Windows 98 SE, ME, 2000 and later | [`dmodem-win98.exe`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win98.exe) | The Windows app with the built-in modem, on `msvcrt.dll`. |
 | Windows 7 and later | [`dmodem-win7.exe`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win7.exe) | The Windows app with the built-in modem. |
-| macOS 13 and later | [`D-Modem-macos.zip`](https://github.com/D-Modem/gui/releases/download/nightly/D-Modem-macos.zip) | The macOS app (SwiftUI), for arm64 and x86_64. |
+| macOS 13 and later | [`D-Modem-macos.zip`](https://github.com/D-Modem/gui/releases/download/nightly/D-Modem-macos.zip) | The macOS app (SwiftUI) with the built-in modem, for arm64 and x86_64. |
 | Linux, x86_64 | [`dmodem-gui-linux-x86_64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-gui-linux-x86_64.tar.gz) | The Linux app (GTK 4). |
-| Linux, x86_64 (X11) | [`dmodem-win32-linux-x86_64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-linux-x86_64.tar.gz) | The Windows app on Linux. |
-| macOS, arm64 | [`dmodem-win32-macos-arm64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macos-arm64.tar.gz) | The Windows app on macOS. |
+| Linux, x86_64 (X11) | [`dmodem-win32-linux-x86_64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-linux-x86_64.tar.gz) | The Windows app on Linux, with the built-in modem. |
+| macOS, arm64 | [`dmodem-win32-macos-arm64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macos-arm64.tar.gz) | The Windows app on macOS, with the built-in modem. |
 | All | [`SHA256SUMS`](https://github.com/D-Modem/gui/releases/download/nightly/SHA256SUMS) | The SHA-256 of each file. |
 
 If a file is not in the release, the newest build did not make it. The

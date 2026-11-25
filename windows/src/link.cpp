@@ -9,7 +9,8 @@
  * Only what Windows 95 has: Winsock 1.1 (WSAAsyncSelect), anonymous
  * pipes read with PeekNamedPipe, and a COM port read on the timer.
  *
- * With the modem built in (DMODEM_GUI_EMBED, Windows 98 SE and later),
+ * With the modem built in (DMODEM_GUI_EMBED: Windows 98 SE and later,
+ * and the Windows app on Linux and macOS),
  * the dmodemd line starts no dmodemd: libdmodem_embed runs the modem in
  * a thread of the app, and gives a connected socket as its DTE.  The
  * thread's log lines and its end come to the main window as
@@ -438,7 +439,8 @@ static bool start_embedded()
 	/* the line's measurements, kept from call to call */
 	char data[MAX_PATH];
 	app_data_dir(data, sizeof(data) - 16);
-	strcat(data, "\\dmodem0.data");
+	/* (the library opens it with the C library: "/" on Linux and macOS) */
+	strcat(data, DIR_SEP "dmodem0.data");
 	e.data_file = data;
 	if (!embed)
 		embed = dmodem_embed_new();

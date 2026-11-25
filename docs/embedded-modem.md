@@ -1,8 +1,9 @@
 # The built-in modem
 
-The Linux app, the macOS app and the Windows app (Windows 98 SE and
-later) have the D-Modem modem in them. Thus, these apps do not need a
-separate `dmodemd`. This includes the Windows 95 build.
+The Linux app, the macOS app, the Windows app (Windows 98 SE and later)
+and the Windows app on Linux and macOS have the D-Modem modem in them.
+Thus, these apps do not need a separate `dmodemd`. This includes the
+Windows 95 build.
 
 ## What it does
 
@@ -49,7 +50,10 @@ On macOS:
 
 On Windows, the Line Settings dialog does not have this setting yet. Close
 the app, and add this line to the `[line]` section of
-`%APPDATA%\D-Modem\dmodem.ini`:
+`%APPDATA%\D-Modem\dmodem.ini` (Windows), `~/.config/D-Modem/dmodem.ini`
+(the Windows app on Linux) or
+`~/Library/Application Support/D-Modem/dmodem.ini` (the Windows app on
+macOS):
 
     builtin=0
 
@@ -64,8 +68,8 @@ The D-Modem source is a git submodule in `external/D-Modem`. To get it:
 If the submodule is there, CMake builds the built-in modem
 (`DMODEM_GUI_EMBED`, on by default) for the Linux app, the macOS app, and
 the Windows app with the clang-retro configurations `win32-picolibc` (the
-Windows 95 build), `win98`, `winme`, `win7` and later. It is off for the
-Windows app on Linux and macOS (`DMODEM_GUI_WINPORT`). To build the app with no built-in
+Windows 95 build), `win98`, `winme`, `win7` and later, and for the Windows
+app on Linux and macOS (`DMODEM_GUI_WINPORT`). To build the app with no built-in
 modem, use `-DDMODEM_GUI_EMBED=OFF`. For a USB line and an ALSA line, also
 install `libusb-1.0-0-dev` and `libasound2-dev`.
 
@@ -95,7 +99,9 @@ Windows and macOS, the build links libusb (LGPL-2.1) statically, as
 | Windows 98 SE and later | Done (`win98` build). It builds, and its imports agree with Windows 98 SE. It is not tested on Windows or Wine yet. |
 | Windows 7 and later | Done (`win7` build). It builds. It is not tested on Windows or Wine yet. |
 | Windows 95, NT 4.0 and later | Done (`win32-picolibc` build). It builds, and its imports agree with Windows 95 and NT 4.0. It is not tested on Windows or Wine yet. Refer to "Windows 95" below. |
-| macOS | Done. CI builds it and checks that the library is in the app. It is not tested on a Mac yet. |
+| macOS | Done. CI builds it for arm64 and x86_64, and checks that the library is in the app for each architecture. It is not tested on a Mac yet. |
+| The Windows app on Linux | Done. CI builds it, checks that the library is in the app, and starts the built-in modem in Xvfb (`winport/test/smoke.sh`). |
+| The Windows app on macOS | Done (arm64). CI builds it and checks that the library is in the app. It is not tested on a Mac yet. |
 
 ### Windows 95
 
