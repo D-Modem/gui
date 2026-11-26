@@ -185,6 +185,7 @@ jobs:
         with:
           repository: clang-retro/mfc
           path: mfc
+          submodules: recursive
       - name: Packages
         run: |
           sudo apt-get update
@@ -230,6 +231,7 @@ jobs:
         with:
           repository: clang-retro/mfc
           path: mfc
+          submodules: recursive
       - name: Packages
         run: brew install llvm
       - name: Build
