@@ -285,6 +285,94 @@ static void enable(HWND d)
 		EnableWindow(GetDlgItem(d, com_ids[i]), com);
 }
 
+/* the ports that the last search found (ports.cpp) */
+static PortInfo found[32];
+static int n_found;
+
+/* Searches the ports again, and puts their names in the Port box.
+   With no ports found on Windows, the box has COM1 to COM16. The text
+   of the box stays current. */
+static void fill_ports(HWND d, const char *current)
+{
+	n_found = ports_list(found, (int)(sizeof(found) / sizeof(found[0])));
+	HWND port = GetDlgItem(d, IDC_L_PORT);
+	SendMessage(port, CB_RESETCONTENT, 0, 0);
+	for (int i = 0; i < n_found; i++)
+		SendMessage(port, CB_ADDSTRING, 0, (LPARAM)found[i].name);
+#ifndef DMODEM_WINPORT
+	for (int i = 1; n_found == 0 && i <= 16; i++) {
+		char n[8];
+		_snprintf(n, sizeof(n), "COM%d", i);
+		n[sizeof(n) - 1] = '\0';
+		SendMessage(port, CB_ADDSTRING, 0, (LPARAM)n);
+	}
+#endif
+	SetWindowText(port, current);
+}
+
+/* Shows what is on port name (from the last search) below the serial
+   port settings, or nothing when the app does not know. */
+static void show_port(HWND d, const char *name)
+{
+	char t[200] = "";
+	for (int i = 0; i < n_found; i++) {
+		if (_stricmp(found[i].name, name) || !found[i].desc[0])
+			continue;
+		_snprintf(t, sizeof(t), "%s: %s", found[i].name, found[i].desc);
+		t[sizeof(t) - 1] = '\0';
+	}
+	SetDlgItemText(d, IDC_L_FOUND, t);
+}
+
+/* Searches for a modem (the Look for a modem button, and when the
+   dialog opens: quiet). When it finds one and quiet is false, it
+   selects the serial port line, the port and hardware flow control.
+   It shows the result below the serial port settings. */
+static void look(HWND d, bool quiet)
+{
+	char current[64];
+	GetDlgItemText(d, IDC_L_PORT, current, sizeof(current));
+	fill_ports(d, current);
+	char t[256];
+	const PortInfo *m = n_found > 0 && found[0].modem ? &found[0] : NULL;
+	if (m && quiet) {
+		if (!_stricmp(m->name, current)) {
+			show_port(d, current);
+			return;
+		}
+		_snprintf(t, sizeof(t), "Found %s on %s. Click Look for a "
+			  "modem to use it.", m->desc[0] ? m->desc : "a modem",
+			  m->name);
+	} else if (m) {
+		CheckRadioButton(d, IDC_L_DMODEMD, IDC_L_COM, IDC_L_COM);
+		SetDlgItemText(d, IDC_L_PORT, m->name);
+		SendDlgItemMessage(d, IDC_L_FLOW, CB_SETCURSEL, 2, 0);
+		enable(d);
+		_snprintf(t, sizeof(t), "Found %s on %s.",
+			  m->desc[0] ? m->desc : "a modem", m->name);
+	} else {
+		ports_problem(t, sizeof(t));
+		if (!t[0] && quiet) {
+			show_port(d, current);
+			return;
+		}
+		if (!t[0] && n_found == 0) {
+			_snprintf(t, sizeof(t), "No modem found. This computer "
+				  "has no serial ports that the app can see.");
+		} else if (!t[0]) {
+			int o = _snprintf(t, sizeof(t), "No modem found. The "
+					  "ports:");
+			for (int i = 0; i < n_found && o > 0 &&
+			     o < (int)sizeof(t) - 2; i++)
+				o += _snprintf(t + o, sizeof(t) - (size_t)o,
+					       "%s %s", i ? "," : "",
+					       found[i].name);
+		}
+	}
+	t[sizeof(t) - 1] = '\0';
+	SetDlgItemText(d, IDC_L_FOUND, t);
+}
+
 static void check(HWND d, int id, int on)
 {
 	CheckDlgButton(d, id, on ? BST_CHECKED : BST_UNCHECKED);
@@ -332,14 +420,7 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 		SetDlgItemText(d, IDC_L_USB, c->usb);
 		SetDlgItemText(d, IDC_L_PATH, c->dmodemd);
 		SetDlgItemText(d, IDC_L_ADDRESS, c->tcp);
-		HWND port = GetDlgItem(d, IDC_L_PORT);
-		for (int i = 1; i <= 16; i++) {
-			char n[8];
-			_snprintf(n, sizeof(n), "COM%d", i);
-			n[sizeof(n) - 1] = '\0';
-			SendMessage(port, CB_ADDSTRING, 0, (LPARAM)n);
-		}
-		SetWindowText(port, c->com);
+		SetDlgItemText(d, IDC_L_PORT, c->com);
 		HWND bps = GetDlgItem(d, IDC_L_BPS);
 		for (int i = 0; bps_list[i]; i++) {
 			char n[16];
@@ -355,6 +436,7 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 		fill(d, IDC_L_FLOW, flow_names, c->com_flow);
 		SetDlgItemText(d, IDC_L_INIT, c->init);
 		enable(d);
+		look(d, true);
 		return TRUE;
 	}
 	case WM_COMMAND:
@@ -367,6 +449,23 @@ static BOOL CALLBACK line_proc(HWND d, UINT m, WPARAM wp, LPARAM lp)
 			return TRUE;
 		case IDC_L_BROWSE:
 			browse(d);
+			return TRUE;
+		case IDC_L_FIND:
+			look(d, false);
+			return TRUE;
+		case IDC_L_PORT:
+			if (HIWORD(wp) == CBN_SELCHANGE) {
+				char n[64] = "";
+				int i = (int)SendDlgItemMessage(d, IDC_L_PORT,
+								CB_GETCURSEL, 0, 0);
+				if (i >= 0 && SendDlgItemMessage(d, IDC_L_PORT,
+						CB_GETLBTEXTLEN, (WPARAM)i, 0) <
+					      (LRESULT)sizeof(n))
+					SendDlgItemMessage(d, IDC_L_PORT,
+							   CB_GETLBTEXT, (WPARAM)i,
+							   (LPARAM)n);
+				show_port(d, n);
+			}
 			return TRUE;
 		case IDOK:
 			c->line = checked(d, IDC_L_TCP) ? LINE_TCP :

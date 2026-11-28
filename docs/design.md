@@ -331,8 +331,9 @@ The app gives the SIP account to dmodemd in its environment (`SIP_LOGIN`,
 USB modem and the debug level as flags.
 
 The app can also use a modem that already runs: a TCP address or a COM
-port. On Linux and macOS, the layer changes a COM port name to a device
-(refer to "The Windows app on Linux and macOS", below).
+port. On Linux and macOS, it can also be a device path (`/dev/ttyUSB0`,
+`/dev/cu.usbmodem1`), or a COM port name that the layer changes to a
+device (refer to "The Windows app on Linux and macOS", below).
 
 The app does not start dmodemd by default. It runs the modem in a thread
 (`libdmodem_embed`), and its DTE is a socket. Refer to
@@ -364,11 +365,27 @@ it. This repository includes the file, with a notice
 copy it to `/lib/firmware` (for the MT9234ZBA-USB, as `mts_mt9234zba.fw`),
 then disconnect the modem and connect it again.
 
-Select the port of the modem in the Line Settings dialog, with hardware
-flow control (RTS/CTS). On Linux, give the port a COM name with
-`WINPORT_COMn` (for example `WINPORT_COM5=/dev/ttyUSB0`, refer to "The
-Windows app on Linux and macOS", below). The modem uses `&K3` from
-the factory.
+### Look for a modem
+
+The Line Settings dialog finds the modem (`windows/src/ports.cpp`). When
+the dialog opens, it searches the ports. If it finds a modem on a port
+that is not selected, it shows the modem below the settings of the serial
+port. Click **Look for a modem** to search again. If the app finds a
+modem, it selects "A modem on a serial port", the port of the modem and
+hardware flow control (RTS/CTS). The modem uses `&K3` from the factory.
+The Port box lists all the ports that the app found, with the modems
+first. When you select a port, the dialog shows what is on it.
+
+| | Where the app looks | What is a modem |
+| --- | --- | --- |
+| Windows | The modems that Windows knows: the Modem class in the registry (`AttachedTo`, and `FriendlyName` or `DriverDesc`), for Windows 95, 98 and ME and for NT. The MultiTech modems in `Enum\USB` (NT). The ports of `HARDWARE\DEVICEMAP\SERIALCOMM`. If that key has no ports, the app tries `COM1` to `COM16` | An installed modem, or a MultiTech MT9234MU or MT9234ZBA-USB |
+| Linux | `/sys/class/tty`: each `ttyUSB` and `ttyACM`, with the maker and the product of its USB device | A MultiTech MT9234MU or MT9234ZBA-USB, or a USB device whose name has "modem" in it |
+| macOS | Each `/dev/cu.*` device, but not the Bluetooth devices | A `cu.usbmodem` device (CDC-ACM, for example the MT9234MU-CDC) |
+
+On Linux, if a MultiTech modem is connected but has no port, the dialog
+tells you why. With no firmware (one USB configuration, the boot ROM of
+the TUSB3410), it shows the command that copies the file. If the
+firmware is there, it tells you to load the `ti_usb_3410_5052` driver.
 
 Set the country of the line with `AT%T19,0,<code>` and `AT&F&W` in the
 "Commands when the modem opens" field one time, or in the Terminal page.
