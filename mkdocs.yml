@@ -3,7 +3,7 @@ INHERIT: .site/mkdocs-base.yml
 # theme and workflow (brand's docs/sites.md). The site is built from a copy
 # of docs/ (.site/docs). docs/index.md is the home page of the site, and the
 # README stays the summary on GitHub.
-site_name: D-Modem desktop apps
+site_name: D-Modem desktop app
 site_description: D-Modem on the desktop, for Windows 95 to Windows 11, macOS and Linux
 site_url: https://d-modem.github.io/gui/
 repo_url: https://github.com/D-Modem/gui

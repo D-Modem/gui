@@ -3,9 +3,8 @@
  * Copyright (C) 2026 D-Modem Authors
  *
  * main.cpp - the main window: a tab for each page (Modem, Phone,
- *            Terminal, Remote, Settings, Call Stats, Log, as the macOS
- *            and Linux apps
- *            have them) and a status bar
+ *            Terminal, Remote, Settings, Call Stats, Log) and a status
+ *            bar
  */
 #include <stdio.h>
 #include <string.h>

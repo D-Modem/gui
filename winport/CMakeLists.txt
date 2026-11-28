@@ -102,3 +102,29 @@ if(APPLE)
 else()
   target_link_libraries(dmodem-win32 PRIVATE dl pthread)
 endif()
+
+# The install on Linux (cmake --install): the app, its desktop entry,
+# its AppStream data and its icon. Also the firmware of the MultiTech
+# MT9234MU (the licence is unknown: firmware/README.md).
+if(UNIX AND NOT APPLE)
+  include(GNUInstallDirs)
+  install(TARGETS dmodem-win32 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES data/io.github.d_modem.DModem.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES data/io.github.d_modem.DModem.metainfo.xml
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+  install(FILES ${PROJECT_SOURCE_DIR}/assets/dmodem.svg
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+    RENAME io.github.d_modem.DModem.svg)
+  install(FILES ${PROJECT_SOURCE_DIR}/firmware/mts_mt9234mu.fw
+                ${PROJECT_SOURCE_DIR}/firmware/README.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/dmodem-gui/firmware)
+  option(DMODEM_GUI_INSTALL_FIRMWARE
+    "Also install mts_mt9234mu.fw (and mts_mt9234zba.fw) in /lib/firmware" OFF)
+  if(DMODEM_GUI_INSTALL_FIRMWARE)
+    install(FILES ${PROJECT_SOURCE_DIR}/firmware/mts_mt9234mu.fw
+      DESTINATION /lib/firmware)
+    install(FILES ${PROJECT_SOURCE_DIR}/firmware/mts_mt9234mu.fw
+      DESTINATION /lib/firmware RENAME mts_mt9234zba.fw)
+  endif()
+endif()
