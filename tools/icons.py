@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Makes the apps' icon files from tools/icons.js's PNGs (build/icons):
+"""Makes the app's icon file from tools/icons.js's PNGs (build/icons):
 
   windows/res/dmodem.ico   16, 32 and 48 in 256 colours (Windows 9x) and
                            in 32-bit colour with alpha (XP on), 256 as PNG
-  macos/.../AppIcon.appiconset   the sizes an Asset Catalog wants
 
 The .ico is written by hand: Windows 95 reads only BMP entries."""
 import io
-import json
 import os
 import struct
 
@@ -88,23 +86,5 @@ def ico(path):
         f.write(head + dirs + data)
 
 
-def appiconset(dir):
-    os.makedirs(dir, exist_ok=True)
-    images = []
-    for pt in (16, 32, 128, 256, 512):
-        for scale in (1, 2):
-            px = pt * scale
-            name = f'icon_{pt}x{pt}{"@2x" if scale == 2 else ""}.png'
-            png(px).save(os.path.join(dir, name))
-            images.append({'idiom': 'mac', 'size': f'{pt}x{pt}',
-                           'scale': f'{scale}x', 'filename': name})
-    with open(os.path.join(dir, 'Contents.json'), 'w') as f:
-        json.dump({'images': images, 'info': {'version': 1, 'author': 'xcode'}},
-                  f, indent=2)
-        f.write('\n')
-
-
 if __name__ == '__main__':
     ico(os.path.join(ROOT, 'windows', 'res', 'dmodem.ico'))
-    appiconset(os.path.join(ROOT, 'macos', 'DModem', 'Assets.xcassets',
-                            'AppIcon.appiconset'))

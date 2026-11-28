@@ -12,8 +12,8 @@ same code.
 
 To install it:
 
-    sudo cp linux/firmware/mts_mt9234mu.fw /lib/firmware/
-    sudo cp linux/firmware/mts_mt9234mu.fw /lib/firmware/mts_mt9234zba.fw
+    sudo cp firmware/mts_mt9234mu.fw /lib/firmware/
+    sudo cp firmware/mts_mt9234mu.fw /lib/firmware/mts_mt9234zba.fw
 
 Then disconnect the modem and connect it again. `cmake --install` puts the
 file in `share/dmodem-gui/firmware`. With `-DDMODEM_GUI_INSTALL_FIRMWARE=ON`,

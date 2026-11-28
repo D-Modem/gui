@@ -1,5 +1,6 @@
-# Builds and tests the three apps and the library they share, and the
-# Windows app for Linux and macOS (winport/)
+# Builds and tests the app (windows/) and the library that it uses
+# (core/, ssh/): on Windows 95 to Windows 11, and on Linux and macOS over
+# clang-retro MFC's portable Win32 layer (winport/)
 name: Build
 
 # The nightly release (nightly.yml) takes its files from this
@@ -15,19 +16,18 @@ permissions:
   contents: read
 
 jobs:
-  linux:
-    name: Linux (GTK 4)
+  # libdmodemctl (core/) and libdmodemssh (ssh/), with no app: the
+  # tests, the tests with the sanitizers, and SSH against a real sshd
+  core:
+    name: Library and SSH tests (Linux)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Packages
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build pkg-config libgtk-4-dev libadwaita-1-dev \
-            libpulse-dev libsndfile1-dev libasound2-dev libusb-1.0-0-dev
+            cmake ninja-build pkg-config
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -62,14 +62,6 @@ jobs:
           DMODEM_SSH_TEST=127.0.0.1:2222:dmtest:Sesame-42 DMODEM_SSH_TEST_KEY="$RUNNER_TEMP/key" \
             DMODEM_SSH_TEST_PPK="$RUNNER_TEMP/key.ppk" DMODEM_SSH_TEST_AGENT="$RUNNER_TEMP/agent.sock" \
             build/ssh/dmodemssh_test
-      - name: Package
-        run: |
-          DESTDIR="$PWD/pkg" cmake --install build --prefix /usr
-          tar -C pkg -czf dmodem-gui-linux-x86_64.tar.gz usr
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dmodem-linux
-          path: dmodem-gui-linux-x86_64.tar.gz
 
   # Both Windows builds use clang-retro (https://clang-retro.github.io/),
   # its toolchain package from its setup-toolchain action, on Linux
@@ -195,7 +187,7 @@ jobs:
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DDMODEM_GUI_LINUX=OFF -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
+            -DDMODEM_GUI_WINPORT=ON -DCLANG_RETRO_MFC="$PWD/mfc" \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           cmake --build build --target dmodem-win32
       - name: The built-in modem is in the app
@@ -247,54 +239,13 @@ jobs:
           test "$(lipo -archs build/winport/dmodem-win32)" = "${{ matrix.arch }}"
       - name: The built-in modem is in the app
         run: nm build/winport/dmodem-win32 | grep -q dmodem_embed_start
+      - name: Library tests
+        run: |
+          cmake --build build --target dmodemctl_test xfer_test -j"$(sysctl -n hw.ncpu)"
+          ctest --test-dir build --output-on-failure -R '^(dmodemctl|xfer)$'
       - name: Package
         run: tar -C build/winport -czf dmodem-win32-macos-${{ matrix.arch }}.tar.gz dmodem-win32
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dmodem-win32-macos-${{ matrix.arch }}.tar.gz
-
-  # The built-in modem (external/D-Modem) is built by CMake, which
-  # writes build/macos-embed.xcconfig for the Xcode project
-  macos:
-    name: macOS (SwiftUI)
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - name: Library tests
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
-          cmake --build build
-          ctest --test-dir build --output-on-failure
-      - name: Project
-        run: |
-          brew install xcodegen
-          cd macos && xcodegen
-      # (arm64 and x86_64: with no destination, xcodebuild builds for
-      # the runner's Mac alone)
-      - name: Build
-        run: |
-          cd macos
-          xcodebuild -project DModem.xcodeproj -scheme DModem \
-            -configuration Release -derivedDataPath ../build/xcode \
-            -destination 'generic/platform=macOS' \
-            ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY=- build
-      - name: The built-in modem is in the app, for each architecture
-        run: |
-          app=build/xcode/Build/Products/Release/D-Modem.app/Contents/MacOS/D-Modem
-          lipo -archs "$app"
-          for arch in arm64 x86_64; do
-            lipo "$app" -verify_arch "$arch"
-            nm -arch "$arch" "$app" | grep -q dmodem_embed_start
-          done
-      # (ditto keeps the bundle's symbolic links and executable bits)
-      - name: Package
-        run: ditto -c -k --keepParent build/xcode/Build/Products/Release/D-Modem.app D-Modem-macos.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dmodem-macos
-          path: D-Modem-macos.zip

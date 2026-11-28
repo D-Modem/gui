@@ -1,13 +1,15 @@
-# Nightly: the "nightly" pre-release of the apps, from the artifacts of
+# Nightly: the "nightly" pre-release of the app, from the artifacts of
 # the newest complete run of build.yml on main. It does not build the
-# apps again. It runs each time a run of build.yml on main completes,
+# app again. It runs each time a run of build.yml on main completes,
 # and once a day. Each run updates the release in place and moves its
 # tag: a run that fails does not delete the release. When main has no
 # new commits, the run stops and the release does not change. A manual
 # run (Actions > Nightly > Run workflow) can publish again with "force".
 #
 # The files are not signed: Windows SmartScreen and macOS Gatekeeper
-# show a warning for them.
+# show a warning for them. The release has only the files of this
+# build: nightly-publish.sh removes the files that the build did not
+# make (for example the old Linux GTK app and the old macOS SwiftUI app).
 name: Nightly
 
 on:
@@ -70,8 +72,6 @@ jobs:
           take dmodem-windows-9x dmodem.exe dmodem-win9x.exe
           take dmodem-windows-98 dmodem.exe dmodem-win98.exe
           take dmodem-windows dmodem.exe dmodem-win7.exe
-          take dmodem-linux dmodem-gui-linux-x86_64.tar.gz
-          take dmodem-macos D-Modem-macos.zip
           take dmodem-win32-linux dmodem-win32-linux-x86_64.tar.gz
           take dmodem-win32-macos dmodem-win32-macos-arm64.tar.gz
           take dmodem-win32-macos-x86_64 dmodem-win32-macos-x86_64.tar.gz
@@ -86,11 +86,9 @@ jobs:
             echo "| \`dmodem-win9x.exe\` | The Windows app with the modem built in, for Windows 95, 98, ME, NT 4.0 and later (no C runtime DLL; Windows 95 needs Winsock 2) |"
             echo "| \`dmodem-win98.exe\` | The Windows app with the modem built in, for Windows 98 SE, ME, 2000 and later (on msvcrt.dll) |"
             echo "| \`dmodem-win7.exe\` | The Windows app for Windows 7 and later, with the modem built in |"
-            echo "| \`dmodem-gui-linux-x86_64.tar.gz\` | The Linux app (GTK 4), x86_64. It needs GTK 4, libadwaita, PulseAudio and libsndfile. Its files are in \`usr/\`: extract it into \`/\`, for example with \`sudo tar -xzf dmodem-gui-linux-x86_64.tar.gz -C /\` |"
-            echo "| \`D-Modem-macos.zip\` | The macOS app (SwiftUI) with the modem built in, arm64 and x86_64, macOS 13 and later. Not notarized: right-click the app and select Open |"
-            echo "| \`dmodem-win32-linux-x86_64.tar.gz\` | The Windows app on Linux (X11) with the modem built in, x86_64 |"
-            echo "| \`dmodem-win32-macos-arm64.tar.gz\` | The Windows app on macOS with the modem built in, arm64 (Apple silicon) |"
-            echo "| \`dmodem-win32-macos-x86_64.tar.gz\` | The Windows app on macOS with the modem built in, x86_64 (Intel Mac) |"
+            echo "| \`dmodem-win32-linux-x86_64.tar.gz\` | The app on Linux (X11) with the modem built in, x86_64 |"
+            echo "| \`dmodem-win32-macos-arm64.tar.gz\` | The app on macOS with the modem built in, arm64 (Apple silicon) |"
+            echo "| \`dmodem-win32-macos-x86_64.tar.gz\` | The app on macOS with the modem built in, x86_64 (Intel Mac) |"
             echo "| \`SHA256SUMS\` | The SHA-256 of each file |"
             if [ -f missing ]; then
               echo

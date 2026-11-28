@@ -1,6 +1,6 @@
-# libdmodemctl: what the desktop apps share, in plain C with no
-# dependencies.  Static for the Linux app; a DLL for the Windows app's
-# P/Invoke (-DDMODEMCTL_SHARED=ON).
+# libdmodemctl: the part of the desktop app that does not draw, in plain
+# C with no dependencies.  Static by default; a DLL for a P/Invoke caller
+# (-DDMODEMCTL_SHARED=ON).
 option(DMODEMCTL_SHARED "Build libdmodemctl as a shared library" OFF)
 
 set(DMODEMCTL_SOURCES

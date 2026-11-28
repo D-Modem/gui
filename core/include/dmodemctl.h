@@ -2,14 +2,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (C) 2026 D-Modem Authors
  *
- * dmodemctl.h - the part of D-Modem's desktop apps that is not drawing.
+ * dmodemctl.h - the part of D-Modem's desktop app that is not drawing.
  *
- * The Windows, macOS and Linux apps are thin native shells over this
- * small C library, so that each of them is only views.  It does no I/O
- * of its own and starts no threads: each app opens the modem's DTE (a
- * pty, a TCP socket) in its own way, hands the bytes it reads to
- * dmc_feed(), writes what dmc_output() gives it, and calls dmc_poll()
- * from a timer.  That keeps it simple to call from C (GTK), C#
+ * The Win32 app (on Windows, and on Linux and macOS over clang-retro
+ * MFC's Win32 layer) is a thin shell over this small C library, so that
+ * the app is only views.  The library does no I/O of its own and
+ * starts no threads: the app opens the modem's DTE (a TCP socket, a COM
+ * port), hands the bytes it reads to dmc_feed(), writes what
+ * dmc_output() gives it, and calls dmc_poll() from a timer.  That keeps it simple to call from C, C++ (Win32), C#
  * (P/Invoke) and Swift.
  *
  * Its parts:
@@ -250,8 +250,8 @@ DMC_API int dmc_wav_header(char *buf, int n);
    allocated (dmc_free() it); -1 if it is not one this reads. It reads
    WAV (PCM of 8, 16, 24 or 32 bits, 32 or 64-bit floats, A-law, mu-law,
    IMA and Microsoft ADPCM), AIFF and AIFF-C (PCM, floats, A-law,
-   mu-law) and Sun/NeXT .au, of any rate and channels. (The apps read
-   MP3, AAC, FLAC, Ogg and the like with their platforms' decoders.) */
+   mu-law) and Sun/NeXT .au, of any rate and channels. (The app reads
+   MP3 and the like with the ACM codecs.) */
 DMC_API int dmc_audio_decode(const char *data, int n, int16_t **pcm);
 /* (dmc_audio_decode's old name) */
 DMC_API int dmc_wav_decode(const char *data, int n, int16_t **pcm);

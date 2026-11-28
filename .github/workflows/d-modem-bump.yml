@@ -1,9 +1,9 @@
 # D-Modem bump: moves the external/D-Modem submodule (the built-in
 # modem) to the latest main of D-Modem. It opens a pull request for the
 # change, or updates the open one. Build (build.yml) builds and tests
-# the apps in that pull request. The workflow merges the pull request
+# the app in that pull request. The workflow merges the pull request
 # when all of its checks pass. Build then runs on main, and the next
-# nightly release (nightly.yml) has the new apps.
+# nightly release (nightly.yml) has the new app.
 #
 # It starts:
 # - from D-Modem, when its main changes (a repository_dispatch event of

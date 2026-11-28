@@ -1,5 +1,5 @@
 ---
-title: D-Modem desktop apps
+title: D-Modem desktop app
 hide:
   - navigation
   - toc
@@ -9,12 +9,12 @@ hide:
 <img src="images/dmodem.svg" alt="">
 <div markdown>
 
-# D-Modem desktop apps
+# D-Modem desktop app
 
 **D-Modem on the desktop: a V.92 modem in a window, from Windows 95 to
 Windows 11, on macOS and on Linux.**
 
-The apps have the modem built in. You do not need modem hardware or a
+The app has the modem built in. You do not need modem hardware or a
 separate `dmodemd`. Dial a BBS, a fax machine or an ISP from a SIP call,
 a USB modem or a hardware modem.
 
@@ -24,9 +24,9 @@ a USB modem or a hardware modem.
 </div>
 </div>
 
-<img src="images/linux-settings.png" width="49%" alt="The Settings page of the Linux app"> <img src="images/windows-setup-screen.png" width="49%" alt="The Terminal of the Windows app with the setup screen of the modem">
+<img src="images/windows-settings.png" width="49%" alt="The Settings page of the app"> <img src="images/windows-setup-screen.png" width="49%" alt="The Terminal of the app with the setup screen of the modem">
 
-## What the apps do
+## What the app does
 
 <div class="grid cards" markdown>
 
@@ -78,25 +78,24 @@ a USB modem or a hardware modem.
 
 [All the features](features.md){ .md-button }
 
-<img src="images/linux-phone.png" width="49%" alt="The Phone page of the Linux app"> <img src="images/windows-phone.png" width="49%" alt="The Phone page of the Windows app as it takes a message">
+<img src="images/windows-modem.png" width="49%" alt="The Modem page of the app"> <img src="images/windows-phone.png" width="49%" alt="The Phone page of the app as it takes a message">
 
-## Three native apps, one library
+## One Win32 app, one library
 
-Each app uses the native toolkit of its system. All three apps are thin
-shells over one small C library, libdmodemctl. Thus they operate in the
-same way.
+The app is plain Win32, built with
+[clang-retro](https://clang-retro.github.io/). The same Win32 code also
+runs on Linux and macOS, over the portable Win32 layer of
+[clang-retro MFC](https://github.com/clang-retro/mfc). The app is a thin
+shell over one small C library, libdmodemctl. Thus it operates in the
+same way on each system.
 
 | | Windows | macOS | Linux |
 | --- | --- | --- | --- |
-| Toolkit | Win32, C++ | SwiftUI | GTK 4, libadwaita |
-| Runs on | Windows 95 and later | macOS 13 and later | GTK 4.10 and libadwaita 1.5 or later (Ubuntu 24.04, Fedora 40) |
+| Toolkit | Win32, C++ | Win32, over the Cocoa layer of clang-retro MFC | Win32, over the X11 and Wayland layer of clang-retro MFC |
+| Runs on | Windows 95 and later | arm64 (Apple silicon) and x86_64 (Intel Mac) | x86_64 |
 | Built-in modem | Yes | Yes | Yes |
 
-The Windows app is plain Win32, built with
-[clang-retro](https://clang-retro.github.io/). The same Win32 code also
-runs on Linux and macOS, over the portable Win32 layer of
-[clang-retro MFC](https://github.com/clang-retro/mfc). Refer to
-[Design](design.md).
+Refer to [Design](design.md).
 
 ## Start here
 
@@ -105,12 +104,12 @@ runs on Linux and macOS, over the portable Win32 layer of
 - **Build the app:** refer to [Building](building.md).
 - **Use the modem without dmodemd:** refer to
   [The built-in modem](embedded-modem.md).
-- **Learn how the apps are built:** refer to [Design](design.md) and to
+- **Learn how the app is built:** refer to [Design](design.md) and to
   the API of [libdmodemctl](https://github.com/D-Modem/gui/blob/main/core/include/dmodemctl.h).
 
 ## Part of the D-Modem suite
 
-The desktop apps are one part of the [D-Modem suite](https://d-modem.github.io/).
+The desktop app is one part of the [D-Modem suite](https://d-modem.github.io/).
 The suite has the softmodem ([D-Modem](https://d-modem.github.io/D-Modem/)),
 the [app for Android and iOS](https://d-modem.github.io/app/), the
 [pico-serial boards](https://d-modem.github.io/hardware/), and the
