@@ -80,6 +80,7 @@ Windows and macOS, the build links libusb (LGPL-2.1) statically, as
 | Linux | Done. CI builds it, checks that the library is in the app, and starts the built-in modem in Xvfb (`winport/test/smoke.sh`). |
 | macOS | Done (arm64 and x86_64). CI builds it for each architecture, and checks that the library is in the app. It is not tested on a Mac yet. |
 | Mac OS X 10.4 and later | Done (PowerPC and i386, one fat program). CI builds it on Linux, and checks that the library is in each part of the program. It is not tested on a Mac yet. |
+| Mac OS 9 (PowerPC) | Done. CI builds it on Linux with the C and C++ libraries of clang-retro/mac-sdk. There are no ptys: the modem gives its DTE on a socket. It is not tested on a Mac yet. |
 
 ### Windows 95
 

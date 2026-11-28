@@ -71,6 +71,17 @@ static HANDLE proc;
 #endif
 #define ATTR_PSEUDOCONSOLE 0x00020016
 
+/* (the Win32 layer of clang-retro MFC has no console API and no COORD:
+   the Windows app on another system with no SSH, as on the classic Mac
+   OS. There, the look-up of ConPTY fails and SSH is not available.) */
+#if defined(DMODEM_WINPORT) && !defined(_COORD_DEFINED)
+#define _COORD_DEFINED
+typedef struct _COORD {
+	SHORT X;
+	SHORT Y;
+} COORD;
+#endif
+
 typedef long (WINAPI *CreatePCFn)(COORD, HANDLE, HANDLE, DWORD, void **);
 typedef long (WINAPI *ResizePCFn)(void *, COORD);
 typedef void (WINAPI *ClosePCFn)(void *);

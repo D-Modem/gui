@@ -76,6 +76,7 @@ jobs:
           take dmodem-win32-macos dmodem-win32-macos-arm64.tar.gz
           take dmodem-win32-macos-x86_64 dmodem-win32-macos-x86_64.tar.gz
           take dmodem-win32-macosx-legacy dmodem-win32-macosx10.4.tar.gz
+          take dmodem-win32-macos9 dmodem-win32-macos9.bin
           (cd out && sha256sum * > SHA256SUMS)
           ls -l out
           {
@@ -91,6 +92,7 @@ jobs:
             echo "| \`dmodem-win32-macos-arm64.tar.gz\` | The app on macOS with the modem built in, arm64 (Apple silicon) |"
             echo "| \`dmodem-win32-macos-x86_64.tar.gz\` | The app on macOS with the modem built in, x86_64 (Intel Mac) |"
             echo "| \`dmodem-win32-macosx10.4.tar.gz\` | The app on Mac OS X 10.4 (Tiger) and later with the modem built in, one program for PowerPC and Intel (i386). Not tested on a Mac yet |"
+            echo "| \`dmodem-win32-macos9.bin\` | The app on Mac OS 9 (PowerPC) with the modem built in, in MacBinary. Not tested on a Mac yet |"
             echo "| \`SHA256SUMS\` | The SHA-256 of each file |"
             if [ -f missing ]; then
               echo

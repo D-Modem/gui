@@ -92,7 +92,7 @@ same way on each system.
 | | Windows | macOS | Linux |
 | --- | --- | --- | --- |
 | Toolkit | Win32, C++ | Win32, over the Cocoa layer of clang-retro MFC | Win32, over the X11 and Wayland layer of clang-retro MFC |
-| Runs on | Windows 95 and later | arm64 (Apple silicon) and x86_64 (Intel Mac). Also Mac OS X 10.4 and later on PowerPC and i386 | x86_64 |
+| Runs on | Windows 95 and later | arm64 (Apple silicon) and x86_64 (Intel Mac). Also Mac OS X 10.4 and later on PowerPC and i386, and Mac OS 9 on PowerPC | x86_64 |
 | Built-in modem | Yes | Yes | Yes |
 
 Refer to [Design](design.md).

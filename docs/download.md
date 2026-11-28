@@ -20,6 +20,7 @@ When `main` has no new commits, the release does not change.
 | macOS, arm64 (Apple silicon) | [`dmodem-win32-macos-arm64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macos-arm64.tar.gz) | The app on macOS, with the built-in modem. |
 | macOS, x86_64 (Intel Mac) | [`dmodem-win32-macos-x86_64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macos-x86_64.tar.gz) | The app on macOS, with the built-in modem. |
 | Mac OS X 10.4 and later, PowerPC and Intel | [`dmodem-win32-macosx10.4.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macosx10.4.tar.gz) | The app with the built-in modem. One program for PowerPC (G3, G4, G5) and Intel (i386). It is not tested on a Mac yet. |
+| Mac OS 9, PowerPC | [`dmodem-win32-macos9.bin`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macos9.bin) | The app with the built-in modem, in MacBinary format. It is not tested on a Mac yet. |
 | All | [`SHA256SUMS`](https://github.com/D-Modem/gui/releases/download/nightly/SHA256SUMS) | The SHA-256 of each file. |
 
 If a file is not in the release, the newest build did not make it. The
@@ -58,6 +59,13 @@ The result for the file must be `OK`.
 2. Extract the file. In Terminal, type
    `tar -xzf dmodem-win32-macosx10.4.tar.gz`.
 3. Start the app. Type `./dmodem-win32`.
+
+## Install on Mac OS 9
+
+1. Download `dmodem-win32-macos9.bin`. The file is for PowerPC Macs.
+2. Decode the file with StuffIt Expander. The file is in MacBinary
+   format.
+3. Double-click the app. The app needs 16 MB of memory.
 
 ## Install on Linux
 

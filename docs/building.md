@@ -86,6 +86,48 @@ Then join the two programs into one fat program:
 (`time.h`, `signal.h` and `net/if.h`). The built-in modem needs D-Modem
 with the changes for 10.4 to 10.6 (`docs/macos-details.md` in D-Modem).
 
+## Mac OS 9 (PowerPC)
+
+The app for the classic Mac OS on PowerPC builds on Linux. It uses the
+Toolbox backend of clang-retro MFC and the toolchain file
+`cmake/macos9.cmake`. You need these items:
+
+- clang of [clang-retro/llvm](https://github.com/clang-retro/llvm) (its
+  `llvm-prebuilt` release).
+- A [clang-retro/mac-sdk](https://github.com/clang-retro/mac-sdk)
+  checkout with its PowerPC libraries in `lib/`. Build them with
+  `runtime/build.sh`, `runtime/build-libc.sh` (it needs a
+  [clang-retro/picolibc](https://github.com/clang-retro/picolibc)
+  checkout) and `runtime/build-libstdcxx.sh` (it needs the GCC 15.2.0
+  release and the libunwind of clang-retro/llvm). mac-sdk's
+  `docs/cxx.md` tells more.
+
+Build the app:
+
+    export MACOS9_LLVM=/path/to/llvm MACOS9_SDK=/path/to/mac-sdk
+    cmake -S . -B build/os9 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/macos9.cmake \
+        -DCLANG_RETRO_MFC=/path/to/mfc -DDMODEM_GUI_WINPORT=ON \
+        -DDMODEM_GUI_EMBED=ON -DDMODEM_GUI_SSH=OFF
+    cmake --build build/os9 --target dmodem-win32
+
+The result is `build/os9/winport/dmodem-win32.bin`, an application in
+MacBinary format. `mac-sdk/tools/macapp.py` links it. The memory
+partition of the app is 16 MB (`MACOS9_APP_SIZE`, in KB).
+
+These items are different on Mac OS 9:
+
+- There is no SSH (`DMODEM_GUI_SSH=OFF`).
+- There is no debug information. Clang cannot write DWARF into XCOFF
+  objects.
+- `cmake/Platform/MacOS9.cmake` gives the CMake system `MacOS9`. The
+  built-in modem needs D-Modem with the changes for this system
+  (`docs/macos-details.md` in D-Modem).
+- `winport/macos9/getentropy.c` gives `getentropy()`. The C library of
+  mac-sdk calls it, but does not have it. The function uses the jitter
+  of the microsecond clock. These random numbers are not as strong as
+  those of a modern system.
+
 ## The library only
 
 With no `DMODEM_GUI_WINPORT`, a build on Linux or macOS makes only

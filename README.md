@@ -26,7 +26,7 @@ thin Win32 shell over one small C library, libdmodemctl.
 | --- | --- | --- | --- |
 | Toolkit | Win32, C++ | Win32, over the Cocoa layer of [clang-retro MFC](https://github.com/clang-retro/mfc) | Win32, over the X11 and Wayland layer of clang-retro MFC |
 | Built with | [clang-retro](https://clang-retro.github.io/), MinGW or MSVC | clang | clang |
-| Runs on | Windows 95 and later | arm64 (Apple silicon) and x86_64 (Intel Mac). Also Mac OS X 10.4 and later on PowerPC and i386 | x86_64 |
+| Runs on | Windows 95 and later | arm64 (Apple silicon) and x86_64 (Intel Mac). Also Mac OS X 10.4 and later on PowerPC and i386, and Mac OS 9 on PowerPC | x86_64 |
 
 The source code of the app is the same on each system. Refer to "The
 Windows app on Linux and macOS" in [Design](docs/design.md).

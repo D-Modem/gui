@@ -335,3 +335,95 @@ jobs:
         with:
           name: dmodem-win32-macosx-legacy
           path: dmodem-win32-macosx10.4.tar.gz
+
+  # The Windows app (windows/) on the classic Mac OS (Mac OS 9) on
+  # PowerPC, with the modem built in, over the Toolbox backend of
+  # clang-retro MFC (cmake/macos9.cmake). All of it builds on Linux:
+  # clang of clang-retro/llvm (llvm-prebuilt), and the C and C++
+  # libraries of clang-retro/mac-sdk (picolibc, GCC 15.2's libstdc++
+  # and LLVM's libunwind, kept in the cache).
+  winport-macos9:
+    name: Windows app on Mac OS 9 (PowerPC), the modem built in
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GCC_VERSION: 15.2.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/checkout@v4
+        with:
+          repository: clang-retro/mfc
+          path: mfc
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: clang-retro/mac-sdk
+          path: mac-sdk
+      - uses: actions/checkout@v4
+        with:
+          repository: clang-retro/picolibc
+          path: picolibc
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build meson make zstd xz-utils
+      - name: clang (clang-retro/llvm, llvm-prebuilt)
+        run: |
+          asset=$(gh api repos/clang-retro/llvm/releases/tags/llvm-prebuilt --jq \
+            '[.assets[] | select(.name | startswith("llvm-linux-"))] | sort_by(.created_at) | last | .name')
+          echo "Using $asset"
+          echo "LLVM_ASSET=$asset" >> "$GITHUB_ENV"
+          gh release download llvm-prebuilt -R clang-retro/llvm -p "$asset" -O llvm.tar.zst
+          mkdir -p "$RUNNER_TEMP/llvm"
+          tar --zstd -xf llvm.tar.zst -C "$RUNNER_TEMP/llvm"
+          rm llvm.tar.zst
+          "$RUNNER_TEMP/llvm/bin/clang" --version | head -1
+          echo "MACOS9_LLVM=$RUNNER_TEMP/llvm" >> "$GITHUB_ENV"
+          echo "MACOS9_SDK=$PWD/mac-sdk" >> "$GITHUB_ENV"
+          echo "SDK_REV=$(git -C mac-sdk rev-parse HEAD)-$(git -C picolibc rev-parse HEAD)" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        id: maclibs
+        with:
+          path: mac-sdk/lib
+          key: mac-sdk-lib-${{ env.SDK_REV }}-${{ env.LLVM_ASSET }}-gcc${{ env.GCC_VERSION }}
+      - name: mac-sdk's libraries (runtime, C library, C++ library)
+        if: steps.maclibs.outputs.cache-hit != 'true'
+        run: |
+          # (LLVM: only compiler-rt's builtins and libunwind)
+          git clone -q --depth 1 --filter=blob:none --sparse \
+            https://github.com/clang-retro/llvm "$RUNNER_TEMP/llvm-src"
+          git -C "$RUNNER_TEMP/llvm-src" sparse-checkout set compiler-rt/lib/builtins libunwind
+          # (GCC: the release, for libstdc++)
+          curl -sSfL "https://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.xz" \
+            | tar -xJ -C "$RUNNER_TEMP"
+          export CLANG="$MACOS9_LLVM/bin/clang" LLVM_SRC="$RUNNER_TEMP/llvm-src"
+          cd mac-sdk
+          sh runtime/build.sh > rt.log 2>&1 || { tail -50 rt.log; exit 1; }
+          PICOLIBC_SRC="$GITHUB_WORKSPACE/picolibc" sh runtime/build-libc.sh > libc.log 2>&1 \
+            || { tail -50 libc.log; exit 1; }
+          CPUS=ppc GCC_SRC="$RUNNER_TEMP/gcc-$GCC_VERSION" sh runtime/build-libstdcxx.sh > cxx.log 2>&1 \
+            || { tail -50 cxx.log; exit 1; }
+          ls lib/ppc
+      - name: Build
+        run: |
+          cmake -S . -B build/os9 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/macos9.cmake" \
+            -DCLANG_RETRO_MFC="$PWD/mfc" \
+            -DDMODEM_GUI_WINPORT=ON -DDMODEM_GUI_EMBED=ON -DDMODEM_GUI_SSH=OFF
+          cmake --build build/os9 --target dmodem-win32
+      - name: Check the program
+        run: |
+          f=build/os9/winport/dmodem-win32.bin
+          # (MacBinary: the type APPL in the header, and the modem inside)
+          head -c 128 "$f" | grep -q APPL
+          grep -q "User-Agent" "$f"
+          mkdir -p out
+          cp "$f" out/dmodem-win32-macos9.bin
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-win32-macos9
+          path: out/dmodem-win32-macos9.bin
