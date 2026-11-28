@@ -4,11 +4,6 @@ build-*/
 bin/
 obj/
 *.user
-.build/
-.swiftpm/
-*.xcodeproj/xcuserdata/
-DerivedData/
-.flatpak-builder/
 
 # the site (brand's tools/site.sh): the theme it copies in, and the built site
 .site/

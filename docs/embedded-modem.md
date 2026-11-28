@@ -1,9 +1,7 @@
 # The built-in modem
 
-The Linux app, the macOS app, the Windows app (Windows 98 SE and later)
-and the Windows app on Linux and macOS have the D-Modem modem in them.
-Thus, these apps do not need a separate `dmodemd`. This includes the
-Windows 95 build.
+The app has the D-Modem modem in it, on Windows (Windows 95 and later),
+on Linux and on macOS. Thus, the app does not need a separate `dmodemd`.
 
 ## What it does
 
@@ -24,38 +22,26 @@ app opens the device and starts no modem.
 
 - There is no pty and no `/dev/ttyDM0` link. Other programs cannot use the
   built-in modem. To share the modem with other programs, start `dmodemd`.
-- The app does not need root (Linux), a pty (macOS) or a firewall
+- The app does not need root or a pty (Linux and macOS), or a firewall
   exception for a TCP port (Windows).
 - A USB modem needs a udev rule that lets the user open the device.
 - A softmodem codec needs the user in the `audio` group.
 - The modem keeps the measurements of the line in
-  `~/.local/share/dmodem-gui/dmodem0.data` (Linux),
+  `~/.config/D-Modem/dmodem0.data` (Linux),
   `~/Library/Application Support/D-Modem/dmodem0.data` (macOS), or
   `%APPDATA%\D-Modem\dmodem0.data` (Windows).
 - The **Log** page shows the log of the modem.
 
 ## How to use dmodemd
 
-On Linux:
-
-1. Open the line settings (the gear button on the Modem page).
-2. In **Advanced**, set **Built-in modem** to off.
-3. Optional: set the path of `dmodemd`.
-
-On macOS:
-
-1. Open the line settings (**D-Modem > Settings**).
-2. In **The modem**, set **Built-in modem** to off.
-3. Optional: set the path of `dmodemd`.
-
-On Windows, the Line Settings dialog does not have this setting yet. Close
-the app, and add this line to the `[line]` section of
-`%APPDATA%\D-Modem\dmodem.ini` (Windows), `~/.config/D-Modem/dmodem.ini`
-(the Windows app on Linux) or
-`~/Library/Application Support/D-Modem/dmodem.ini` (the Windows app on
-macOS):
+The Line Settings dialog does not have this setting yet. Close the app,
+and add this line to the `[line]` section of the settings file:
 
     builtin=0
+
+The settings file is `%APPDATA%\D-Modem\dmodem.ini` (Windows),
+`~/.config/D-Modem/dmodem.ini` (Linux) or
+`~/Library/Application Support/D-Modem/dmodem.ini` (macOS).
 
 The app then starts `dmodemd` as before.
 
@@ -66,21 +52,14 @@ The D-Modem source is a git submodule in `external/D-Modem`. To get it:
     git submodule update --init
 
 If the submodule is there, CMake builds the built-in modem
-(`DMODEM_GUI_EMBED`, on by default) for the Linux app, the macOS app, and
-the Windows app with the clang-retro configurations `win32-picolibc` (the
-Windows 95 build), `win98`, `winme`, `win7` and later, and for the Windows
-app on Linux and macOS (`DMODEM_GUI_WINPORT`). To build the app with no built-in
+(`DMODEM_GUI_EMBED`, on by default) for the app on Windows with the
+clang-retro configurations `win32-picolibc` (the Windows 95 build),
+`win98`, `winme`, `win7` and later, and for the app on Linux and macOS
+(`DMODEM_GUI_WINPORT`). To build the app with no built-in
 modem, use `-DDMODEM_GUI_EMBED=OFF`. For a USB line and an ALSA line, also
 install `libusb-1.0-0-dev` and `libasound2-dev`.
 
 The first build downloads libre and Mbed TLS for the SIP line of the modem.
-
-The macOS app builds with Xcode, not with CMake. CMake builds the
-libraries of the built-in modem, and writes `build/macos-embed.xcconfig`.
-This file gives Xcode the header path, the libraries and the Swift
-condition `DMODEM_GUI_EMBED`. The Xcode project (`macos/project.yml`)
-includes this file. Thus, do the CMake build before `xcodegen`. Refer to
-[Building](building.md).
 
 ## Licence
 
@@ -93,15 +72,13 @@ Windows and macOS, the build links libusb (LGPL-2.1) statically, as
 
 ## Status
 
-| App | Status |
+| System | Status |
 | --- | --- |
-| Linux | Done. Tested: a call from the Dial button to another D-Modem connects at 62666 bit/s (V.91), and **Stop** hangs up. |
 | Windows 98 SE and later | Done (`win98` build). It builds, and its imports agree with Windows 98 SE. It is not tested on Windows or Wine yet. |
 | Windows 7 and later | Done (`win7` build). It builds. It is not tested on Windows or Wine yet. |
 | Windows 95, NT 4.0 and later | Done (`win32-picolibc` build). It builds, and its imports agree with Windows 95 and NT 4.0. It is not tested on Windows or Wine yet. Refer to "Windows 95" below. |
-| macOS | Done. CI builds it for arm64 and x86_64, and checks that the library is in the app for each architecture. It is not tested on a Mac yet. |
-| The Windows app on Linux | Done. CI builds it, checks that the library is in the app, and starts the built-in modem in Xvfb (`winport/test/smoke.sh`). |
-| The Windows app on macOS | Done (arm64 and x86_64). CI builds it for each architecture, and checks that the library is in the app. It is not tested on a Mac yet. |
+| Linux | Done. CI builds it, checks that the library is in the app, and starts the built-in modem in Xvfb (`winport/test/smoke.sh`). |
+| macOS | Done (arm64 and x86_64). CI builds it for each architecture, and checks that the library is in the app. It is not tested on a Mac yet. |
 
 ### Windows 95
 

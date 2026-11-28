@@ -1,8 +1,8 @@
 # libdmodemssh: D-Modem's SSH client (dmodemssh.h), on libssh 0.11.
 # The system's libssh when it is 0.11 or later (and
 # -DDMODEM_SSH_BUNDLED=OFF), else libssh and mbedTLS built here from
-# their release tarballs: always for the Windows and macOS apps, which
-# ship no libraries of the system's.
+# their release tarballs: always for the app on Windows and macOS, which
+# ships no libraries of the system's.
 if(WIN32 OR APPLE)
   set(_bundled ON)
 else()

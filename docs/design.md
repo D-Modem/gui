@@ -1,14 +1,17 @@
 # Design
 
-## One library, three native shells
+## One library, one Win32 app
 
-The apps share all the code that does not draw. `core/` is libdmodemctl, a
-small C library with no I/O and no threads ("sans-I/O"). Each app opens the
-modem in its own way. Then it gives the bytes that it reads to `dmc_feed()`,
-writes the data that `dmc_output()` gives it, and calls `dmc_poll()` from a
-50 ms timer. Thus the library is easy to call from C (GTK), C++ (Win32) and
-Swift. It is also easy to test (`core/test`, which CI runs with ASan and
-UBSan).
+The app is one Win32 app (`windows/`). The same source code builds for
+Windows, and for Linux and macOS over the portable Win32 layer of
+clang-retro MFC (refer to "The Windows app on Linux and macOS", below).
+
+All the code that does not draw is in `core/`. `core/` is libdmodemctl, a
+small C library with no I/O and no threads ("sans-I/O"). The app opens the
+modem. Then it gives the bytes that it reads to `dmc_feed()`, writes the
+data that `dmc_output()` gives it, and calls `dmc_poll()` from a 50 ms
+timer. Thus the library is easy to call from C and C++. It is also easy to
+test (`core/test`, which CI runs with ASan and UBSan).
 
 | Part | What it does |
 | --- | --- |
@@ -16,7 +19,7 @@ UBSan).
 | `dmc_model` | The settings of the modem from AT!M, with the check of each setting and the command that sets it |
 | `dmc_path` | The connection path at the top of the Settings page: the terminal, the modem, the line and what the line reaches. For each step, its role, name, state and setting, from the line settings and the state of the session |
 | `dmc_diag` | The statistics of the last call from AT#UD, as labelled rows (with the V.58 code tables decoded) |
-| `dmc_vt` | The terminal emulator of the D-Modem app (`shared/.../terminal` of D-Modem/app), ported to C: each type of terminal that it emulates (see below). Each app draws it from its cells |
+| `dmc_vt` | The terminal emulator of the D-Modem app (`shared/.../terminal` of D-Modem/app), ported to C: each type of terminal that it emulates (see below). The app draws it from its cells |
 | `dmc_net` | Telnet (option negotiation, terminal type, window size) and rlogin (the handshake, and the window size on the urgent request of the server), for the Remote page |
 | `dmc_daemon_*` | It reads the text that dmodemd prints when it starts: the device that it made, or its error |
 
@@ -27,7 +30,7 @@ also controls its configurators (AT!CF, AT!CT, AT!C). AT!M prints that model
 as tab-separated lines. Each line has the key of a setting, its kind (pick,
 number or text), value, default, range, AT form, group, label and help, and
 then each choice. The Settings page builds its controls from this output.
-Thus, if a setting is added to the modem, it shows in each app without a
+Thus, if a setting is added to the modem, it shows in the app without a
 change here. The library checks a change and sends it as its AT command. The
 app keeps the change when the modem says OK.
 
@@ -35,9 +38,9 @@ The modem keeps no stored profile. Thus the page shows the init string of
 AT!R. Its **Keep** button saves the string in the line settings of the app.
 The app sends the string each time that the modem opens.
 
-## The same screens everywhere
+## The pages
 
-Each app has the same seven pages, with the same words:
+The app has seven pages:
 
 | Page | Contents |
 | --- | --- |
@@ -72,9 +75,8 @@ accent colour. A step that you must still set (no SIP account, no device) is
 red and its line is dashed, and the text below says what to set. When the
 modem starts, dials and is online, the steps light green as the call goes,
 and the text below shows the CONNECT line. `dmc_path` of libdmodemctl has the
-words, so the three apps show the same text. Each app draws them:
-`pathview.c`, `pathview.cpp` (GDI, with the Wingdings of Windows 95) and
-`PathView.swift`. The D-Modem app has the same picture at the top of its
+words. The app draws them in `pathview.cpp` (GDI, with the Wingdings of
+Windows 95). The D-Modem app has the same picture at the top of its
 Settings, with its own lines (Wi-Fi and Bluetooth to another phone, the
 mobile calls of the phone, external modems).
 
@@ -113,15 +115,14 @@ If the screen of a machine has its own size (40x25 for a C64), the library
 requests that size (`dmc_vt_requested_cols`). The view stretches its cells
 to fill the window, by whole pixels where they fit.
 
-| | The view |
-| --- | --- |
-| Windows | `termview.cpp`: GDI, one row at a time into a DIB section (text by `ExtTextOutW`, glyphs and pictures by pixel). The view copies the section to the window (or stretches it, for the double width and height of DEC) |
-| Linux | `termview.c`: a GtkDrawingArea drawn with Cairo and Pango (the app does not use VTE now) |
-| macOS | `TerminalView.swift`: an NSView drawn with Core Graphics |
+The view is `termview.cpp`. It draws with GDI, one row at a time, into a
+DIB section (text by `ExtTextOutW`, glyphs and pictures by pixel). The
+view copies the section to the window (or stretches it, for the double
+width and height of DEC).
 
-### Copy, capture and print (Windows app)
+### Copy, capture and print
 
-The Windows terminal control (`termview.cpp`) keeps a selection. The
+The terminal control (`termview.cpp`) keeps a selection. The
 selection uses the rows of `dmc_vt_cell` (a row below 0 is in the
 scrollback). The selection moves up with its text when new lines push the
 text into the scrollback.
@@ -248,7 +249,7 @@ protocols are:
   example `.zip`, `.gz` or `.jpg`), or a file whose first 64 KB do not
   become 5% smaller. When the other side does not use this mode, the
   transfer is normal ZMODEM. To stop zstd, set `dmc_xfer_options.no_zstd`
-  (the Windows app: Transfer, ZMODEM Compression (zstd)).
+  (in the app: Transfer, ZMODEM Compression (zstd)).
   `dmc_xfer_zstd` tells if the file now goes with zstd. The zstd encoder
   and decoder are in `core/src/zstd_codec.c`. They are a C port of the
   codec of the D-Modem app (`Zstd.kt`), and they do not use libzstd.
@@ -283,7 +284,7 @@ other systems). The thread and the app use two queues with a lock:
    gets only as much as the line can send now. The queue holds 32 KB
    maximum, thus the thread waits when the line is slow.
 3. The notify function of `dmc_xfer_set_notify` tells the app when there
-   are bytes to send. On Windows, it posts `WM_APP_XFER` to the window.
+   are bytes to send. The app posts `WM_APP_XFER` to the window.
 4. `dmc_xfer_get_status` gives the file, the bytes, the size, the retries
    and the result.
 
@@ -299,7 +300,7 @@ ZRQINIT of sz, the ZRINIT of rz, and the Send-Init of kermit -s. When
 Automatic Receive is on, the app starts a receive, or it opens the Send
 File dialog for rz.
 
-The Windows app (`windows/src/xfer.cpp`) has these parts:
+The app (`windows/src/xfer.cpp`) has these parts:
 
 - The Transfer menu: Send File, Receive File, Automatic Receive and
   Cancel Transfer. The Terminal page also has Send and Receive buttons.
@@ -317,31 +318,29 @@ with noise. It also does a test with `sz` and `rz` (lrzsz) and with
 C-Kermit on a pty, when they are installed. Set `DMODEM_XFER_INTEROP=1` to
 make these tests mandatory.
 
-The Linux and macOS apps do not have a transfer UI at this time.
+## How the app starts dmodemd
 
-## How the apps start dmodemd
-
-| | Linux | macOS | Windows |
-| --- | --- | --- | --- |
-| Started with | GSubprocess | Process | CreateProcess |
-| Its DTE | a pty (it prints "Use `/dev/pts/N' as modem device") | a pty | `--tcp 127.0.0.1:port` |
-| Settings kept in | `~/.config/dmodem-gui/settings.ini` (mode 0600) | user defaults, the SIP password in the keychain | `%APPDATA%\D-Modem\dmodem.ini` |
+The app starts dmodemd with `CreateProcess`. The DTE of dmodemd is a TCP
+socket (`--tcp 127.0.0.1:port`). The app keeps its settings in
+`dmodem.ini`: `%APPDATA%\D-Modem\dmodem.ini` on Windows,
+`~/.config/D-Modem/dmodem.ini` on Linux and
+`~/Library/Application Support/D-Modem/dmodem.ini` on macOS.
 
 The app gives the SIP account to dmodemd in its environment (`SIP_LOGIN`,
 `SIP_T38`, `SIP_V152`, `SIP_V150`, `SIP_SRTP`). It gives the country, the
-USB modem and the debug level as flags. On Linux and macOS, the app makes
-the pty in the group of the user (`-g`). Thus dmodemd does not need root.
+USB modem and the debug level as flags.
 
-Each app can also use a modem that already runs: a device path on Linux and
-macOS, or a TCP address or a COM port on Windows.
+The app can also use a modem that already runs: a TCP address or a COM
+port. On Linux and macOS, the layer changes a COM port name to a device
+(refer to "The Windows app on Linux and macOS", below).
 
-The Linux, macOS and Windows apps do not start dmodemd by default. They run the
-modem in a thread (`libdmodem_embed`), and its DTE is a socket. Refer to
+The app does not start dmodemd by default. It runs the modem in a thread
+(`libdmodem_embed`), and its DTE is a socket. Refer to
 [The built-in modem](embedded-modem.md).
 
 ## Hardware modems: the MultiTech MT9234MU
 
-The "device" line can also open a hardware modem. The apps send AT commands
+The COM port line can also open a hardware modem. The app sends AT commands
 to it and read its result codes, as they do with dmodemd. The Settings page
 needs `AT!M`, thus it operates only with dmodemd.
 
@@ -359,16 +358,16 @@ firmware into the chip each time you connect the modem.
 Linux does not include `mts_mt9234mu.fw` after June 2026. MultiTech gave no
 license that lets other persons distribute it, thus linux-firmware removed
 it. This repository includes the file, with a notice
-(`linux/firmware/README.md`). The AGPL-3.0 license does not apply to it.
+(`firmware/README.md`). The AGPL-3.0 license does not apply to it.
 `cmake --install` puts it in `share/dmodem-gui/firmware`, and
 `-DDMODEM_GUI_INSTALL_FIRMWARE=ON` also puts it in `/lib/firmware`. Else,
 copy it to `/lib/firmware` (for the MT9234ZBA-USB, as `mts_mt9234zba.fw`),
 then disconnect the modem and connect it again.
 
-On Linux, the app finds the modem in sysfs (`linux/src/usbmodem.c`). The
-line settings show where the modem is, with a "Use" button. If the modem
-has no firmware, they show the command that copies the file. When the app opens the port of the
-modem, it sets RTS/CTS flow control (`CRTSCTS`). The modem uses `&K3` from
+Select the port of the modem in the Line Settings dialog, with hardware
+flow control (RTS/CTS). On Linux, give the port a COM name with
+`WINPORT_COMn` (for example `WINPORT_COM5=/dev/ttyUSB0`, refer to "The
+Windows app on Linux and macOS", below). The modem uses `&K3` from
 the factory.
 
 Set the country of the line with `AT%T19,0,<code>` and `AT&F&W` in the
@@ -386,8 +385,8 @@ We did not test this yet with a real MT9234MU.
 ## Remote logins
 
 The Remote page logs in to a server, next to the modem, in a separate
-terminal. Telnet and rlogin are a TCP connection that each app makes in its
-own way. The app uses `dmc_net` of libdmodemctl for the protocol (sans-I/O,
+terminal. Telnet and rlogin are a TCP connection that the app makes with
+Winsock. The app uses `dmc_net` of libdmodemctl for the protocol (sans-I/O,
 as the session). SSH is libdmodemssh (`ssh/`), the client of D-Modem on
 libssh 0.11. The Android and iOS apps use the same engine. Thus SSH is the
 same on all platforms, and you do not need to install anything:
@@ -403,8 +402,8 @@ same on all platforms, and you do not need to install anything:
   `~/.ssh`, then keyboard-interactive or a password (three tries), in the
   dialogs of the app. The app reads `~/.ssh/config` (host aliases, users,
   ports).
-- Alternatively, you can select next to the server (the key menu on Linux,
-  Login... on Windows, the key popover on macOS) one of these: the keys of
+- Alternatively, you can select with Login... next to the server one of
+  these: the keys of
   the agent only, or a key file. The key file can be in the format of
   OpenSSH, PEM or the `.ppk` of PuTTY (versions 2 and 3). `ssh/src/ppk.c`
   reads `.ppk` files, with Argon2, the same with each libssh build. The app
@@ -449,11 +448,11 @@ uses Winsock 1.1 (`wsock32`) for its sockets. `getaddrinfo` is the
 `WspiapiGetAddrInfo` of mingw-w64, which uses `gethostbyname` if Winsock 2
 is not there.
 
-| | Telnet and rlogin | SSH | Kept in |
-| --- | --- | --- | --- |
-| Linux | GSocketClient, its socket on the main loop (G_IO_PRI for the urgent byte of rlogin) | libdmodemssh on a GThread, events by `g_main_context_invoke`, AdwAlertDialogs | `settings.ini`, `[remote]` |
-| Windows | Winsock 1.1, `WSAAsyncSelect` (FD_OOB for rlogin), on all Windows versions from 95 | libdmodemssh on a thread, posted events (`WM_APP_SSH`), the `.ssh` of the profile | `dmodem.ini`, `[remote]` |
-| macOS | a BSD socket on a dispatch source | libdmodemssh (`SSHConnection.swift`) on a thread, events on the main queue, SwiftUI alerts | UserDefaults |
+| | How the app does it |
+| --- | --- |
+| Telnet and rlogin | Winsock 1.1, `WSAAsyncSelect` (FD_OOB for rlogin), on all Windows versions from 95 |
+| SSH | libdmodemssh on a thread, posted events (`WM_APP_SSH`), the `.ssh` of the profile |
+| Kept in | `dmodem.ini`, `[remote]` |
 
 The TERM of SSH and the terminal of rlogin come from the type of terminal
 (`xterm-256color`, `vt220`, `ansi`, `petscii` ...). The TERMINAL-TYPE of
@@ -475,14 +474,15 @@ Voice uses the V.253 voice mode of dmodemd: `AT+FCLASS=8`, `AT+VSM=4` (G.711
 stream. libdmodemctl does all of this work. It does the DLE framing and its
 events (hangup, busy, dial tone, digits, caller ID), μ-law, the pacing of
 the stream by the clock that the app gives to `dmc_poll`, DTMF, and the
-answering machine. The apps only move 8 kHz 16-bit samples between the
+answering machine. The app only moves 8 kHz 16-bit samples between the
 library and the sound card (`dmc_voice_read`, `dmc_voice_write`):
 
-| | Sound | Settings | Messages | Greeting files beyond the library's |
-| --- | --- | --- | --- | --- |
-| Linux | PulseAudio on the GLib main loop (or the Pulse server of PipeWire) | `settings.ini`, `[voice]` | `~/.local/share/dmodem-gui/voicemail` | libsndfile, if the build includes it: MP3, FLAC, Ogg Vorbis, Opus |
-| Windows | `waveOut` and `waveIn` with window callbacks (Windows 95 has them) | `dmodem.ini`, `[voice]` | `%APPDATA%\D-Modem\Voicemail`, or next to the exe | the ACM codecs of the system: MP3 and compressed WAVs (GSM 6.10 and the other installed codecs) |
-| macOS | AVAudioEngine, converted to 8 kHz | UserDefaults | `~/Library/Application Support/D-Modem/Voicemail` | AVAudioFile: MP3, AAC/M4A, FLAC, ALAC, CAF |
+| | How the app does it |
+| --- | --- |
+| Sound | `waveOut` and `waveIn` with window callbacks (Windows 95 has them). On Linux and macOS, the layer supplies them |
+| Settings | `dmodem.ini`, `[voice]` |
+| Messages | `Voicemail` in the settings folder (for example `%APPDATA%\D-Modem\Voicemail`), or next to the exe |
+| Greeting files beyond the library's | the ACM codecs: MP3 and compressed WAVs (GSM 6.10 and the other installed codecs) |
 
 The answering machine is disabled until you enable it. When it is enabled,
 it answers after the selected number of rings (4 by default). It plays the
@@ -494,8 +494,8 @@ The app deletes a message that is shorter than one second.
 You can record a greeting from the microphone, or select a sound file. The
 app converts the file to 8 kHz mono. The library itself reads WAV (8 to
 32-bit PCM, floats, A-law, μ-law, IMA and Microsoft ADPCM), AIFF and AIFF-C,
-and Sun/NeXT `.au` (`dmc_audio_decode`). Each app gives all other files to
-the decoders of the system, as the table shows. Pick Up changes a message
+and Sun/NeXT `.au` (`dmc_audio_decode`). The app gives all other files to
+the ACM codecs, as the table shows. Pick Up changes a message
 into a call while the caller leaves it. Listen plays the message while the
 caller leaves it. Messages stay on this computer.
 
@@ -565,7 +565,11 @@ code is the same as on Windows.
   `dmodem0.data` in the settings folder.
   - SSH uses `~/.ssh` and `/` in paths, because libssh uses POSIX paths
     on these systems.
-- The layer changes a COM port name to a device: `COM1` is `/dev/ttyS0`.
+- The layer changes a COM port name to a device. On Linux, `COM1` is
+  `/dev/ttyS0`. On macOS, `COM1` is the first `/dev/cu.*` device (in
+  alphabetical order, with no Bluetooth devices). To use another device,
+  set the environment variable `WINPORT_COMn`. For example, with
+  `WINPORT_COM5=/dev/ttyUSB0`, `COM5` is `/dev/ttyUSB0`.
 - CI builds the app on Linux, and on macOS for arm64 and x86_64. On Linux, `winport/test/smoke.sh`
   starts the app in Xvfb three times: with a TCP line, with a dmodemd
   that the app starts (`winport/test/dmodemd`, a test dmodemd), and with
