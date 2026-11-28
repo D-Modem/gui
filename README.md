@@ -79,7 +79,6 @@ macOS, refer to [Building](docs/building.md).
 | [hardware](https://github.com/D-Modem/hardware) | pico-serial: RP2040 serial adapters and phone-line USB sticks |
 | [login](https://github.com/D-Modem/login) | dmodem-login: the login, menu and LDAP provider for dial-up callers |
 | [bbs](https://github.com/D-Modem/bbs) | A bulletin board for telnet, SSH, TN3270 and modem callers |
-| [go3270](https://github.com/D-Modem/go3270) | A Go library for 3270 terminal servers, used by bbs |
 | [brand](https://github.com/D-Modem/brand) | Logos, colours, type and the naming guide |
 
 ## Licence
