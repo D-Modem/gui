@@ -121,9 +121,6 @@ if(DMODEM_GUI_EMBED AND TARGET dmodem_embed)
   target_compile_definitions(dmodem-win32 PRIVATE DMODEM_GUI_EMBED)
 endif()
 if(MACOS9_TARGET)
-  # (getentropy(): mac-sdk's C library calls it but does not have it.
-  # See macos9/getentropy.c.)
-  target_sources(dmodem-win32 PRIVATE macos9/getentropy.c)
   # (cmake/macos9.cmake links with macapp.py: the C and C++ libraries of
   # mac-sdk, and the Toolbox. The cooperative threads are in its C
   # library.)

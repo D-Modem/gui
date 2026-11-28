@@ -123,10 +123,6 @@ These items are different on Mac OS 9:
 - `cmake/Platform/MacOS9.cmake` gives the CMake system `MacOS9`. The
   built-in modem needs D-Modem with the changes for this system
   (`docs/macos-details.md` in D-Modem).
-- `winport/macos9/getentropy.c` gives `getentropy()`. The C library of
-  mac-sdk calls it, but does not have it. The function uses the jitter
-  of the microsecond clock. These random numbers are not as strong as
-  those of a modern system.
 
 ## The library only
 
