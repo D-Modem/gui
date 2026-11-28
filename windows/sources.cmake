@@ -16,5 +16,6 @@ set(DMODEM_WIN_SOURCES
   capture.cpp
   ascii.cpp
   termset.cpp
-  calls.cpp)
+  calls.cpp
+  ports.cpp)
 list(TRANSFORM DMODEM_WIN_SOURCES PREPEND "${CMAKE_CURRENT_LIST_DIR}/src/")

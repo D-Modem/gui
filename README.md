@@ -20,7 +20,7 @@ thin Win32 shell over one small C library, libdmodemctl.
 - **HyperTerminal items**: file transfers (ZMODEM, YMODEM, XMODEM and Kermit), copy and capture, and the ASCII Setup, Terminal Settings and Call menu of HyperTerminal. Refer to [Features](docs/features.md)
 - **Settings**: each modem setting as a native control, from AT!M
 - **Call Stats**: the rate, modulation, error control and line figures of the last call (AT#UD, ATI11)
-- **Line settings**: a SIP account, a USB modem, or a modem that already runs (dmodemd, or a hardware modem such as the MultiTech MT9234MU)
+- **Line settings**: a SIP account, a USB modem, or a modem that already runs (dmodemd, or a hardware modem such as the MultiTech MT9234MU). **Look for a modem** finds the modem and its port
 
 | | Windows | macOS | Linux |
 | --- | --- | --- | --- |

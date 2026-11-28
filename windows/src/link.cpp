@@ -168,8 +168,12 @@ static bool open_tcp(const char *spec)
 
 static bool open_com(const char *name)
 {
-	char path[64];
-	_snprintf(path, sizeof(path), "\\\\.\\%s", name);
+	/* (a device path on Linux and macOS, winport/: as it is) */
+	char path[96];
+	if (name[0] == '/')
+		_snprintf(path, sizeof(path), "%s", name);
+	else
+		_snprintf(path, sizeof(path), "\\\\.\\%s", name);
 	path[sizeof(path) - 1] = '\0';
 	com = CreateFile(path, GENERIC_READ | GENERIC_WRITE, 0, NULL,
 			 OPEN_EXISTING, 0, NULL);

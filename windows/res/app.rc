@@ -64,7 +64,7 @@ BEGIN
     END
 END
 
-IDD_LINE DIALOG 0, 0, 300, 318
+IDD_LINE DIALOG 0, 0, 300, 332
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Line Settings"
 FONT 8, "MS Shell Dlg"
@@ -106,10 +106,12 @@ BEGIN
     COMBOBOX        IDC_L_STOP, 248, 228, 44, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "&Flow control:", -1, 20, 246, 60, 8
     COMBOBOX        IDC_L_FLOW, 84, 244, 80, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Commands when the modem &opens:", -1, 8, 266, 140, 8
-    EDITTEXT        IDC_L_INIT, 8, 276, 284, 12, ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK", IDOK, 186, 298, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 242, 298, 50, 14
+    PUSHBUTTON      "&Look for a modem", IDC_L_FIND, 212, 243, 80, 14
+    LTEXT           "", IDC_L_FOUND, 20, 260, 272, 16
+    LTEXT           "Commands when the modem &opens:", -1, 8, 280, 140, 8
+    EDITTEXT        IDC_L_INIT, 8, 290, 284, 12, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 186, 312, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 242, 312, 50, 14
 END
 
 IDD_SETTING DIALOG 0, 0, 240, 110

@@ -148,6 +148,8 @@
 #define IDC_L_PARITY    921
 #define IDC_L_STOP      922
 #define IDC_L_FLOW      923
+#define IDC_L_FIND      924
+#define IDC_L_FOUND     925
 
 /* the Change Setting dialog */
 #define IDD_SETTING     950

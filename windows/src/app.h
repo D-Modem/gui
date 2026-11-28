@@ -85,7 +85,7 @@ struct Config {
 	   dmodemd.exe started ([line] builtin=0) */
 	int builtin;
 	char tcp[256];                  /* host:port */
-	char com[32];                   /* COM1 */
+	char com[64];                   /* COM1, or /dev/ttyUSB0 (winport) */
 	/* the COM port's settings, as HyperTerminal's Configure: bits per
 	   second, data bits (5 to 8), parity (0 none, 1 odd, 2 even, 3 mark,
 	   4 space), stop bits (0 one, 1 one and a half, 2 two), flow control
@@ -108,6 +108,19 @@ void config_summary(const Config *c, char *out, int n);
 bool config_sip_ready(const Config *c);
 /* the Line Settings dialog: true if changed */
 bool line_dialog(HWND owner, Config *c);
+
+/* ports.cpp: a serial port of this computer, and what is on it */
+struct PortInfo {
+	char name[64];                  /* "COM3", or "/dev/ttyUSB0" (winport) */
+	char desc[128];                 /* "MultiTech MT9234MU", or "" */
+	int modem;                      /* a modem is on this port */
+};
+/* the serial ports of this computer, the modems first: their number
+   (max at most) */
+int ports_list(PortInfo *out, int max);
+/* a USB modem that has no port yet and what to do (Linux: the firmware
+   of the MT9234MU), or "" */
+void ports_problem(char *out, int n);
 
 /* a command's response */
 typedef void (*ResponseFn)(const dmc_event *ev, void *data);
