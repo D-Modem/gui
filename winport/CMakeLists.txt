@@ -14,7 +14,10 @@ endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # (Homebrew's LLVM has llvm-rc; Xcode does not)
 find_program(DMODEM_LLVM_RC NAMES llvm-rc llvm-rc-20 llvm-rc-19 llvm-rc-18
-  HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin REQUIRED)
+  HINTS ${MACOSX_LEGACY_LLVM}/bin /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin REQUIRED)
+# The compiler alone, with no arguments (cmake/macosx-legacy.cmake gives
+# the target as an argument of the compiler)
+list(GET CMAKE_CXX_COMPILER 0 _winport_cxx)
 
 # The target triple of the layer's Makefile. On macOS, the
 # architecture is CMAKE_OSX_ARCHITECTURES when it is set, else the
@@ -37,7 +40,10 @@ else()
   set(_arch_linux x86_64)
   set(_arch_apple x86_64)
 endif()
-if(APPLE)
+if(MACOSX_LEGACY_TARGET)
+  # Mac OS X 10.4 and later (cmake/macosx-legacy.cmake)
+  set(WINPORT_TARGET "${MACOSX_LEGACY_TARGET}")
+elseif(APPLE)
   set(WINPORT_TARGET "${_arch_apple}-apple-macos11")
 else()
   set(WINPORT_TARGET "${_arch_linux}-linux-gnu")
@@ -53,10 +59,21 @@ ProcessorCount(_ncpu)
 if(_ncpu EQUAL 0)
   set(_ncpu 1)
 endif()
+if(MACOSX_LEGACY_TARGET)
+  # (the Makefile sets the flags of the 10.4 SDK and libc++ itself.
+  # winhelp_file.cpp uses std::abs with no <cstdlib>: the libc++ of the
+  # sysroot does not give it through <algorithm>.)
+  set(_winport_make_args BIN=${MACOSX_LEGACY_LLVM}/bin
+    SDK=${MACOSX_LEGACY_SDK} LIBCXX=${MACOSX_LEGACY_SYSROOT}
+    CCTOOLS=${MACOSX_LEGACY_CCTOOLS}/bin/powerpc-apple-darwin8-
+    "CXXFLAGS=-O2 -include cstdlib")
+else()
+  set(_winport_make_args STDLIB= CXX=${_winport_cxx} AR=${CMAKE_AR})
+endif()
 add_custom_command(OUTPUT "${WINPORT_LIB}"
   COMMAND make -C "${CLANG_RETRO_MFC}" -j${_ncpu}
-          TARGET=${WINPORT_TARGET} STDLIB= OUT=${WINPORT_OUT}
-          CXX=${CMAKE_CXX_COMPILER} AR=${CMAKE_AR} "${WINPORT_LIB}"
+          TARGET=${WINPORT_TARGET} OUT=${WINPORT_OUT}
+          ${_winport_make_args} "${WINPORT_LIB}"
   DEPENDS ${_winport_deps}
   COMMENT "Building libwinport.a (${WINPORT_TARGET})"
   VERBATIM)
@@ -69,7 +86,7 @@ add_dependencies(winport winport_lib)
 set(_win "${PROJECT_SOURCE_DIR}/windows")
 set(APP_RES_CPP "${CMAKE_CURRENT_BINARY_DIR}/app-res.cpp")
 add_custom_command(OUTPUT "${APP_RES_CPP}"
-  COMMAND ${CMAKE_COMMAND} -E env RC=${DMODEM_LLVM_RC} CXX=${CMAKE_CXX_COMPILER}
+  COMMAND ${CMAKE_COMMAND} -E env RC=${DMODEM_LLVM_RC} CXX=${_winport_cxx}
           ${Python3_EXECUTABLE} "${CLANG_RETRO_MFC}/port/tools/res2cpp.py"
           -I "${_win}/src" -I "${_win}/res" "${_win}/res/app.rc" -o "${APP_RES_CPP}"
   DEPENDS "${_win}/res/app.rc" "${_win}/res/app.manifest" "${_win}/res/dmodem.ico"
@@ -97,7 +114,11 @@ if(DMODEM_GUI_EMBED AND TARGET dmodem_embed)
   target_link_libraries(dmodem-win32 PRIVATE dmodem_embed)
   target_compile_definitions(dmodem-win32 PRIVATE DMODEM_GUI_EMBED)
 endif()
-if(APPLE)
+if(MACOSX_LEGACY_TARGET)
+  # (cmake/macosx-legacy.cmake adds port/compat/macosx, the C library
+  # functions that 10.4 does not have)
+  target_link_libraries(dmodem-win32 PRIVATE "-framework Cocoa" "-framework OpenGL" pthread)
+elseif(APPLE)
   target_link_libraries(dmodem-win32 PRIVATE "-framework Cocoa" pthread)
 else()
   target_link_libraries(dmodem-win32 PRIVATE dl pthread)

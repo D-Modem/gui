@@ -570,7 +570,7 @@ code is the same as on Windows.
   alphabetical order, with no Bluetooth devices). To use another device,
   set the environment variable `WINPORT_COMn`. For example, with
   `WINPORT_COM5=/dev/ttyUSB0`, `COM5` is `/dev/ttyUSB0`.
-- CI builds the app on Linux, and on macOS for arm64 and x86_64. On Linux, `winport/test/smoke.sh`
+- CI builds the app on Linux, on macOS for arm64 and x86_64, and on Linux for Mac OS X 10.4 (PowerPC and i386, `cmake/macosx-legacy.cmake`). On Linux, `winport/test/smoke.sh`
   starts the app in Xvfb three times: with a TCP line, with a dmodemd
   that the app starts (`winport/test/dmodemd`, a test dmodemd), and with
   the built-in modem on a SIP line with no account. For the first two,

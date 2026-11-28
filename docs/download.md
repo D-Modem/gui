@@ -19,6 +19,7 @@ When `main` has no new commits, the release does not change.
 | Linux, x86_64 (X11) | [`dmodem-win32-linux-x86_64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-linux-x86_64.tar.gz) | The app on Linux, with the built-in modem. |
 | macOS, arm64 (Apple silicon) | [`dmodem-win32-macos-arm64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macos-arm64.tar.gz) | The app on macOS, with the built-in modem. |
 | macOS, x86_64 (Intel Mac) | [`dmodem-win32-macos-x86_64.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macos-x86_64.tar.gz) | The app on macOS, with the built-in modem. |
+| Mac OS X 10.4 and later, PowerPC and Intel | [`dmodem-win32-macosx10.4.tar.gz`](https://github.com/D-Modem/gui/releases/download/nightly/dmodem-win32-macosx10.4.tar.gz) | The app with the built-in modem. One program for PowerPC (G3, G4, G5) and Intel (i386). It is not tested on a Mac yet. |
 | All | [`SHA256SUMS`](https://github.com/D-Modem/gui/releases/download/nightly/SHA256SUMS) | The SHA-256 of each file. |
 
 If a file is not in the release, the newest build did not make it. The
@@ -49,6 +50,14 @@ The result for the file must be `OK`.
 3. Remove the quarantine attribute. Type
    `xattr -d com.apple.quarantine dmodem-win32`. The app is not notarized.
 4. Start the app. Type `./dmodem-win32`.
+
+## Install on Mac OS X 10.4 to 10.6
+
+1. Download `dmodem-win32-macosx10.4.tar.gz`. The file is for PowerPC
+   Macs and for Intel Macs.
+2. Extract the file. In Terminal, type
+   `tar -xzf dmodem-win32-macosx10.4.tar.gz`.
+3. Start the app. Type `./dmodem-win32`.
 
 ## Install on Linux
 

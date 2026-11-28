@@ -249,3 +249,89 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dmodem-win32-macos-${{ matrix.arch }}.tar.gz
+
+  # The app for Mac OS X 10.4 (Tiger) and later, PowerPC and Intel
+  # (i386), as one fat program, over the Mac OS X 10.0-10.5 port of
+  # clang-retro MFC (cmake/macosx-legacy.cmake). All of it builds on
+  # Linux: clang of clang-retro/llvm (its llvm-prebuilt release, which
+  # has emulated TLS for 10.4), the macosx10.4 sysroot of dos-sdk (libc++
+  # and Apple's MacOSX10.4u.sdk, under Apple's license), and Apple's ld64
+  # and ar for PowerPC (dos-sdk's scripts/build-cctools-ppc.sh, kept in
+  # the cache).
+  winport-macosx-legacy:
+    name: Windows app on Mac OS X 10.4 and later (PowerPC and i386), the modem built in
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/checkout@v4
+        with:
+          repository: clang-retro/mfc
+          path: mfc
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: clang-retro/dos-sdk
+          path: dos-sdk
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang automake autoconf libtool uuid-dev libssl-dev zstd
+      - name: clang (clang-retro/llvm, llvm-prebuilt)
+        run: |
+          asset=$(gh api repos/clang-retro/llvm/releases/tags/llvm-prebuilt --jq \
+            '[.assets[] | select(.name | startswith("llvm-linux-"))] | sort_by(.created_at) | last | .name')
+          echo "Using $asset"
+          gh release download llvm-prebuilt -R clang-retro/llvm -p "$asset" -O llvm.tar.zst
+          mkdir -p "$RUNNER_TEMP/llvm"
+          tar --zstd -xf llvm.tar.zst -C "$RUNNER_TEMP/llvm"
+          rm llvm.tar.zst
+          "$RUNNER_TEMP/llvm/bin/clang" --version | head -1
+          echo "MACOSX_LEGACY_LLVM=$RUNNER_TEMP/llvm" >> "$GITHUB_ENV"
+      - name: The macosx10.4 sysroot (libc++ and MacOSX10.4u.sdk)
+        run: |
+          sh dos-sdk/packaging/get-toolchain.sh -s macosx10.4 "$RUNNER_TEMP/sysroots"
+          echo "MACOSX_LEGACY_SYSROOT=$RUNNER_TEMP/sysroots/macosx10.4" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        id: cctools
+        with:
+          path: ${{ runner.temp }}/cctools-ppc
+          key: cctools-ppc-${{ hashFiles('dos-sdk/scripts/build-cctools-ppc.sh', 'dos-sdk/scripts/cctools-ppc-old-objects.patch') }}
+      - name: cctools (ld64 and ar for PowerPC)
+        if: steps.cctools.outputs.cache-hit != 'true'
+        run: |
+          PREFIX="$RUNNER_TEMP/cctools-ppc" SRC="$RUNNER_TEMP/cctools-port" \
+            sh dos-sdk/scripts/build-cctools-ppc.sh > cctools.log 2>&1 || { tail -50 cctools.log; exit 1; }
+      - name: Build (PowerPC and i386)
+        run: |
+          export MACOSX_LEGACY_CCTOOLS="$RUNNER_TEMP/cctools-ppc"
+          for arch in powerpc i386; do
+            cmake -S . -B build/$arch -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/macosx-legacy.cmake" \
+              -DMACOSX_LEGACY_ARCH=$arch -DCLANG_RETRO_MFC="$PWD/mfc" \
+              -DDMODEM_GUI_WINPORT=ON
+            cmake --build build/$arch --target dmodem-win32
+          done
+      - name: The fat program, with the built-in modem for each processor
+        run: |
+          cct="$RUNNER_TEMP/cctools-ppc/bin/powerpc-apple-darwin8-"
+          mkdir -p out
+          "${cct}lipo" -create build/powerpc/winport/dmodem-win32 build/i386/winport/dmodem-win32 \
+            -output out/dmodem-win32
+          "${cct}lipo" -info out/dmodem-win32
+          for arch in ppc i386; do
+            "${cct}lipo" out/dmodem-win32 -verify_arch $arch
+            "${cct}nm" -arch $arch out/dmodem-win32 | grep -q dmodem_embed_start
+          done
+          # (each part is for Mac OS X 10.4)
+          "${cct}otool" -arch all -l out/dmodem-win32 | grep -A2 LC_VERSION_MIN_MACOSX | grep -c "version 10.4" | grep -qx 2
+      - name: Package
+        run: tar -C out -czf dmodem-win32-macosx10.4.tar.gz dmodem-win32
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmodem-win32-macosx-legacy
+          path: dmodem-win32-macosx10.4.tar.gz
