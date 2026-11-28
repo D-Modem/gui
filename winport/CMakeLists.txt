@@ -40,7 +40,10 @@ else()
   set(_arch_linux x86_64)
   set(_arch_apple x86_64)
 endif()
-if(MACOSX_LEGACY_TARGET)
+if(MACOS9_TARGET)
+  # The classic Mac OS on PowerPC (cmake/macos9.cmake)
+  set(WINPORT_TARGET "${MACOS9_TARGET}")
+elseif(MACOSX_LEGACY_TARGET)
   # Mac OS X 10.4 and later (cmake/macosx-legacy.cmake)
   set(WINPORT_TARGET "${MACOSX_LEGACY_TARGET}")
 elseif(APPLE)
@@ -59,7 +62,10 @@ ProcessorCount(_ncpu)
 if(_ncpu EQUAL 0)
   set(_ncpu 1)
 endif()
-if(MACOSX_LEGACY_TARGET)
+if(MACOS9_TARGET)
+  # (the Makefile sets the flags of mac-sdk's C and C++ libraries itself)
+  set(_winport_make_args BIN=${MACOS9_LLVM}/bin MACSDK=${MACOS9_SDK})
+elseif(MACOSX_LEGACY_TARGET)
   # (the Makefile sets the flags of the 10.4 SDK and libc++ itself.
   # winhelp_file.cpp uses std::abs with no <cstdlib>: the libc++ of the
   # sysroot does not give it through <algorithm>.)
@@ -114,7 +120,14 @@ if(DMODEM_GUI_EMBED AND TARGET dmodem_embed)
   target_link_libraries(dmodem-win32 PRIVATE dmodem_embed)
   target_compile_definitions(dmodem-win32 PRIVATE DMODEM_GUI_EMBED)
 endif()
-if(MACOSX_LEGACY_TARGET)
+if(MACOS9_TARGET)
+  # (getentropy(): mac-sdk's C library calls it but does not have it.
+  # See macos9/getentropy.c.)
+  target_sources(dmodem-win32 PRIVATE macos9/getentropy.c)
+  # (cmake/macos9.cmake links with macapp.py: the C and C++ libraries of
+  # mac-sdk, and the Toolbox. The cooperative threads are in its C
+  # library.)
+elseif(MACOSX_LEGACY_TARGET)
   # (cmake/macosx-legacy.cmake adds port/compat/macosx, the C library
   # functions that 10.4 does not have)
   target_link_libraries(dmodem-win32 PRIVATE "-framework Cocoa" "-framework OpenGL" pthread)
@@ -127,7 +140,7 @@ endif()
 # The install on Linux (cmake --install): the app, its desktop entry,
 # its AppStream data and its icon. Also the firmware of the MultiTech
 # MT9234MU (the licence is unknown: firmware/README.md).
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT MACOS9_TARGET)
   include(GNUInstallDirs)
   install(TARGETS dmodem-win32 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
   install(FILES data/io.github.d_modem.DModem.desktop
